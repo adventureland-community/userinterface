@@ -1084,6 +1084,15 @@ var EnhanceCommUI = (() => {
       local: opts == null ? void 0 : opts.local
     });
   }
+  function pushLocalPartyChat(owner, message) {
+    pushChatMessage({
+      channel: "party",
+      owner,
+      message,
+      color: "#46A0C6",
+      local: true
+    });
+  }
 
   // src/sockets/hub.ts
   function createChannel() {
@@ -1691,6 +1700,15 @@ var EnhanceCommUI = (() => {
     paladin: "#a3b4b9",
     rogue: "#44b75c"
   };
+  function isPlayerClass(ctype) {
+    const key = String(ctype || "").trim().toLowerCase();
+    return !!(key && Object.prototype.hasOwnProperty.call(classColors, key));
+  }
+  function resolveClassColor(ctype, fallback = "#ffffff") {
+    const key = String(ctype || "").trim().toLowerCase();
+    if (!key) return fallback;
+    return classColors[key] || fallback;
+  }
 
   // src/lib/itemTitleBorder.ts
   var TITLE_BORDER_FALLBACK = "#c9a227";
@@ -3813,8 +3831,22 @@ var EnhanceCommUI = (() => {
     buffInfo: { x: 2, y: 14, anchor: "tl", autoSize: true },
     itemInfo: { x: 2, y: 36, anchor: "tl", autoSize: true },
     kills: { x: 98, y: 40, anchor: "tr" },
-    playerFrame: { x: 28, y: 48, anchor: "bc", ...UNIT_FRAME_DEFAULT },
-    targetFrame: { x: 72, y: 48, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+    // Stacked full-width above the Material dock — side-by-side at mid-band
+    // overlapped the party roster and each other on ~360px phones.
+    playerFrame: {
+      x: 50,
+      y: 78,
+      anchor: "bc",
+      frameW: 360,
+      frameH: 96
+    },
+    targetFrame: {
+      x: 50,
+      y: 66,
+      anchor: "bc",
+      frameW: 360,
+      frameH: 96
+    },
     bossBar: { x: 50, y: 12, anchor: "tc", frameW: 360 },
     instanceRun: { x: 50, y: 18, anchor: "tc" },
     instance: {
@@ -3871,7 +3903,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/lib/layoutFrameMigrations.ts
-  var LAYOUT_FRAME_REV = 9;
+  var LAYOUT_FRAME_REV = 10;
   function shipped(n, target) {
     return typeof n === "number" && Math.round(n) === target;
   }
@@ -3909,8 +3941,19 @@ var EnhanceCommUI = (() => {
   function migrateUnitFrame(pos, def) {
     const defW = typeof def.frameW === "number" ? def.frameW : 300;
     const defH = typeof def.frameH === "number" ? def.frameH : 112;
-    if (!shipped(pos.frameW, 320) || !shipped(pos.frameH, 144)) return pos;
-    return { ...pos, frameW: defW, frameH: defH };
+    if (shipped(pos.frameW, 320) && shipped(pos.frameH, 144)) {
+      return { ...pos, frameW: defW, frameH: defH };
+    }
+    const phoneSideBySide = pos.anchor === "bc" && shipped(pos.y, 48) && (shipped(pos.x, 28) || shipped(pos.x, 72));
+    if (!phoneSideBySide) return pos;
+    return {
+      ...pos,
+      x: typeof def.x === "number" ? def.x : pos.x,
+      y: typeof def.y === "number" ? def.y : pos.y,
+      anchor: def.anchor || "bc",
+      frameW: defW,
+      frameH: defH
+    };
   }
   function migrateInstanceFrame(pos, def) {
     const defW = typeof def.frameW === "number" ? def.frameW : 560;
@@ -9173,6 +9216,26 @@ ${fightHoverTip(src)}`
       summary: "Phone-first Comm UI: Material dock, Samsung-style shade/back/drawer gestures, meter home pages, and sheets that clear the dock \u2014 built for Tampermonkey on handsets.",
       highlights: [
         {
+          label: "Center + Follow camera",
+          detail: "Crosshair Center snaps once onto the observed character (keeps free-cam). Person Follow toggles continuous tracking so the observer stays framed; pan/joystick clears Follow. Stick defaults to the right for right-thumb pan \u2014 flip with \u2190 / \u2192 on the compact track row, or Settings \u2192 Controls.",
+          kind: "feature"
+        },
+        {
+          label: "Compact joystick chrome",
+          detail: "Phone camera cluster is tighter: Center, Follow, and side flip share one 30px row above a slightly smaller stick; FOV strip is thinner so more map stays visible.",
+          kind: "ui"
+        },
+        {
+          label: "Phone panel densify",
+          detail: "Expanded panels fill as bottom sheets (dock-clear, camera chrome hidden). Command Run/Save + Code|Quick + Done sit in the foot; Bank/Bag/Chat/Mail/Settings dismiss from a foot Done; Market row Buy/Open CTAs are thumb-sized.",
+          kind: "improve"
+        },
+        {
+          label: "Phone Players page",
+          detail: "Party roster scrolls in a ~42vh cap with two narrower chip columns and an in-flow Show/Buffs row. Player + target frames stack full-width above the dock (no mid-band side-by-side clash).",
+          kind: "fix"
+        },
+        {
           label: "Material phone dock",
           detail: "Character + Server on the bar (clear Not observing). Apps via center button or swipe-up. Shade settings cog; Chat/Cmd/Mail/Bag/Bank live in Apps.",
           kind: "feature"
@@ -9209,7 +9272,7 @@ ${fightHoverTip(src)}`
         },
         {
           label: "Phone camera + dock P0 polish",
-          detail: "Home-page dots no longer steal stick hits. Always-on FOV out/\xD7/in + clearer Follow above the stick. Observe Stop/empty banner wrap correctly. Apps overlays mutually dismiss peers (incl. market). Edge gestures ignore full sheets. Desktop Settings \u2192 Comm UI shows Tampermonkey iOS/Edge/Firefox QR cards.",
+          detail: "Home-page dots no longer steal stick hits. Always-on FOV out/\xD7/in plus Center (crosshair) and Follow (person) icon toggles above the stick. Observe Stop/empty banner wrap correctly. Apps overlays mutually dismiss peers (incl. market). Edge gestures ignore full sheets. Desktop Settings \u2192 Comm UI shows Tampermonkey iOS/Edge/Firefox QR cards.",
           kind: "fix"
         },
         {
@@ -9223,23 +9286,23 @@ ${fightHoverTip(src)}`
           kind: "feature"
         },
         {
-          label: "Softer nameplates",
-          detail: "Stock name bars restyle after add_name_tag: translucent dark name band (HP/MP/stand chrome untouched) plus a light text stroke so labels read cleaner over busy maps.",
+          label: "Ghost nameplates",
+          detail: "Single ghost name band: white Consolas text (Menlo / Monaco / Courier New fallback \u2014 one concrete face) centered with even padding inside a light class-tinted ghost (~28% alpha so town art stays primary; band grows upward when the face is taller than stock m5x7) and a soft darker-class rim. Class from live entity `ctype` only (`type` is kind: character/monster/npc \u2014 never class; roster `X.characters[].type` is the class fallback). NPCs / unknown stay white on charcoal. Black text stroke for crowded overlaps. HP/MP/stand untouched. Desktop ~0.88\xD7; phone boost ~1.85\xD7.",
           kind: "ui"
         },
         {
           label: "Phone nameplates readable",
-          detail: "Name text keeps LINEAR filtering (NEAREST stays on plate sprites only) and a thinner stroke \u2014 Edge Android no longer turns labels into white static under FOV CSS pixelated + high DPR.",
+          detail: "Name text keeps LINEAR filtering (NEAREST stays on plate sprites only). Edge Android no longer turns labels into white static under FOV CSS pixelated + high DPR. Phone counter-scales ghost plates ~1.85\xD7 at every FOV (incl. zoom-in); scale is FOV\xD7boost capped at 8, text resolution denseness capped at 6.",
           kind: "fix"
         },
         {
           label: "Nameplates on zoom-in",
-          detail: "FOV 0.5\xD7 (and other zoom-in) densifies text resolution by 1/fov, counter-scales plates down so they stay screen-sized, drops drop-shadow stroke noise, and uses CSS image-rendering:auto instead of pixelated upscale.",
+          detail: "FOV 0.5\xD7 densifies text resolution by 1/fov, keeps the phone boost while counter-scaling (so zoom-in matches FOV=1 size instead of dropping to stock), drops drop-shadow stroke noise, and uses CSS image-rendering:auto instead of pixelated upscale.",
           kind: "fix"
         },
         {
           label: "Phone fullscreen",
-          detail: "Apps \u2192 Full toggles the document Fullscreen API with navigationUI:hide so Edge/Chrome Android can drop the address and tab bars. Exit FS to leave. Hidden when the browser does not support it.",
+          detail: "Apps \u2192 Full toggles the document Fullscreen API with navigationUI:hide so Edge/Chrome Android can drop the address and tab bars. Exit FS to leave. Hidden when the browser does not support it. Enter/exit re-runs stock on_resize + FOV canvas fit (and listens for visualViewport) so the world fills the taller screen instead of leaving a black bar under a short canvas.",
           kind: "feature"
         },
         {
@@ -9304,7 +9367,7 @@ ${fightHoverTip(src)}`
         },
         {
           label: "Free camera pan",
-          detail: "WASD / arrows on desktop, middle-drag or left-drag on the canvas, and an on-screen joystick on phone detach the view from the observed character. Stick uses a small deadzone + steep expo so near-center crawls; map/server hops clear free-cam so vision and Follow re-home on live coords. Idle stick stays readable on sand. Follow (or the stick\u2019s Follow chip) snaps then o:home.",
+          detail: "WASD / arrows on desktop, middle-drag or left-drag on the canvas, and an on-screen joystick on phone detach the view from the observed character. Stick uses a small deadzone + steep expo so near-center crawls; map/server hops clear free-cam so vision and Follow re-home on live coords. Idle stick stays readable on sand. Center snaps once; Follow toggles continuous track (pan clears it).",
           kind: "feature"
         }
       ],
@@ -9332,6 +9395,16 @@ ${fightHoverTip(src)}`
         }
       ],
       items: [
+        {
+          label: "Sell to vendor",
+          detail: "Bag item menu (desktop right-click / phone long-press): Sell to vendor\u2026 for NPC gold \u2014 quantity + confirm. Computer/supercomputer sells in place (no travel); otherwise smart_move to the nearest G gold merchant (role merchant with stock, same map first; e.g. Gabriel / basics \u2014 not citizens like Angel). Locked and shells/cash items stay disabled.",
+          kind: "feature"
+        },
+        {
+          label: "Shrine outcome + merchant skills",
+          detail: "Upgrade/Compound no longer treat a bag placeholder as \u201Citem gone\u201D \u2014 Rolling\u2026 until the slot clears; higher level = success, empty = fail. Merchants get Mass Production / Mass Production PP checkboxes (default on) that use_skill before the shrine action when the buff is missing.",
+          kind: "fix"
+        },
         {
           label: "Lite HUD defaults",
           detail: "Auto lite on phone hides timelines, minimap, paperdoll, events, bag, and unit frames until reopened from Menu.",
@@ -11705,8 +11778,15 @@ ${fightHoverTip(src)}`
     return appliedFov;
   }
   function readWindowCssSize() {
-    const w = typeof window !== "undefined" && typeof window.innerWidth === "number" && window.innerWidth > 0 ? Math.round(window.innerWidth) : 1280;
-    const h = typeof window !== "undefined" && typeof window.innerHeight === "number" && window.innerHeight > 0 ? Math.round(window.innerHeight) : 720;
+    let w = typeof window !== "undefined" && typeof window.innerWidth === "number" && window.innerWidth > 0 ? Math.round(window.innerWidth) : 1280;
+    let h = typeof window !== "undefined" && typeof window.innerHeight === "number" && window.innerHeight > 0 ? Math.round(window.innerHeight) : 720;
+    if (typeof window !== "undefined") {
+      const vv = window.visualViewport;
+      if (vv && vv.width > 0 && vv.height > 0) {
+        w = Math.max(w, Math.round(vv.width));
+        h = Math.max(h, Math.round(vv.height));
+      }
+    }
     return { w: Math.max(1, w), h: Math.max(1, h) };
   }
   function logicalSizeForFov(cssW, cssH, fov) {
@@ -11795,7 +11875,7 @@ ${fightHoverTip(src)}`
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
     const dpr = typeof window !== "undefined" && typeof window.devicePixelRatio === "number" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
     const denseness = f >= 1 ? f : 1 / f;
-    return Math.max(1, Math.min(4, Math.ceil(denseness * dpr)));
+    return Math.max(1, Math.min(6, Math.ceil(denseness * dpr)));
   }
 
   // src/lib/worldZoom.ts
@@ -12376,6 +12456,9 @@ ${fightHoverTip(src)}`
   // src/lib/settings.ts
   var KEY = "al-comm-ui-settings-v1";
   var PANEL_IDS_SET = new Set(PANEL_IDS);
+  function normalizeCameraJoystickSide(raw) {
+    return raw === "left" ? "left" : "right";
+  }
   var DEFAULT_COMMAND_SNIPPETS = [
     { id: "loot", name: "Loot", code: "loot()" },
     { id: "town", name: "Town", code: "use_skill('town')" },
@@ -12419,6 +12502,7 @@ ${fightHoverTip(src)}`
     hudDensity: "auto",
     worldOverlayEnabled: true,
     worldWheelZoomEnabled: true,
+    cameraJoystickSide: "right",
     phoneHudVisible: {},
     phoneHomeScreens: defaultPhoneHomeScreens(),
     changelogSeenId: null,
@@ -12671,6 +12755,9 @@ ${fightHoverTip(src)}`
       hudDensity: normalizeHudDensity(parsed.hudDensity),
       worldOverlayEnabled: parsed.worldOverlayEnabled !== false,
       worldWheelZoomEnabled: parsed.worldWheelZoomEnabled !== false,
+      cameraJoystickSide: normalizeCameraJoystickSide(
+        parsed.cameraJoystickSide
+      ),
       phoneHudVisible: parsed.phoneHudVisible && typeof parsed.phoneHudVisible === "object" ? parsed.phoneHudVisible : {},
       phoneHomeScreens: normalizePhoneHomeScreens(parsed.phoneHomeScreens),
       setupWizardDone: !!parsed.setupWizardDone || !!(parsed.meterAppearance && parsed.meterAppearance.setupWizardDone),
@@ -12752,6 +12839,7 @@ ${fightHoverTip(src)}`
       hudDensity: "auto",
       worldOverlayEnabled: true,
       worldWheelZoomEnabled: true,
+      cameraJoystickSide: "right",
       phoneHudVisible: {},
       phoneHomeScreens: defaultPhoneHomeScreens()
     };
@@ -12788,10 +12876,13 @@ ${fightHoverTip(src)}`
   }
   function patchSettings(partial) {
     var _a;
+    const replacePhoneHudVisible = partial.replacePhoneHudVisible === true;
+    const { replacePhoneHudVisible: _drop, ...settingsPartial } = partial;
+    void _drop;
     const current = getSettings();
     const next = {
       ...current,
-      ...partial
+      ...settingsPartial
     };
     if (partial.combatChannels) {
       next.combatChannels = normalizeChannels(partial.combatChannels);
@@ -12843,11 +12934,20 @@ ${fightHoverTip(src)}`
     if (typeof partial.worldWheelZoomEnabled === "boolean") {
       next.worldWheelZoomEnabled = partial.worldWheelZoomEnabled;
     }
-    if (partial.phoneHudVisible) {
-      next.phoneHudVisible = {
-        ...current.phoneHudVisible || {},
-        ...partial.phoneHudVisible
-      };
+    if (partial.cameraJoystickSide != null) {
+      next.cameraJoystickSide = normalizeCameraJoystickSide(
+        partial.cameraJoystickSide
+      );
+    }
+    if (settingsPartial.phoneHudVisible !== void 0) {
+      if (replacePhoneHudVisible) {
+        next.phoneHudVisible = { ...settingsPartial.phoneHudVisible };
+      } else if (settingsPartial.phoneHudVisible) {
+        next.phoneHudVisible = {
+          ...current.phoneHudVisible || {},
+          ...settingsPartial.phoneHudVisible
+        };
+      }
     }
     if (partial.phoneHomeScreens) {
       next.phoneHomeScreens = normalizePhoneHomeScreens(partial.phoneHomeScreens);
@@ -12970,6 +13070,14 @@ ${fightHoverTip(src)}`
     delete next.combatVisible;
     settingsCache = next;
     writeSettingsToStorage(next);
+    if (typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("ecu:settings", { detail: partial })
+        );
+      } catch (e2) {
+      }
+    }
     return next;
   }
   function saveSettings(partial) {
@@ -14969,6 +15077,11 @@ ${BOTTOM_CHROME_HIT_TARGETS} {
   cursor: default;
   pointer-events: none;
 }
+.ecu-btn.is-on {
+  border-color: #9dd4ec;
+  background: #2a3640;
+  color: #9dd4ec;
+}
 
 /* Primary strip: character chips + server only */
 .ecu-chrome {
@@ -15838,6 +15951,36 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
 html.ecu-phone-dock-on .ecu-roster {
   max-width: min(100vw - 12px, 360px);
 }
+/* Show/Buffs in-flow on phone \u2014 absolute overlay ate chip headers. */
+html.ecu-phone-dock-on .ecu-roster-toolbar,
+#comm-ui[data-viewport="phone"] .ecu-roster-toolbar {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+  justify-content: flex-start;
+  margin: 0 0 4px;
+  max-width: 100%;
+}
+/* Players page unit frames \u2014 clear dock, full bleed. */
+/* Phone map: target unit card occludes playfield + sheets \u2014 use map tap / Players. */
+#comm-ui[data-viewport="phone"] [data-panel="targetFrame"],
+#comm-ui[data-viewport="phone"] .comm-pos-targetFrame {
+  display: none !important;
+}
+#comm-ui[data-viewport="phone"] .comm-pos-playerFrame,
+#comm-ui[data-viewport="phone"] .comm-pos-targetFrame {
+  max-width: calc(100vw - 16px);
+}
+#comm-ui[data-viewport="phone"] .comm-pos-playerFrame {
+  z-index: 28;
+}
+#comm-ui[data-viewport="phone"] .comm-pos-targetFrame {
+  z-index: 29;
+}
+#comm-ui[data-viewport="phone"] .comm-pos-players {
+  z-index: 24;
+  max-width: calc(100vw - 12px);
+}
 html.ecu-phone-dock-on .ecu-meter-shell {
   max-width: calc(100vw - 16px);
 }
@@ -15935,9 +16078,629 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   // src/host/bagOpenGate.ts
   function gateObservedBagOpen() {
     if (getObservingId()) return true;
+    const overlayPreview = !!window.__ecuOverlayPreview || typeof location !== "undefined" && /\/overlay(?:\/|$|\?)/.test(location.pathname + location.search);
+    if (overlayPreview) {
+      const ents = window.entities ? Object.values(window.entities) : [];
+      let ent = window.observing || null;
+      if (!ent || ent.id == null) {
+        for (let i = 0; i < ents.length; i++) {
+          const e2 = ents[i];
+          if (e2 && e2.id != null && e2.type !== "monster") {
+            ent = e2;
+            break;
+          }
+        }
+        if ((!ent || ent.id == null) && ents[0] && ents[0].id != null) {
+          ent = ents[0];
+        }
+        if (ent) window.observing = ent;
+      }
+      return true;
+    }
     showCommToast("Observe a character first");
     openPhoneObserve();
     return false;
+  }
+
+  // src/lib/cameraPan.ts
+  var CAMERA_PAN_SPEED = 340;
+  var JOYSTICK_RADIUS_PX = 48;
+  var JOYSTICK_DEADZONE = 0.08;
+  var JOYSTICK_OUTER = 0.96;
+  var JOYSTICK_RESPONSE_POWER = 3.8;
+  function clampPanAxis(v) {
+    if (!Number.isFinite(v)) return 0;
+    if (v > 1) return 1;
+    if (v < -1) return -1;
+    return v;
+  }
+  function joystickResponseMagnitude(mag, deadzone = JOYSTICK_DEADZONE, power = JOYSTICK_RESPONSE_POWER, outer = JOYSTICK_OUTER) {
+    if (!(mag > deadzone)) return 0;
+    const outerClamp = Math.max(deadzone + 1e-6, Math.min(1, outer));
+    if (mag >= outerClamp) return 1;
+    const span = Math.max(1e-6, outerClamp - deadzone);
+    const t = Math.min(1, (mag - deadzone) / span);
+    const p = power > 0 ? power : 1;
+    return Math.pow(t, p);
+  }
+  function joystickToPan(dx, dy, radiusPx = JOYSTICK_RADIUS_PX, deadzone = JOYSTICK_DEADZONE) {
+    const r = Math.max(1, radiusPx);
+    const nx = dx / r;
+    const ny = dy / r;
+    const rawMag = Math.sqrt(nx * nx + ny * ny);
+    const mag = Math.min(1, rawMag);
+    const eased = joystickResponseMagnitude(mag, deadzone);
+    if (eased <= 0 || rawMag <= 0) return { x: 0, y: 0 };
+    const inv = eased / rawMag;
+    return { x: clampPanAxis(nx * inv), y: clampPanAxis(ny * inv) };
+  }
+  function keysToPan(keys) {
+    let x = 0;
+    let y = 0;
+    if (keys.left) x -= 1;
+    if (keys.right) x += 1;
+    if (keys.up) y -= 1;
+    if (keys.down) y += 1;
+    if (x === 0 && y === 0) return { x: 0, y: 0 };
+    const mag = Math.sqrt(x * x + y * y);
+    return { x: x / mag, y: y / mag };
+  }
+  function panFovSpeedFactor(fov) {
+    if (!(fov > 0) || !Number.isFinite(fov)) return 1;
+    return Math.sqrt(fov);
+  }
+  function stepCameraPan(realX, realY, pan, dtSec, opts) {
+    const speed = opts && typeof opts.speed === "number" ? opts.speed : CAMERA_PAN_SPEED;
+    const fov = opts && typeof opts.fov === "number" && opts.fov > 0 ? opts.fov : 1;
+    const px = clampPanAxis(pan.x);
+    const py = clampPanAxis(pan.y);
+    if (px === 0 && py === 0) return { x: realX, y: realY };
+    const dist = speed * panFovSpeedFactor(fov) * Math.max(0, dtSec);
+    return {
+      x: realX + px * dist,
+      y: realY + py * dist
+    };
+  }
+  function mouseDragWorldDelta(dxCss, dyCss, opts) {
+    const scale = opts && typeof opts.scale === "number" && opts.scale > 0 ? opts.scale : 1;
+    const fov = opts && typeof opts.fov === "number" && opts.fov > 0 ? opts.fov : 1;
+    const factor = fov / scale;
+    return {
+      x: -dxCss * factor,
+      y: -dyCss * factor
+    };
+  }
+  var MOUSE_PAN_DRAG_THRESHOLD_PX = 4;
+
+  // src/host/cameraPan.ts
+  var installed = false;
+  var freeCamera = false;
+  var followCamera = true;
+  var lockX = 0;
+  var lockY = 0;
+  var observerAnchorX = 0;
+  var observerAnchorY = 0;
+  var hasObserverAnchor = false;
+  var freeCamRealmKey = "";
+  var keyUp = false;
+  var keyDown = false;
+  var keyLeft = false;
+  var keyRight = false;
+  var stickPan = { x: 0, y: 0 };
+  var rafId = null;
+  var lastTs = 0;
+  var origPositionMap = null;
+  var mousePanPointerId = null;
+  var mousePanButton = null;
+  var mousePanLastX = 0;
+  var mousePanLastY = 0;
+  var mousePanActive = false;
+  var mousePanArmed = false;
+  var freeListeners = [];
+  var followListeners = [];
+  function notifyFree() {
+    for (let i = 0; i < freeListeners.length; i++) freeListeners[i](freeCamera);
+  }
+  function notifyFollow() {
+    const on = followCamera && !freeCamera;
+    for (let i = 0; i < followListeners.length; i++) followListeners[i](on);
+  }
+  function subscribeFreeCamera(listener) {
+    freeListeners.push(listener);
+    return () => {
+      const idx = freeListeners.indexOf(listener);
+      if (idx >= 0) freeListeners.splice(idx, 1);
+    };
+  }
+  function subscribeFollowCamera(listener) {
+    followListeners.push(listener);
+    return () => {
+      const idx = followListeners.indexOf(listener);
+      if (idx >= 0) followListeners.splice(idx, 1);
+    };
+  }
+  function isFreeCamera() {
+    return freeCamera;
+  }
+  function isFollowCamera() {
+    return followCamera && !freeCamera;
+  }
+  function readObserverCameraAnchor() {
+    if (!hasObserverAnchor) return null;
+    if (!Number.isFinite(observerAnchorX + observerAnchorY)) return null;
+    return { x: observerAnchorX, y: observerAnchorY };
+  }
+  function hostMap() {
+    const m = window.map;
+    return m || null;
+  }
+  function syncLockFromMap() {
+    const map = hostMap();
+    if (!map) return;
+    if (typeof map.real_x === "number" && Number.isFinite(map.real_x)) {
+      lockX = map.real_x;
+    }
+    if (typeof map.real_y === "number" && Number.isFinite(map.real_y)) {
+      lockY = map.real_y;
+    }
+  }
+  function readCameraRealmKey() {
+    const w = window;
+    const mapName = (w.current_map != null && String(w.current_map) !== "" ? String(w.current_map) : w.map && w.map.map_name != null ? String(w.map.map_name) : "") || "";
+    const inst = w.current_in != null && String(w.current_in) !== "" ? String(w.current_in) : "";
+    const region = w.server_region != null ? String(w.server_region) : "";
+    const ident = w.server_identifier != null ? String(w.server_identifier) : "";
+    return mapName + "|" + inst + "|" + region + "|" + ident;
+  }
+  function syncFreeCameraAfterRealmChange() {
+    if (!freeCamera) return false;
+    const key = readCameraRealmKey();
+    if (!freeCamRealmKey || !key || key === freeCamRealmKey) return false;
+    lockCamera();
+    syncLockFromMap();
+    return true;
+  }
+  function readObservedWorldXY() {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const w = window;
+    const snap = w.observing;
+    if (snap) {
+      const ents = w.entities;
+      if (ents && snap.id != null && ents[String(snap.id)]) {
+        const live2 = ents[String(snap.id)];
+        const x = Number(live2 && ((_a = live2.real_x) != null ? _a : live2.x));
+        const y = Number(live2 && ((_b = live2.real_y) != null ? _b : live2.y));
+        if (Number.isFinite(x + y)) return { x, y };
+      }
+      if (ents && snap.name != null) {
+        const want = String(snap.name);
+        for (const id in ents) {
+          if (!Object.prototype.hasOwnProperty.call(ents, id)) continue;
+          const live2 = ents[id];
+          if (!live2 || live2.name == null || String(live2.name) !== want) continue;
+          const x = Number((_c = live2.real_x) != null ? _c : live2.x);
+          const y = Number((_d = live2.real_y) != null ? _d : live2.y);
+          if (Number.isFinite(x + y)) return { x, y };
+        }
+      }
+      const sx = Number((_e = snap.real_x) != null ? _e : snap.x);
+      const sy = Number((_f = snap.real_y) != null ? _f : snap.y);
+      if (Number.isFinite(sx + sy)) return { x: sx, y: sy };
+    }
+    const ch = w.character;
+    if (ch) {
+      const x = Number((_g = ch.real_x) != null ? _g : ch.x);
+      const y = Number((_h = ch.real_y) != null ? _h : ch.y);
+      if (Number.isFinite(x + y)) return { x, y };
+    }
+    return null;
+  }
+  function unlockCamera() {
+    syncFreeCameraAfterRealmChange();
+    if (!freeCamera) {
+      syncLockFromMap();
+      const at = readObservedWorldXY();
+      if (at) {
+        observerAnchorX = at.x;
+        observerAnchorY = at.y;
+      } else {
+        observerAnchorX = lockX;
+        observerAnchorY = lockY;
+      }
+      hasObserverAnchor = true;
+      freeCamRealmKey = readCameraRealmKey();
+      freeCamera = true;
+      const wasFollow = followCamera;
+      followCamera = false;
+      notifyFree();
+      if (wasFollow) notifyFollow();
+    }
+    ensureRaf();
+  }
+  function lockCamera() {
+    freeCamera = false;
+    stickPan = { x: 0, y: 0 };
+    keyUp = keyDown = keyLeft = keyRight = false;
+    freeCamRealmKey = "";
+    endMousePan();
+    stopRafIfIdle();
+    notifyFree();
+    hasObserverAnchor = false;
+  }
+  function emitObserveHome() {
+    const sock = window.socket;
+    if (sock && typeof sock.emit === "function") sock.emit("o:home");
+  }
+  function snapMapToObserved() {
+    const map = hostMap();
+    const at = readObservedWorldXY();
+    if (map && at) {
+      lockX = at.x;
+      lockY = at.y;
+      map.real_x = at.x;
+      map.real_y = at.y;
+      const pos = window.position_map;
+      if (typeof pos === "function") {
+        try {
+          pos();
+        } catch (e2) {
+        }
+      }
+      return true;
+    }
+    syncLockFromMap();
+    return false;
+  }
+  function panCamera(pan, dtSec) {
+    unlockCamera();
+    const map = hostMap();
+    if (!map) return;
+    const next = stepCameraPan(lockX, lockY, pan, dtSec, {
+      speed: CAMERA_PAN_SPEED,
+      fov: readAppliedWorldFov()
+    });
+    lockX = next.x;
+    lockY = next.y;
+    map.real_x = lockX;
+    map.real_y = lockY;
+  }
+  function setJoystickPan(pan) {
+    stickPan = {
+      x: pan.x,
+      y: pan.y
+    };
+    if (pan.x !== 0 || pan.y !== 0) unlockCamera();
+    ensureRaf();
+    stopRafIfIdle();
+  }
+  function panCameraByWorldDelta(dx, dy) {
+    if (!Number.isFinite(dx + dy) || dx === 0 && dy === 0) return;
+    unlockCamera();
+    const map = hostMap();
+    if (!map) return;
+    lockX += dx;
+    lockY += dy;
+    map.real_x = lockX;
+    map.real_y = lockY;
+    const pos = window.position_map;
+    if (typeof pos === "function") {
+      try {
+        pos();
+      } catch (e2) {
+      }
+    }
+  }
+  function typingTarget(el) {
+    if (!(el instanceof Element)) return false;
+    return !!el.closest(
+      "input, textarea, select, [contenteditable='true'], .CodeMirror, .comm-bag-ctx, .ecu-phone-action-sheet"
+    );
+  }
+  function uiBlocksMousePan(el) {
+    if (!(el instanceof Element)) return false;
+    if (typingTarget(el)) return true;
+    return !!el.closest(
+      "#comm-ui button, #comm-ui a, #comm-ui input, #comm-ui textarea, #comm-ui select, #comm-ui [role='dialog'], .ecu-phone-dock, .ecu-cam-stick, .ecu-chrome-stack, .ecu-server-dd, .comm-pos-panel, .ecu-phone-sheet, .ecu-phone-sheet-scrim"
+    );
+  }
+  function mousePanAllowed() {
+    if (detectViewportProfile() === "phone") return false;
+    if (document.documentElement.classList.contains("ecu-phone-dock-on")) {
+      return false;
+    }
+    return true;
+  }
+  function endMousePan() {
+    mousePanPointerId = null;
+    mousePanButton = null;
+    mousePanActive = false;
+    mousePanArmed = false;
+    try {
+      if (document.body) document.body.style.removeProperty("cursor");
+    } catch (e2) {
+    }
+  }
+  function onMousePanDown(ev) {
+    var _a, _b;
+    if (!mousePanAllowed()) return;
+    if (ev.pointerType === "touch") return;
+    if (uiBlocksMousePan(ev.target)) return;
+    const isMiddle = ev.button === 1;
+    const isLeft = ev.button === 0;
+    if (!isMiddle && !isLeft) return;
+    if (isLeft) {
+      const t = ev.target;
+      if (!(t instanceof Element) || t.tagName.toLowerCase() !== "canvas") {
+        return;
+      }
+    }
+    mousePanPointerId = ev.pointerId;
+    mousePanButton = ev.button;
+    mousePanLastX = ev.clientX;
+    mousePanLastY = ev.clientY;
+    mousePanArmed = true;
+    mousePanActive = isMiddle;
+    if (isMiddle) {
+      unlockCamera();
+      ev.preventDefault();
+      try {
+        (_b = (_a = ev.target).setPointerCapture) == null ? void 0 : _b.call(_a, ev.pointerId);
+      } catch (e2) {
+      }
+      if (document.body) document.body.style.cursor = "grabbing";
+    }
+  }
+  function onMousePanMove(ev) {
+    var _a, _b;
+    if (!mousePanArmed || mousePanPointerId !== ev.pointerId) return;
+    const dx = ev.clientX - mousePanLastX;
+    const dy = ev.clientY - mousePanLastY;
+    if (!mousePanActive) {
+      if (mousePanButton === 0 && Math.hypot(dx, dy) < MOUSE_PAN_DRAG_THRESHOLD_PX) {
+        return;
+      }
+      mousePanActive = true;
+      unlockCamera();
+      try {
+        (_b = (_a = ev.target).setPointerCapture) == null ? void 0 : _b.call(_a, ev.pointerId);
+      } catch (e2) {
+      }
+      if (document.body) document.body.style.cursor = "grabbing";
+    }
+    mousePanLastX = ev.clientX;
+    mousePanLastY = ev.clientY;
+    const delta = mouseDragWorldDelta(dx, dy, {
+      scale: readHostWorldZoom(),
+      fov: readAppliedWorldFov()
+    });
+    panCameraByWorldDelta(delta.x, delta.y);
+    ev.preventDefault();
+  }
+  function onMousePanUp(ev) {
+    if (mousePanPointerId !== ev.pointerId) return;
+    if (mousePanActive) ev.preventDefault();
+    endMousePan();
+  }
+  function onMousePanAuxClick(ev) {
+    if (ev.button === 1 && mousePanAllowed()) ev.preventDefault();
+  }
+  function onKeyDown(ev) {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (typingTarget(ev.target)) return;
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    let used = false;
+    if (k === "w" || k === "ArrowUp") {
+      keyUp = true;
+      used = true;
+    } else if (k === "s" || k === "ArrowDown") {
+      keyDown = true;
+      used = true;
+    } else if (k === "a" || k === "ArrowLeft") {
+      keyLeft = true;
+      used = true;
+    } else if (k === "d" || k === "ArrowRight") {
+      keyRight = true;
+      used = true;
+    }
+    if (!used) return;
+    ev.preventDefault();
+    unlockCamera();
+    ensureRaf();
+  }
+  function onKeyUp(ev) {
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    if (k === "w" || k === "ArrowUp") keyUp = false;
+    else if (k === "s" || k === "ArrowDown") keyDown = false;
+    else if (k === "a" || k === "ArrowLeft") keyLeft = false;
+    else if (k === "d" || k === "ArrowRight") keyRight = false;
+    stopRafIfIdle();
+  }
+  function combinedPan() {
+    const fromKeys = keysToPan({
+      up: keyUp,
+      down: keyDown,
+      left: keyLeft,
+      right: keyRight
+    });
+    const x = clampAdd(fromKeys.x, stickPan.x);
+    const y = clampAdd(fromKeys.y, stickPan.y);
+    if (x === 0 && y === 0) return { x: 0, y: 0 };
+    const mag = Math.sqrt(x * x + y * y);
+    return { x: x / mag, y: y / mag };
+  }
+  function clampAdd(a, b) {
+    const s = a + b;
+    if (s > 1) return 1;
+    if (s < -1) return -1;
+    return s;
+  }
+  function panFrameDtSec(nowMs2, prevMs) {
+    if (!(prevMs > 0)) return 1 / 60;
+    return Math.min(0.05, Math.max(0, (nowMs2 - prevMs) / 1e3));
+  }
+  function tick(ts) {
+    rafId = null;
+    syncFreeCameraAfterRealmChange();
+    const pan = combinedPan();
+    if (pan.x === 0 && pan.y === 0) {
+      lastTs = 0;
+      return;
+    }
+    const dt = panFrameDtSec(ts, lastTs);
+    lastTs = ts;
+    panCamera(pan, dt);
+    const pos = window.position_map;
+    if (typeof pos === "function") {
+      try {
+        pos();
+      } catch (e2) {
+      }
+    }
+    ensureRaf();
+  }
+  function ensureRaf() {
+    if (rafId != null) return;
+    const pan = combinedPan();
+    if (pan.x === 0 && pan.y === 0) return;
+    rafId = window.requestAnimationFrame(tick);
+  }
+  function stopRafIfIdle() {
+    if (combinedPan().x !== 0 || combinedPan().y !== 0) return;
+    if (rafId != null) {
+      window.cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    lastTs = 0;
+  }
+  function patchedPositionMap() {
+    syncFreeCameraAfterRealmChange();
+    const map = hostMap();
+    const w = window;
+    if (freeCamera && map) {
+      map.real_x = lockX;
+      map.real_y = lockY;
+    } else if (followCamera && map) {
+      const at = readObservedWorldXY();
+      if (at) {
+        lockX = at.x;
+        lockY = at.y;
+        map.real_x = at.x;
+        map.real_y = at.y;
+      }
+    }
+    const savedChar = freeCamera && w.character ? w.character : null;
+    if (savedChar) w.character = void 0;
+    try {
+      if (origPositionMap) origPositionMap.call(this);
+    } finally {
+      if (savedChar) w.character = savedChar;
+    }
+    if (freeCamera && map) {
+      map.real_x = lockX;
+      map.real_y = lockY;
+    } else if (followCamera && map) {
+      const at = readObservedWorldXY();
+      if (at) {
+        lockX = at.x;
+        lockY = at.y;
+        map.real_x = at.x;
+        map.real_y = at.y;
+      }
+    }
+  }
+  function installPositionMapHook() {
+    const w = window;
+    if (typeof w.__ecuPositionMap === "function") return;
+    if (typeof w.position_map !== "function") return;
+    origPositionMap = w.position_map;
+    w.__ecuPositionMap = patchedPositionMap;
+    w.position_map = patchedPositionMap;
+  }
+  function centerOnObservedCamera() {
+    const stayFree = freeCamera;
+    snapMapToObserved();
+    emitObserveHome();
+    if (stayFree) {
+      freeCamera = true;
+      const at = readObservedWorldXY();
+      if (at) {
+        observerAnchorX = at.x;
+        observerAnchorY = at.y;
+        hasObserverAnchor = true;
+      }
+      freeCamRealmKey = readCameraRealmKey();
+      notifyFree();
+    }
+    window.setTimeout(() => {
+      if (stayFree && freeCamera) {
+        snapMapToObserved();
+        freeCamera = true;
+      } else if (!freeCamera) {
+        snapMapToObserved();
+      }
+    }, 400);
+  }
+  function setFollowCamera(on) {
+    if (on) {
+      followCamera = true;
+      lockCamera();
+      snapMapToObserved();
+      emitObserveHome();
+      notifyFollow();
+      window.setTimeout(() => {
+        if (followCamera && !freeCamera) snapMapToObserved();
+      }, 400);
+      return;
+    }
+    followCamera = false;
+    notifyFollow();
+    unlockCamera();
+  }
+  function followObservedCamera() {
+    setFollowCamera(true);
+  }
+  function installCameraPan() {
+    if (installed) return;
+    installed = true;
+    installPositionMapHook();
+    if (!origPositionMap) {
+      const started2 = Date.now();
+      const id = window.setInterval(() => {
+        installPositionMapHook();
+        if (origPositionMap || Date.now() - started2 > 3e4) {
+          window.clearInterval(id);
+        }
+      }, 250);
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("pointerdown", onMousePanDown, true);
+    window.addEventListener("pointermove", onMousePanMove, true);
+    window.addEventListener("pointerup", onMousePanUp, true);
+    window.addEventListener("pointercancel", onMousePanUp, true);
+    window.addEventListener("auxclick", onMousePanAuxClick, true);
+    window.addEventListener(
+      "mousedown",
+      (ev) => {
+        if (ev.button === 1 && mousePanAllowed() && !uiBlocksMousePan(ev.target)) {
+          ev.preventDefault();
+        }
+      },
+      true
+    );
+    window.addEventListener("blur", () => {
+      keyUp = keyDown = keyLeft = keyRight = false;
+      endMousePan();
+      stopRafIfIdle();
+    });
+    const realmPoll = window.setInterval(() => {
+      syncFreeCameraAfterRealmChange();
+    }, 250);
+    void realmPoll;
+    const w = window;
+    w.__ecuFollowObserved = followObservedCamera;
+    w.__ecuCenterObserved = centerOnObservedCamera;
+    w.__ecuSetFollowCamera = setFollowCamera;
   }
 
   // src/host/mail/mailPersistLogic.ts
@@ -18975,7 +19738,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var HOST_ID2 = "bottomleftcorner";
   var COMPOSE_BAG_QUEUE_CLASS = "is-ecu-compose-queue";
   var activeSlots = [];
-  var installed = false;
+  var installed2 = false;
   function uniqueSlots(slots) {
     const seen = /* @__PURE__ */ new Set();
     const out = [];
@@ -19026,15 +19789,15 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     setComposeBagHighlights(slotsFromComposeAttaches(draft.attaches));
   }
   function installComposeBagHighlight() {
-    if (installed) return () => {
+    if (installed2) return () => {
     };
-    installed = true;
+    installed2 = true;
     ensureComposeDraftHydrated();
     syncComposeBagHighlightsFromDraft();
     const unsub2 = subscribeMailStore(syncComposeBagHighlightsFromDraft);
     return () => {
       unsub2();
-      installed = false;
+      installed2 = false;
       clearComposeBagHighlights();
     };
   }
@@ -21836,10 +22599,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   var PERSONAL_TRADE_SLOTS = ["trade1", "trade2", "trade3", "trade4"];
   function isMerchantClass(entity) {
     const id = entity.id != null ? String(entity.id) : void 0;
-    const resolved = resolvePlayerCtype(id, entity);
-    if (resolved === "merchant") return true;
-    const cls = String(entity.ctype || entity.type || "").toLowerCase();
-    return cls === "merchant";
+    if (id && resolvePlayerCtype(id, entity) === "merchant") return true;
+    return String(entity.ctype || "").trim().toLowerCase() === "merchant";
   }
   function maxTradeSlotIndex(slots) {
     if (!slots) return 0;
@@ -24998,6 +25759,11 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       if (i >= 0) listeners11.splice(i, 1);
     };
   }
+  function setCachedBankSnapshot(snap) {
+    cached2 = snap;
+    if (snap) schedulePersistBankSnapshot(snap);
+    emit();
+  }
   async function hydrateBankCacheFromIdb() {
     if (cached2) return cached2;
     if (!idbHydrate) {
@@ -25032,6 +25798,10 @@ html.ecu-phone-dock-on #${HOST_ID4} {
         cached2 = res.snapshot;
         schedulePersistBankSnapshot(res.snapshot);
         emit();
+        return res;
+      }
+      if (window.__ecuOverlayPreview && cached2) {
+        return { ok: true, snapshot: cached2 };
       }
       return res;
     });
@@ -26018,16 +26788,34 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     }
     observeCharacter(n);
   }
+  function onCenterClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    centerOnObservedCamera();
+  }
   function onFollowClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
-    const follow = window.__ecuFollowObserved;
-    if (typeof follow === "function") {
-      follow();
-      return;
-    }
-    const sock = window.socket;
-    if (sock && typeof sock.emit === "function") sock.emit("o:home");
+    setFollowCamera(!isFollowCamera());
+    syncFollowPressed();
+  }
+  function syncFollowPressed() {
+    const btn = document.querySelector(
+      '.ecu-btn[data-ecu-tour="btn-follow"]'
+    );
+    if (!btn) return;
+    const following = isFollowCamera();
+    btn.classList.toggle("is-on", following);
+    btn.setAttribute("aria-pressed", following ? "true" : "false");
+    btn.title = following ? "Following observed \u2014 tap to free camera" : "Follow observed character";
+  }
+  var followChromeBound = false;
+  function ensureFollowChromeSync() {
+    if (followChromeBound) return;
+    followChromeBound = true;
+    const sync = () => syncFollowPressed();
+    subscribeFollowCamera(sync);
+    subscribeFreeCamera(sync);
   }
   function onBagClick(ev) {
     ev.preventDefault();
@@ -26102,7 +26890,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     openMainframe();
   }
   var ACTION_ICONS = {
-    follow: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
+    center: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
+    follow: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 19c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.5 5.5a8 8 0 0 0-11.5-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7.2 5.2L8 3.5M7.2 5.2L5.4 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     bag: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
     command: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
     chat: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H8l-4 4V5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M8 9h8M8 13h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
@@ -26145,7 +26934,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       return btn;
     };
     actions.append(
-      mk("follow", "Follow", "Center on observed character", onFollowClick),
+      mk("center", "Center", "Center on observed character", onCenterClick),
+      mk("follow", "Follow", "Follow observed character", onFollowClick),
       mk("bag", "Bag", "Observed inventory", onBagClick),
       mk("chat", "Chat", "Server chat \u2014 send as observed character", onChatClick),
       mk("mail", "Mail", "Account mail", onMailClick),
@@ -26165,10 +26955,12 @@ html.ecu-phone-dock-on #${HOST_ID4} {
         onMainframeClick
       )
     );
+    ensureFollowChromeSync();
     return actions;
   }
   function syncActionTourAttrs(actions) {
     const map = {
+      Center: "btn-center",
       Follow: "btn-follow",
       Bag: "btn-bag",
       Chat: "btn-chat",
@@ -26198,12 +26990,13 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     for (let i = 0; i < buttons.length; i++) {
       const btn = buttons[i];
       const label = (btn.getAttribute("aria-label") || btn.textContent || "").trim();
-      const needsObs = label === "Follow" || label === "Bag" || label === "Command";
+      const needsObs = label === "Center" || label === "Follow" || label === "Bag" || label === "Command";
       if (needsObs) {
         btn.disabled = !watching;
         btn.classList.toggle("is-disabled", !watching);
       }
     }
+    syncFollowPressed();
   }
   function ensureChromeShell() {
     const bottom = document.getElementById("bottom");
@@ -27838,7 +28631,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   50% { transform: scale(1.03); filter: brightness(1.18); }
 }
 `;
-  var installed2 = false;
+  var installed3 = false;
   var everConnected = false;
   var overlayEl = null;
   var unsubTick = null;
@@ -28086,8 +28879,8 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     }
   }
   function installDisconnectOverlay() {
-    if (installed2) return;
-    installed2 = true;
+    if (installed3) return;
+    installed3 = true;
     if (liveSocket(typeof window !== "undefined" ? window.socket : void 0)) {
       everConnected = true;
       rememberObserveSecretFromRoster();
@@ -28105,7 +28898,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
 
   // src/host/pageTitle.ts
   var BRAND = "Adventure Land";
-  var installed3 = false;
+  var installed4 = false;
   var lastTitle = null;
   function serverLabel3() {
     const region = getServerRegion() || "";
@@ -28137,8 +28930,8 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     if (document.title !== next) document.title = next;
   }
   function installPageTitle() {
-    if (installed3) return;
-    installed3 = true;
+    if (installed4) return;
+    installed4 = true;
     applyPageTitle();
     subscribeTick(() => applyPageTitle());
   }
@@ -28642,6 +29435,15 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
 
   // src/ui/chrome/phoneShell.ts
   var PHONE_SHELL_EXPAND_BOTTOM = "calc(max(var(--ecu-phone-dock-h, 48px), var(--ecu-vv-keyboard, 0px)) + 8px)";
+  var PHONE_SHELL_EXPANDED_SELECTOR = "[data-panel].ecu-chat-shell-expanded,[data-panel].ecu-command-shell-expanded,[data-panel].ecu-bank-shell-expanded,[data-panel].ecu-market-shell-expanded,[data-panel].ecu-mail-shell-expanded,[data-panel].ecu-bag-shell-expanded,[data-panel].ecu-settings-shell-expanded,.ecu-settings-backdrop.is-phone";
+  function syncPhoneSheetOpenClass() {
+    if (typeof document === "undefined") return;
+    if (document.querySelector(PHONE_SHELL_EXPANDED_SELECTOR)) {
+      document.documentElement.classList.add("ecu-phone-sheet-open");
+    } else {
+      document.documentElement.classList.remove("ecu-phone-sheet-open");
+    }
+  }
   function phoneShellExpandCss(panelAttr, className, innerSelector) {
     const inner = innerSelector ? `
 [data-panel="${panelAttr}"].${className} ${innerSelector} {
@@ -28652,9 +29454,9 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     return `
 [data-panel="${panelAttr}"].${className} {
   position: fixed !important;
-  left: 8px !important;
-  right: 8px !important;
-  top: 8px !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: max(10px, env(safe-area-inset-top, 0px)) !important;
   bottom: ${PHONE_SHELL_EXPAND_BOTTOM} !important;
   width: auto !important;
   height: auto !important;
@@ -28664,8 +29466,30 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   min-height: 0 !important;
   z-index: 480 !important;
   transform: none !important;
-  border-radius: 16px 16px 0 0 !important;
+  border-radius: 20px 20px 0 0 !important;
   overflow: hidden !important;
+  box-shadow: 0 -10px 36px rgba(0, 0, 0, 0.5) !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+/* Sheet mode: foot Done replaces window X / expand chrome. */
+[data-panel="${panelAttr}"].${className} > .comm-pos-panel-close,
+[data-panel="${panelAttr}"].${className} .comm-pos-panel-close,
+[data-panel="${panelAttr}"].${className} .ecu-panel-expand,
+[data-panel="${panelAttr}"].${className} .CommandPanel-expand,
+[data-panel="${panelAttr}"].${className} .BankPanel-expand,
+[data-panel="${panelAttr}"].${className} .MarketPanel-expand,
+[data-panel="${panelAttr}"].${className} .comm-bag-panel__expand,
+[data-panel="${panelAttr}"].${className} .ecu-chat-expand,
+[data-panel="${panelAttr}"].${className} .comm-mail__expand {
+  display: none !important;
+}
+html.ecu-phone-sheet-open .ecu-cam-chrome,
+html.ecu-phone-sheet-open [data-panel="targetFrame"],
+html.ecu-phone-sheet-open .comm-pos-targetFrame {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 ${inner}`;
   }
@@ -29509,12 +30333,54 @@ ${inner}`;
   min-width: 0;
   width: 100%;
 }
+.comm-mail.is-phone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.comm-mail.is-phone .comm-mail__phoneFoot {
+  order: 50;
+  flex: 0 0 auto;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #333;
+  background: rgba(12, 12, 12, 0.96);
+}
+.comm-mail.is-phone .comm-mail__phoneDone {
+  appearance: none;
+  width: 100%;
+  min-height: 48px;
+  border: none;
+  border-radius: 14px;
+  background: rgba(157, 212, 236, 0.16);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
 .comm-mail.is-phone .comm-mail__toolbar-primary {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   width: 100%;
+}
+.comm-mail.is-phone .comm-mail__toolbar.is-compact {
+  order: 5;
+}
+.comm-mail.is-phone .comm-mail__body {
+  order: 20;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.comm-mail.is-phone .comm-mail__items-seg {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  margin-top: auto;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(12, 12, 12, 0.96);
+  border-top: 1px solid #333;
 }
 .comm-mail.is-phone .comm-mail__toolbar-primary .comm-mail__items-seg {
   flex: 1 1 auto;
@@ -29523,12 +30389,37 @@ ${inner}`;
 .comm-mail.is-phone .comm-mail__toolbar-primary .comm-mail__btn {
   flex: 0 0 auto;
 }
+/* Phone More \u2192 thumb sheet at bottom so the inbox stays the main surface. */
 .comm-mail.is-phone .comm-mail__toolbar-bulk {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px;
   width: 100%;
-  padding-top: 2px;
+  box-sizing: border-box;
+  padding: 14px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #444;
+  border-radius: 16px 16px 0 0;
+  background: #1c1b1f;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+}
+.comm-mail.is-phone .comm-mail__toolbar-bulk .comm-mail__btn,
+.comm-mail.is-phone .comm-mail__toolbar-bulk .comm-mail__pill {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.comm-mail.is-phone:has(.comm-mail__toolbar-bulk) .comm-mail__chrome-strip,
+.comm-mail.is-phone:has(.comm-mail__toolbar-bulk) .comm-mail__banner,
+.comm-mail.is-phone:has(.comm-mail__toolbar-bulk) .comm-mail__chrome {
+  display: none;
+}
+.comm-mail.is-phone:has(.comm-mail__toolbar-bulk) .comm-mail__body {
+  padding-bottom: 132px;
 }
 .comm-mail.is-phone .comm-mail__more-btn.is-on {
   border-color: #6af;
@@ -29564,6 +30455,136 @@ ${inner}`;
   color: #ffe08a;
   background: #2a2410;
 }
+.comm-mail.is-phone.is-filters-screen .comm-mail__search-wrap.is-compact {
+  position: static;
+}
+.comm-mail.is-phone .comm-mail__filters-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  background: #121416;
+  border-top: 1px solid #333;
+}
+.comm-mail.is-phone.is-filters-screen .comm-mail__body,
+.comm-mail.is-phone.is-filters-screen .comm-mail__banner,
+.comm-mail.is-phone.is-filters-screen .comm-mail__chrome-strip,
+.comm-mail.is-phone.is-filters-screen .comm-mail__chrome,
+.comm-mail.is-phone.is-filters-screen .comm-mail__toolbar-primary,
+.comm-mail.is-phone.is-filters-screen .comm-mail__toolbar-bulk,
+.comm-mail.is-phone.is-filters-screen .comm-mail__search-shell {
+  display: none;
+}
+.comm-mail.is-phone.is-filters-screen .comm-mail__toolbar.is-compact {
+  flex: 1 1 auto;
+  min-height: 0;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.comm-mail.is-phone.is-filters-screen .comm-mail__search-wrap.is-compact {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+}
+.comm-mail.is-phone .comm-mail__filters-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  background: #101214;
+}
+.comm-mail.is-phone .comm-mail__filters-back {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #9cf;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px 0 0;
+  cursor: pointer;
+}
+.comm-mail.is-phone .comm-mail__filters-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #eee;
+}
+.comm-mail.is-phone .comm-mail__filters-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0;
+  -webkit-overflow-scrolling: touch;
+}
+.comm-mail.is-phone .comm-mail__filters-section-title {
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #888;
+}
+.comm-mail.is-phone .comm-mail__filters-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  appearance: none;
+  border: none;
+  border-bottom: 1px solid #222;
+  background: transparent;
+  color: #ddd;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  min-height: 48px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.comm-mail.is-phone .comm-mail__filters-row.is-on {
+  color: #ffe08a;
+  background: #1a1810;
+}
+.comm-mail.is-phone .comm-mail__filters-row-check {
+  color: #7ad86a;
+  font-weight: 700;
+}
+.comm-mail.is-phone .comm-mail__filters-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #222;
+  color: #ddd;
+  font-size: 15px;
+  cursor: pointer;
+}
+.comm-mail.is-phone .comm-mail__filters-toggle input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.comm-mail.is-phone .comm-mail__filters-foot {
+  flex-shrink: 0;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #333;
+  background: #101214;
+}
+.comm-mail.is-phone .comm-mail__filters-apply {
+  width: 100%;
+  min-height: 48px;
+  font-size: 15px;
+}
 .comm-mail.is-phone .comm-mail__btn,
 .comm-mail.is-phone .comm-mail__pill,
 .comm-mail.is-phone .comm-mail__items-seg-btn {
@@ -29594,9 +30615,16 @@ ${inner}`;
   gap: 4px;
   padding-top: 4px;
 }
+.comm-mail.is-phone .comm-mail__check {
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+}
 .comm-mail.is-phone .comm-mail__row {
-  padding: 8px 10px;
-  gap: 8px;
+  padding: 10px 10px;
+  gap: 10px;
+  min-height: 56px;
+  align-items: flex-start;
 }
 .comm-mail.is-phone .comm-mail__row .comm-mail__title {
   font-size: 14px;
@@ -30388,7 +31416,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T20:19:59.334Z" : "unknown";
+    const builtAt = true ? "2026-11-05T11:09:38.731Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -35590,6 +36618,65 @@ button.comm-mail__stack-u {
     return next;
   }
 
+  // src/lib/phoneHudPresets.ts
+  var COMBAT_WIDGETS = [
+    "playerFrame",
+    "targetFrame",
+    "threat",
+    "abilityTimeline",
+    "enemies",
+    "kills",
+    "minimap"
+  ];
+  var SOCIAL_WIDGETS = [
+    "events",
+    "eventScore",
+    "eventRoster",
+    "paperdoll"
+  ];
+  function visibleMap(ids, on) {
+    const out = {};
+    for (let i = 0; i < ids.length; i++) out[ids[i]] = on;
+    return out;
+  }
+  var PHONE_HUD_PRESET_LABELS = {
+    combat: "Combat",
+    social: "Social",
+    minimal: "Minimal"
+  };
+  function phoneHudPresetPatch(id) {
+    switch (id) {
+      case "combat":
+        return {
+          hudDensity: "auto",
+          phoneHudVisible: visibleMap(COMBAT_WIDGETS, true)
+        };
+      case "social":
+        return {
+          hudDensity: "auto",
+          phoneHudVisible: {
+            ...visibleMap(COMBAT_WIDGETS, false),
+            ...visibleMap(SOCIAL_WIDGETS, true)
+          }
+        };
+      case "minimal":
+        return {
+          hudDensity: "lite",
+          phoneHudVisible: {},
+          replacePhoneHudVisible: true
+        };
+      default: {
+        const _never = id;
+        return _never;
+      }
+    }
+  }
+  var PHONE_HUD_PRESET_IDS = [
+    "combat",
+    "social",
+    "minimal"
+  ];
+
   // src/ui/hooks/usePanelLayoutState.ts
   function isClosable(id) {
     return canCloseWindow(id);
@@ -35771,6 +36858,16 @@ button.comm-mail__stack-u {
       setHudDensityState(mode);
       saveSettings({ hudDensity: mode });
     };
+    const applyPhoneHudPreset = (preset) => {
+      const patch = phoneHudPresetPatch(preset);
+      setPhoneHudVisible(patch.phoneHudVisible);
+      setHudDensityState(patch.hudDensity);
+      patchSettings({
+        phoneHudVisible: patch.phoneHudVisible,
+        hudDensity: patch.hudDensity,
+        replacePhoneHudVisible: patch.replacePhoneHudVisible
+      });
+    };
     return {
       panelVisible,
       setPanelVisible,
@@ -35797,12 +36894,65 @@ button.comm-mail__stack-u {
       opacityFor,
       hudDensity,
       setHudDensity,
+      applyPhoneHudPreset,
       liteHud
     };
   }
 
+  // src/host/viewportRefit.ts
+  var installed5 = false;
+  var scheduleTimer = null;
+  var pendingTimeouts = [];
+  function forceGameViewportRefit() {
+    if (typeof window === "undefined") return;
+    const w = window;
+    const resize = typeof w.on_resize === "function" ? w.on_resize : typeof w.__ecuOnResize === "function" ? w.__ecuOnResize : null;
+    if (resize) {
+      try {
+        resize.call(w);
+        return;
+      } catch (e2) {
+      }
+    }
+    applyWorldFov(readAppliedWorldFov());
+  }
+  function scheduleGameViewportRefit() {
+    while (pendingTimeouts.length) {
+      const id = pendingTimeouts.pop();
+      if (id != null) clearTimeout(id);
+    }
+    forceGameViewportRefit();
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => forceGameViewportRefit());
+    }
+    const delays = [50, 150, 400];
+    for (let i = 0; i < delays.length; i++) {
+      const id = window.setTimeout(() => forceGameViewportRefit(), delays[i]);
+      pendingTimeouts.push(id);
+    }
+  }
+  function debouncedSchedule() {
+    if (scheduleTimer != null) clearTimeout(scheduleTimer);
+    scheduleTimer = setTimeout(() => {
+      scheduleTimer = null;
+      forceGameViewportRefit();
+    }, 50);
+  }
+  function installViewportRefit() {
+    if (installed5 || typeof window === "undefined") return;
+    installed5 = true;
+    const onFs = () => scheduleGameViewportRefit();
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange", onFs);
+    const vv = window.visualViewport;
+    if (vv && typeof vv.addEventListener === "function") {
+      vv.addEventListener("resize", debouncedSchedule);
+      vv.addEventListener("scroll", debouncedSchedule);
+    }
+  }
+
   // src/host/worldFov.ts
-  var installed4 = false;
+  var installed6 = false;
   var appliedOnce = false;
   var persistTimer4 = null;
   var resizeHooked = false;
@@ -35876,9 +37026,10 @@ button.comm-mail__stack-u {
     w.on_resize = hooked;
   }
   function installWorldFov() {
-    if (installed4) return;
-    installed4 = true;
+    if (installed6) return;
+    installed6 = true;
     installResizeHook();
+    installViewportRefit();
     if (tryApplySaved()) return;
     const started2 = Date.now();
     const poll = window.setInterval(() => {
@@ -35889,7 +37040,7 @@ button.comm-mail__stack-u {
   }
 
   // src/host/worldZoom.ts
-  var installed5 = false;
+  var installed7 = false;
   var appliedOnce2 = false;
   var wheelInstalled = false;
   var pinchInstalled = false;
@@ -36202,8 +37353,8 @@ button.comm-mail__stack-u {
     });
   }
   function installWorldZoom() {
-    if (installed5) return;
-    installed5 = true;
+    if (installed7) return;
+    installed7 = true;
     installWheelZoom();
     installPinchZoom();
     installWorldFov();
@@ -37096,538 +38247,6 @@ button.comm-mail__stack-u {
     const dx = gx - x;
     const dy = gy - y;
     return Math.sqrt(dx * dx + dy * dy) > 0.75;
-  }
-
-  // src/lib/cameraPan.ts
-  var CAMERA_PAN_SPEED = 340;
-  var JOYSTICK_RADIUS_PX = 48;
-  var JOYSTICK_DEADZONE = 0.08;
-  var JOYSTICK_OUTER = 0.96;
-  var JOYSTICK_RESPONSE_POWER = 3.8;
-  function clampPanAxis(v) {
-    if (!Number.isFinite(v)) return 0;
-    if (v > 1) return 1;
-    if (v < -1) return -1;
-    return v;
-  }
-  function joystickResponseMagnitude(mag, deadzone = JOYSTICK_DEADZONE, power = JOYSTICK_RESPONSE_POWER, outer = JOYSTICK_OUTER) {
-    if (!(mag > deadzone)) return 0;
-    const outerClamp = Math.max(deadzone + 1e-6, Math.min(1, outer));
-    if (mag >= outerClamp) return 1;
-    const span = Math.max(1e-6, outerClamp - deadzone);
-    const t = Math.min(1, (mag - deadzone) / span);
-    const p = power > 0 ? power : 1;
-    return Math.pow(t, p);
-  }
-  function joystickToPan(dx, dy, radiusPx = JOYSTICK_RADIUS_PX, deadzone = JOYSTICK_DEADZONE) {
-    const r = Math.max(1, radiusPx);
-    const nx = dx / r;
-    const ny = dy / r;
-    const rawMag = Math.sqrt(nx * nx + ny * ny);
-    const mag = Math.min(1, rawMag);
-    const eased = joystickResponseMagnitude(mag, deadzone);
-    if (eased <= 0 || rawMag <= 0) return { x: 0, y: 0 };
-    const inv = eased / rawMag;
-    return { x: clampPanAxis(nx * inv), y: clampPanAxis(ny * inv) };
-  }
-  function keysToPan(keys) {
-    let x = 0;
-    let y = 0;
-    if (keys.left) x -= 1;
-    if (keys.right) x += 1;
-    if (keys.up) y -= 1;
-    if (keys.down) y += 1;
-    if (x === 0 && y === 0) return { x: 0, y: 0 };
-    const mag = Math.sqrt(x * x + y * y);
-    return { x: x / mag, y: y / mag };
-  }
-  function panFovSpeedFactor(fov) {
-    if (!(fov > 0) || !Number.isFinite(fov)) return 1;
-    return Math.sqrt(fov);
-  }
-  function stepCameraPan(realX, realY, pan, dtSec, opts) {
-    const speed = opts && typeof opts.speed === "number" ? opts.speed : CAMERA_PAN_SPEED;
-    const fov = opts && typeof opts.fov === "number" && opts.fov > 0 ? opts.fov : 1;
-    const px = clampPanAxis(pan.x);
-    const py = clampPanAxis(pan.y);
-    if (px === 0 && py === 0) return { x: realX, y: realY };
-    const dist = speed * panFovSpeedFactor(fov) * Math.max(0, dtSec);
-    return {
-      x: realX + px * dist,
-      y: realY + py * dist
-    };
-  }
-  function mouseDragWorldDelta(dxCss, dyCss, opts) {
-    const scale = opts && typeof opts.scale === "number" && opts.scale > 0 ? opts.scale : 1;
-    const fov = opts && typeof opts.fov === "number" && opts.fov > 0 ? opts.fov : 1;
-    const factor = fov / scale;
-    return {
-      x: -dxCss * factor,
-      y: -dyCss * factor
-    };
-  }
-  var MOUSE_PAN_DRAG_THRESHOLD_PX = 4;
-
-  // src/host/cameraPan.ts
-  var installed6 = false;
-  var freeCamera = false;
-  var lockX = 0;
-  var lockY = 0;
-  var observerAnchorX = 0;
-  var observerAnchorY = 0;
-  var hasObserverAnchor = false;
-  var freeCamRealmKey = "";
-  var keyUp = false;
-  var keyDown = false;
-  var keyLeft = false;
-  var keyRight = false;
-  var stickPan = { x: 0, y: 0 };
-  var rafId = null;
-  var lastTs = 0;
-  var origPositionMap = null;
-  var mousePanPointerId = null;
-  var mousePanButton = null;
-  var mousePanLastX = 0;
-  var mousePanLastY = 0;
-  var mousePanActive = false;
-  var mousePanArmed = false;
-  var freeListeners = [];
-  function notifyFree() {
-    for (let i = 0; i < freeListeners.length; i++) freeListeners[i](freeCamera);
-  }
-  function subscribeFreeCamera(listener) {
-    freeListeners.push(listener);
-    return () => {
-      const idx = freeListeners.indexOf(listener);
-      if (idx >= 0) freeListeners.splice(idx, 1);
-    };
-  }
-  function isFreeCamera() {
-    return freeCamera;
-  }
-  function readObserverCameraAnchor() {
-    if (!hasObserverAnchor) return null;
-    if (!Number.isFinite(observerAnchorX + observerAnchorY)) return null;
-    return { x: observerAnchorX, y: observerAnchorY };
-  }
-  function hostMap() {
-    const m = window.map;
-    return m || null;
-  }
-  function syncLockFromMap() {
-    const map = hostMap();
-    if (!map) return;
-    if (typeof map.real_x === "number" && Number.isFinite(map.real_x)) {
-      lockX = map.real_x;
-    }
-    if (typeof map.real_y === "number" && Number.isFinite(map.real_y)) {
-      lockY = map.real_y;
-    }
-  }
-  function readCameraRealmKey() {
-    const w = window;
-    const mapName = (w.current_map != null && String(w.current_map) !== "" ? String(w.current_map) : w.map && w.map.map_name != null ? String(w.map.map_name) : "") || "";
-    const inst = w.current_in != null && String(w.current_in) !== "" ? String(w.current_in) : "";
-    const region = w.server_region != null ? String(w.server_region) : "";
-    const ident = w.server_identifier != null ? String(w.server_identifier) : "";
-    return mapName + "|" + inst + "|" + region + "|" + ident;
-  }
-  function syncFreeCameraAfterRealmChange() {
-    if (!freeCamera) return false;
-    const key = readCameraRealmKey();
-    if (!freeCamRealmKey || !key || key === freeCamRealmKey) return false;
-    lockCamera();
-    syncLockFromMap();
-    return true;
-  }
-  function readObservedWorldXY() {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
-    const w = window;
-    const snap = w.observing;
-    if (snap) {
-      const ents = w.entities;
-      if (ents && snap.id != null && ents[String(snap.id)]) {
-        const live2 = ents[String(snap.id)];
-        const x = Number(live2 && ((_a = live2.real_x) != null ? _a : live2.x));
-        const y = Number(live2 && ((_b = live2.real_y) != null ? _b : live2.y));
-        if (Number.isFinite(x + y)) return { x, y };
-      }
-      if (ents && snap.name != null) {
-        const want = String(snap.name);
-        for (const id in ents) {
-          if (!Object.prototype.hasOwnProperty.call(ents, id)) continue;
-          const live2 = ents[id];
-          if (!live2 || live2.name == null || String(live2.name) !== want) continue;
-          const x = Number((_c = live2.real_x) != null ? _c : live2.x);
-          const y = Number((_d = live2.real_y) != null ? _d : live2.y);
-          if (Number.isFinite(x + y)) return { x, y };
-        }
-      }
-      const sx = Number((_e = snap.real_x) != null ? _e : snap.x);
-      const sy = Number((_f = snap.real_y) != null ? _f : snap.y);
-      if (Number.isFinite(sx + sy)) return { x: sx, y: sy };
-    }
-    const ch = w.character;
-    if (ch) {
-      const x = Number((_g = ch.real_x) != null ? _g : ch.x);
-      const y = Number((_h = ch.real_y) != null ? _h : ch.y);
-      if (Number.isFinite(x + y)) return { x, y };
-    }
-    return null;
-  }
-  function unlockCamera() {
-    syncFreeCameraAfterRealmChange();
-    if (!freeCamera) {
-      syncLockFromMap();
-      const at = readObservedWorldXY();
-      if (at) {
-        observerAnchorX = at.x;
-        observerAnchorY = at.y;
-      } else {
-        observerAnchorX = lockX;
-        observerAnchorY = lockY;
-      }
-      hasObserverAnchor = true;
-      freeCamRealmKey = readCameraRealmKey();
-      freeCamera = true;
-      notifyFree();
-    }
-    ensureRaf();
-  }
-  function lockCamera() {
-    freeCamera = false;
-    stickPan = { x: 0, y: 0 };
-    keyUp = keyDown = keyLeft = keyRight = false;
-    freeCamRealmKey = "";
-    endMousePan();
-    stopRafIfIdle();
-    notifyFree();
-    hasObserverAnchor = false;
-  }
-  function panCamera(pan, dtSec) {
-    unlockCamera();
-    const map = hostMap();
-    if (!map) return;
-    const next = stepCameraPan(lockX, lockY, pan, dtSec, {
-      speed: CAMERA_PAN_SPEED,
-      fov: readAppliedWorldFov()
-    });
-    lockX = next.x;
-    lockY = next.y;
-    map.real_x = lockX;
-    map.real_y = lockY;
-  }
-  function setJoystickPan(pan) {
-    stickPan = {
-      x: pan.x,
-      y: pan.y
-    };
-    if (pan.x !== 0 || pan.y !== 0) unlockCamera();
-    ensureRaf();
-    stopRafIfIdle();
-  }
-  function panCameraByWorldDelta(dx, dy) {
-    if (!Number.isFinite(dx + dy) || dx === 0 && dy === 0) return;
-    unlockCamera();
-    const map = hostMap();
-    if (!map) return;
-    lockX += dx;
-    lockY += dy;
-    map.real_x = lockX;
-    map.real_y = lockY;
-    const pos = window.position_map;
-    if (typeof pos === "function") {
-      try {
-        pos();
-      } catch (e2) {
-      }
-    }
-  }
-  function typingTarget(el) {
-    if (!(el instanceof Element)) return false;
-    return !!el.closest(
-      "input, textarea, select, [contenteditable='true'], .CodeMirror, .comm-bag-ctx, .ecu-phone-action-sheet"
-    );
-  }
-  function uiBlocksMousePan(el) {
-    if (!(el instanceof Element)) return false;
-    if (typingTarget(el)) return true;
-    return !!el.closest(
-      "#comm-ui button, #comm-ui a, #comm-ui input, #comm-ui textarea, #comm-ui select, #comm-ui [role='dialog'], .ecu-phone-dock, .ecu-cam-stick, .ecu-chrome-stack, .ecu-server-dd, .comm-pos-panel, .ecu-phone-sheet, .ecu-phone-sheet-scrim"
-    );
-  }
-  function mousePanAllowed() {
-    if (detectViewportProfile() === "phone") return false;
-    if (document.documentElement.classList.contains("ecu-phone-dock-on")) {
-      return false;
-    }
-    return true;
-  }
-  function endMousePan() {
-    mousePanPointerId = null;
-    mousePanButton = null;
-    mousePanActive = false;
-    mousePanArmed = false;
-    try {
-      if (document.body) document.body.style.removeProperty("cursor");
-    } catch (e2) {
-    }
-  }
-  function onMousePanDown(ev) {
-    var _a, _b;
-    if (!mousePanAllowed()) return;
-    if (ev.pointerType === "touch") return;
-    if (uiBlocksMousePan(ev.target)) return;
-    const isMiddle = ev.button === 1;
-    const isLeft = ev.button === 0;
-    if (!isMiddle && !isLeft) return;
-    if (isLeft) {
-      const t = ev.target;
-      if (!(t instanceof Element) || t.tagName.toLowerCase() !== "canvas") {
-        return;
-      }
-    }
-    mousePanPointerId = ev.pointerId;
-    mousePanButton = ev.button;
-    mousePanLastX = ev.clientX;
-    mousePanLastY = ev.clientY;
-    mousePanArmed = true;
-    mousePanActive = isMiddle;
-    if (isMiddle) {
-      unlockCamera();
-      ev.preventDefault();
-      try {
-        (_b = (_a = ev.target).setPointerCapture) == null ? void 0 : _b.call(_a, ev.pointerId);
-      } catch (e2) {
-      }
-      if (document.body) document.body.style.cursor = "grabbing";
-    }
-  }
-  function onMousePanMove(ev) {
-    var _a, _b;
-    if (!mousePanArmed || mousePanPointerId !== ev.pointerId) return;
-    const dx = ev.clientX - mousePanLastX;
-    const dy = ev.clientY - mousePanLastY;
-    if (!mousePanActive) {
-      if (mousePanButton === 0 && Math.hypot(dx, dy) < MOUSE_PAN_DRAG_THRESHOLD_PX) {
-        return;
-      }
-      mousePanActive = true;
-      unlockCamera();
-      try {
-        (_b = (_a = ev.target).setPointerCapture) == null ? void 0 : _b.call(_a, ev.pointerId);
-      } catch (e2) {
-      }
-      if (document.body) document.body.style.cursor = "grabbing";
-    }
-    mousePanLastX = ev.clientX;
-    mousePanLastY = ev.clientY;
-    const delta = mouseDragWorldDelta(dx, dy, {
-      scale: readHostWorldZoom(),
-      fov: readAppliedWorldFov()
-    });
-    panCameraByWorldDelta(delta.x, delta.y);
-    ev.preventDefault();
-  }
-  function onMousePanUp(ev) {
-    if (mousePanPointerId !== ev.pointerId) return;
-    if (mousePanActive) ev.preventDefault();
-    endMousePan();
-  }
-  function onMousePanAuxClick(ev) {
-    if (ev.button === 1 && mousePanAllowed()) ev.preventDefault();
-  }
-  function onKeyDown(ev) {
-    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
-    if (typingTarget(ev.target)) return;
-    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
-    let used = false;
-    if (k === "w" || k === "ArrowUp") {
-      keyUp = true;
-      used = true;
-    } else if (k === "s" || k === "ArrowDown") {
-      keyDown = true;
-      used = true;
-    } else if (k === "a" || k === "ArrowLeft") {
-      keyLeft = true;
-      used = true;
-    } else if (k === "d" || k === "ArrowRight") {
-      keyRight = true;
-      used = true;
-    }
-    if (!used) return;
-    ev.preventDefault();
-    unlockCamera();
-    ensureRaf();
-  }
-  function onKeyUp(ev) {
-    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
-    if (k === "w" || k === "ArrowUp") keyUp = false;
-    else if (k === "s" || k === "ArrowDown") keyDown = false;
-    else if (k === "a" || k === "ArrowLeft") keyLeft = false;
-    else if (k === "d" || k === "ArrowRight") keyRight = false;
-    stopRafIfIdle();
-  }
-  function combinedPan() {
-    const fromKeys = keysToPan({
-      up: keyUp,
-      down: keyDown,
-      left: keyLeft,
-      right: keyRight
-    });
-    const x = clampAdd(fromKeys.x, stickPan.x);
-    const y = clampAdd(fromKeys.y, stickPan.y);
-    if (x === 0 && y === 0) return { x: 0, y: 0 };
-    const mag = Math.sqrt(x * x + y * y);
-    return { x: x / mag, y: y / mag };
-  }
-  function clampAdd(a, b) {
-    const s = a + b;
-    if (s > 1) return 1;
-    if (s < -1) return -1;
-    return s;
-  }
-  function panFrameDtSec(nowMs2, prevMs) {
-    if (!(prevMs > 0)) return 1 / 60;
-    return Math.min(0.05, Math.max(0, (nowMs2 - prevMs) / 1e3));
-  }
-  function tick(ts) {
-    rafId = null;
-    syncFreeCameraAfterRealmChange();
-    const pan = combinedPan();
-    if (pan.x === 0 && pan.y === 0) {
-      lastTs = 0;
-      return;
-    }
-    const dt = panFrameDtSec(ts, lastTs);
-    lastTs = ts;
-    panCamera(pan, dt);
-    const pos = window.position_map;
-    if (typeof pos === "function") {
-      try {
-        pos();
-      } catch (e2) {
-      }
-    }
-    ensureRaf();
-  }
-  function ensureRaf() {
-    if (rafId != null) return;
-    const pan = combinedPan();
-    if (pan.x === 0 && pan.y === 0) return;
-    rafId = window.requestAnimationFrame(tick);
-  }
-  function stopRafIfIdle() {
-    if (combinedPan().x !== 0 || combinedPan().y !== 0) return;
-    if (rafId != null) {
-      window.cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-    lastTs = 0;
-  }
-  function patchedPositionMap() {
-    syncFreeCameraAfterRealmChange();
-    const map = hostMap();
-    const w = window;
-    if (freeCamera && map) {
-      map.real_x = lockX;
-      map.real_y = lockY;
-    }
-    const savedChar = freeCamera && w.character ? w.character : null;
-    if (savedChar) w.character = void 0;
-    try {
-      if (origPositionMap) origPositionMap.call(this);
-    } finally {
-      if (savedChar) w.character = savedChar;
-    }
-    if (freeCamera && map) {
-      map.real_x = lockX;
-      map.real_y = lockY;
-    }
-  }
-  function installPositionMapHook() {
-    const w = window;
-    if (typeof w.__ecuPositionMap === "function") return;
-    if (typeof w.position_map !== "function") return;
-    origPositionMap = w.position_map;
-    w.__ecuPositionMap = patchedPositionMap;
-    w.position_map = patchedPositionMap;
-  }
-  function followObservedCamera() {
-    lockCamera();
-    const map = hostMap();
-    const at = readObservedWorldXY();
-    if (map && at) {
-      lockX = at.x;
-      lockY = at.y;
-      map.real_x = at.x;
-      map.real_y = at.y;
-      const pos = window.position_map;
-      if (typeof pos === "function") {
-        try {
-          pos();
-        } catch (e2) {
-        }
-      }
-    } else {
-      syncLockFromMap();
-    }
-    const sock = window.socket;
-    if (sock && typeof sock.emit === "function") sock.emit("o:home");
-    window.setTimeout(() => {
-      if (!freeCamera) {
-        const again = readObservedWorldXY();
-        const m = hostMap();
-        if (m && again) {
-          lockX = again.x;
-          lockY = again.y;
-          m.real_x = again.x;
-          m.real_y = again.y;
-        } else {
-          syncLockFromMap();
-        }
-      }
-    }, 400);
-  }
-  function installCameraPan() {
-    if (installed6) return;
-    installed6 = true;
-    installPositionMapHook();
-    if (!origPositionMap) {
-      const started2 = Date.now();
-      const id = window.setInterval(() => {
-        installPositionMapHook();
-        if (origPositionMap || Date.now() - started2 > 3e4) {
-          window.clearInterval(id);
-        }
-      }, 250);
-    }
-    window.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("keyup", onKeyUp, true);
-    window.addEventListener("pointerdown", onMousePanDown, true);
-    window.addEventListener("pointermove", onMousePanMove, true);
-    window.addEventListener("pointerup", onMousePanUp, true);
-    window.addEventListener("pointercancel", onMousePanUp, true);
-    window.addEventListener("auxclick", onMousePanAuxClick, true);
-    window.addEventListener(
-      "mousedown",
-      (ev) => {
-        if (ev.button === 1 && mousePanAllowed() && !uiBlocksMousePan(ev.target)) {
-          ev.preventDefault();
-        }
-      },
-      true
-    );
-    window.addEventListener("blur", () => {
-      keyUp = keyDown = keyLeft = keyRight = false;
-      endMousePan();
-      stopRafIfIdle();
-    });
-    const realmPoll = window.setInterval(() => {
-      syncFreeCameraAfterRealmChange();
-    }, 250);
-    void realmPoll;
-    window.__ecuFollowObserved = followObservedCamera;
   }
 
   // src/viz/observerVision.ts
@@ -52502,7 +53121,7 @@ ${parts.map(cssSlice).join("\n")}
   }
   function meterPartyChrome(args) {
     var _a, _b, _c;
-    const followCamera = isLiveCameraRef(args.ref);
+    const followCamera2 = isLiveCameraRef(args.ref);
     const liveRoster = !!(args.seg && isLiveCombatSegment(args.seg));
     const youId2 = ((_a = args.seg) == null ? void 0 : _a.observingId) || "";
     const partyKey = ((_b = args.seg) == null ? void 0 : _b.partyKey) || "";
@@ -52527,7 +53146,7 @@ ${parts.map(cssSlice).join("\n")}
       roster: liveRoster ? "live" : "archived"
     });
     return {
-      followCamera,
+      followCamera: followCamera2,
       liveRoster,
       youId: youId2,
       partyKey,
@@ -53708,6 +54327,11 @@ ${parts.map(cssSlice).join("\n")}
 
   // src/ui/chrome/CameraJoystick.ts
   var STYLE_ID8 = "ecu-camera-joystick-css";
+  function readJoystickSide() {
+    return normalizeCameraJoystickSide(getSettings().cameraJoystickSide);
+  }
+  var ICON_CENTER = '<svg class="ecu-cam-chrome__ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>';
+  var ICON_FOLLOW = '<svg class="ecu-cam-chrome__ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 19c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.5 5.5a8 8 0 0 0-11.5-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7.2 5.2L8 3.5M7.2 5.2L5.4 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
   function ensureCss4() {
     if (typeof document === "undefined") return;
     let style = document.getElementById(STYLE_ID8);
@@ -53719,17 +54343,24 @@ ${parts.map(cssSlice).join("\n")}
     style.textContent = `
 .ecu-cam-chrome {
   position: fixed;
-  left: max(12px, env(safe-area-inset-left, 0px));
-  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 12px);
+  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 8px);
   z-index: 236;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
+  align-items: center;
+  gap: 4px;
   pointer-events: none;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+}
+.ecu-cam-chrome.is-left {
+  left: max(8px, env(safe-area-inset-left, 0px));
+  right: auto;
+}
+.ecu-cam-chrome.is-right {
+  right: max(8px, env(safe-area-inset-right, 0px));
+  left: auto;
 }
 .ecu-cam-chrome > * {
   pointer-events: auto;
@@ -53739,13 +54370,13 @@ ${parts.map(cssSlice).join("\n")}
   left: 0;
   bottom: 0;
   z-index: 1;
-  width: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
-  height: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
+  width: ${JOYSTICK_RADIUS_PX * 2 + 16}px;
+  height: ${JOYSTICK_RADIUS_PX * 2 + 16}px;
   touch-action: none;
 }
 .ecu-cam-stick__base {
   position: absolute;
-  inset: 12px;
+  inset: 8px;
   border-radius: 50%;
   background: rgba(28, 27, 31, 0.38);
   border: 1px solid rgba(230, 225, 229, 0.32);
@@ -53755,10 +54386,10 @@ ${parts.map(cssSlice).join("\n")}
 }
 .ecu-cam-stick__knob {
   position: absolute;
-  width: 36px;
-  height: 36px;
-  margin-left: -18px;
-  margin-top: -18px;
+  width: 32px;
+  height: 32px;
+  margin-left: -16px;
+  margin-top: -16px;
   left: 50%;
   top: 50%;
   border-radius: 50%;
@@ -53786,26 +54417,25 @@ ${parts.map(cssSlice).join("\n")}
   align-items: center;
   justify-content: space-between;
   gap: 0;
-  align-self: center;
   width: ${JOYSTICK_RADIUS_PX * 2 + 8}px;
-  min-height: 28px;
-  padding: 1px;
-  border-radius: 14px;
-  border: 1px solid rgba(230, 225, 229, 0.16);
-  background: rgba(28, 27, 31, 0.38);
+  min-height: 24px;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(230, 225, 229, 0.14);
+  background: rgba(28, 27, 31, 0.42);
   box-shadow: none;
   opacity: 0.78;
 }
 .ecu-cam-chrome__fov-btn {
-  min-width: 30px;
-  min-height: 26px;
+  min-width: 28px;
+  min-height: 24px;
   margin: 0;
-  padding: 0 6px;
+  padding: 0 5px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
   color: rgba(230, 225, 229, 0.85);
-  font: 500 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  font: 500 10px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -53820,14 +54450,14 @@ ${parts.map(cssSlice).join("\n")}
 .ecu-cam-chrome__fov-label {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 26px;
+  min-height: 24px;
   margin: 0;
   padding: 0 2px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
   color: rgba(157, 212, 236, 0.9);
-  font: 500 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  font: 500 10px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -53836,22 +54466,68 @@ ${parts.map(cssSlice).join("\n")}
   opacity: 0.5;
   cursor: default;
 }
-.ecu-cam-stick__follow {
-  align-self: center;
-  min-height: 32px;
-  padding: 6px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(157, 212, 236, 0.55);
-  background: rgba(28, 27, 31, 0.85);
-  color: #9dd4ec;
-  font: 600 13px/1.2 Roboto, "Segoe UI", system-ui, sans-serif;
+.ecu-cam-chrome__track {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: ${JOYSTICK_RADIUS_PX * 2 + 8}px;
+}
+.ecu-cam-chrome__icon-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  margin: 0;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid rgba(230, 225, 229, 0.2);
+  background: rgba(28, 27, 31, 0.72);
+  color: rgba(230, 225, 229, 0.92);
   cursor: pointer;
-  white-space: nowrap;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   -webkit-tap-highlight-color: transparent;
 }
-.ecu-cam-stick__follow[hidden] {
-  display: none !important;
+.ecu-cam-chrome__icon-btn:active {
+  background: rgba(157, 212, 236, 0.16);
+  color: #9dd4ec;
+}
+.ecu-cam-chrome__icon-btn.is-on {
+  border-color: rgba(157, 212, 236, 0.7);
+  background: rgba(28, 27, 31, 0.88);
+  color: #9dd4ec;
+  box-shadow: 0 0 0 1px rgba(157, 212, 236, 0.28);
+}
+.ecu-cam-chrome__ico {
+  display: block;
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+}
+.ecu-cam-chrome__side {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  margin: 0;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid rgba(230, 225, 229, 0.18);
+  background: rgba(28, 27, 31, 0.55);
+  color: rgba(230, 225, 229, 0.78);
+  font: 600 12px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-cam-chrome__side:active {
+  color: #9dd4ec;
+  border-color: rgba(157, 212, 236, 0.45);
 }
 `;
   }
@@ -53860,10 +54536,24 @@ ${parts.map(cssSlice).join("\n")}
     ensureCss4();
     const rootRef = React.useRef(null);
     const knobRef = React.useRef(null);
-    const [free, setFree] = React.useState(() => isFreeCamera());
+    const [following, setFollowing] = React.useState(() => isFollowCamera());
+    const [side, setSide] = React.useState(() => readJoystickSide());
     const [fov, setFov] = React.useState(() => readAppliedWorldFov());
     const activePtr = React.useRef(null);
-    React.useEffect(() => subscribeFreeCamera(setFree), []);
+    React.useEffect(() => {
+      const sync = () => setFollowing(isFollowCamera());
+      const offFree = subscribeFreeCamera(sync);
+      const offFollow = subscribeFollowCamera(sync);
+      return () => {
+        offFree();
+        offFollow();
+      };
+    }, []);
+    React.useEffect(() => {
+      const syncSide = () => setSide(readJoystickSide());
+      window.addEventListener("ecu:settings", syncSide);
+      return () => window.removeEventListener("ecu:settings", syncSide);
+    }, []);
     React.useEffect(() => {
       setFov(readAppliedWorldFov());
       return subscribeWorldFov(setFov);
@@ -53933,25 +54623,67 @@ ${parts.map(cssSlice).join("\n")}
       if (ev && ev.stopPropagation) ev.stopPropagation();
       if (ev && ev.preventDefault) ev.preventDefault();
     };
+    const flipSide = () => {
+      const next = side === "right" ? "left" : "right";
+      setSide(next);
+      patchSettings({ cameraJoystickSide: next });
+    };
     return e(
       "div",
       {
-        className: "ecu-cam-chrome",
+        className: "ecu-cam-chrome is-" + side,
         "aria-label": "Camera controls"
       },
       e(
-        "button",
+        "div",
         {
-          type: "button",
-          className: "ecu-cam-stick__follow",
-          hidden: !free,
-          title: "Re-center on observed character",
-          onClick: (ev) => {
-            stopBtn(ev);
-            followObservedCamera();
-          }
+          className: "ecu-cam-chrome__track",
+          role: "group",
+          "aria-label": "Camera track"
         },
-        "Follow"
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__icon-btn",
+            title: "Center on observed character",
+            "aria-label": "Center",
+            onClick: (ev) => {
+              stopBtn(ev);
+              centerOnObservedCamera();
+            }
+          },
+          wrapIconHtml(ICON_CENTER)
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__icon-btn" + (following ? " is-on" : ""),
+            title: following ? "Following observed \u2014 tap to free camera" : "Follow observed character",
+            "aria-label": "Follow",
+            "aria-pressed": following ? "true" : "false",
+            onClick: (ev) => {
+              stopBtn(ev);
+              setFollowCamera(!isFollowCamera());
+            }
+          },
+          wrapIconHtml(ICON_FOLLOW)
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__side",
+            title: side === "right" ? "Joystick on right \u2014 tap to move left" : "Joystick on left \u2014 tap to move right",
+            "aria-label": side === "right" ? "Move joystick left" : "Move joystick right",
+            onClick: (ev) => {
+              stopBtn(ev);
+              flipSide();
+            }
+          },
+          side === "right" ? "\u2190" : "\u2192"
+        )
       ),
       e(
         "div",
@@ -54033,10 +54765,10 @@ ${parts.map(cssSlice).join("\n")}
     }
     const obs = window.observing;
     if (!obs) return { level: "", type: "", rip: false };
-    const type = obs.ctype != null ? String(obs.ctype) : obs.type != null ? String(obs.type) : "";
+    const ctype = obs.ctype != null && isPlayerClass(obs.ctype) ? String(obs.ctype) : "";
     return {
       level: obs.level != null ? String(obs.level) : "",
-      type,
+      type: ctype,
       rip: !!obs.rip
     };
   }
@@ -54166,7 +54898,7 @@ ${parts.map(cssSlice).join("\n")}
     const dock = phoneDockHeightPx() || PHONE_DOCK_FALLBACK_PX;
     return Math.max(0, viewportH - dock - PHONE_EDGE_BOTTOM_BAND_PX);
   }
-  var installed7 = false;
+  var installed8 = false;
   var handlersRef = null;
   var stroke = null;
   function fire(edge) {
@@ -54269,8 +55001,8 @@ ${parts.map(cssSlice).join("\n")}
   }
   function installPhoneEdgeGestures(handlers) {
     handlersRef = handlers;
-    if (!installed7 && typeof window !== "undefined") {
-      installed7 = true;
+    if (!installed8 && typeof window !== "undefined") {
+      installed8 = true;
       window.addEventListener("touchstart", onTouchStart, {
         passive: true,
         capture: true
@@ -54295,8 +55027,8 @@ ${parts.map(cssSlice).join("\n")}
   function uninstallPhoneEdgeGestures() {
     handlersRef = null;
     stroke = null;
-    if (!installed7 || typeof window === "undefined") return;
-    installed7 = false;
+    if (!installed8 || typeof window === "undefined") return;
+    installed8 = false;
     window.removeEventListener("touchstart", onTouchStart, true);
     window.removeEventListener("touchmove", onTouchMove, true);
     window.removeEventListener("touchend", onTouchEnd, true);
@@ -54351,7 +55083,7 @@ ${parts.map(cssSlice).join("\n")}
     const chromeH = bottom ? Math.round(bottom.getBoundingClientRect().height) : 0;
     return Math.max(0, viewportH - dock - Math.max(chromeH, 0) - 8);
   }
-  var installed8 = false;
+  var installed9 = false;
   var handlersRef2 = null;
   var stroke2 = null;
   function onTouchStart2(ev) {
@@ -54414,8 +55146,8 @@ ${parts.map(cssSlice).join("\n")}
   }
   function installPhoneHomePageGestures(handlers) {
     handlersRef2 = handlers;
-    if (!installed8 && typeof window !== "undefined") {
-      installed8 = true;
+    if (!installed9 && typeof window !== "undefined") {
+      installed9 = true;
       window.addEventListener("touchstart", onTouchStart2, {
         passive: true,
         capture: true
@@ -54436,8 +55168,8 @@ ${parts.map(cssSlice).join("\n")}
   function uninstallPhoneHomePageGestures() {
     handlersRef2 = null;
     stroke2 = null;
-    if (!installed8 || typeof window === "undefined") return;
-    installed8 = false;
+    if (!installed9 || typeof window === "undefined") return;
+    installed9 = false;
     window.removeEventListener("touchstart", onTouchStart2, true);
     window.removeEventListener("touchend", onTouchEnd2, true);
     window.removeEventListener("touchcancel", onTouchEnd2, true);
@@ -54923,19 +55655,19 @@ ${parts.map(cssSlice).join("\n")}
   position: fixed;
   left: 0;
   right: 0;
-  top: 0;
+  top: auto;
   bottom: 0;
   z-index: 510;
-  max-height: none;
-  height: 100%;
+  max-height: min(78vh, 680px);
+  height: min(78vh, 680px);
   display: flex;
   flex-direction: column;
   pointer-events: auto;
   background: #1c1b1f;
-  border-radius: 0;
-  box-shadow: none;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+  padding-top: 0;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   font-family: Roboto, "Segoe UI", system-ui, sans-serif;
   color: #e6e1e5;
 }
@@ -54985,6 +55717,18 @@ ${parts.map(cssSlice).join("\n")}
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+}
+.ecu-phone-sheet__foot {
+  flex: 0 0 auto;
+  padding: 8px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(230, 225, 229, 0.08);
+}
+.ecu-phone-sheet__done--foot {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
 }
 .ecu-phone-sheet__body {
   overflow: auto;
@@ -55122,13 +55866,13 @@ ${parts.map(cssSlice).join("\n")}
   left: 0;
   right: 0;
   /* Sit just above the Material dock (chrome stack is hidden on phone). */
-  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 6px);
+  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 2px);
   z-index: 235;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 4px 8px;
-  padding: 4px 10px 8px;
+  gap: 2px 6px;
+  padding: 2px 8px 4px;
 }
 .ecu-phone-home-dots__side {
   pointer-events: auto;
@@ -55181,16 +55925,12 @@ ${parts.map(cssSlice).join("\n")}
   padding: 0 4px;
 }
 .ecu-phone-home-dots__current {
-  font-size: 12px;
-  font-weight: 700;
-  color: #e8eef4;
-  letter-spacing: 0.02em;
-  text-align: center;
-  white-space: nowrap;
-  max-width: 120px;
+  /* Keep for a11y; visual weight is the dots \u2014 label was eating map. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  clip: rect(0, 0, 0, 0);
 }
 .ecu-phone-home-dots__track {
   display: flex;
@@ -55359,19 +56099,22 @@ ${parts.map(cssSlice).join("\n")}
   color: #938f99;
 }
 .ecu-phone-apps {
-  padding: 4px 16px 24px;
+  padding: 4px 16px 8px;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  /* Pack launcher to the top \u2014 empty sheet air above icons tanks raters. */
+  justify-content: flex-start;
 }
 .ecu-phone-apps__grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px 12px;
-  padding: 12px 4px 20px;
+  padding: 8px 4px 12px;
   align-content: start;
-  flex: 1 1 auto;
+  margin-top: 0;
+  flex: 0 1 auto;
 }
 .ecu-phone-apps__tile {
   display: flex;
@@ -56304,16 +57047,20 @@ ${parts.map(cssSlice).join("\n")}
     const doc = document;
     return !!(doc.fullscreenElement || doc.webkitFullscreenElement);
   }
+  function afterFullscreenToggle(ok) {
+    if (ok) scheduleGameViewportRefit();
+    return ok;
+  }
   function enterPageFullscreen() {
     if (typeof document === "undefined") return Promise.resolve(false);
     const el = document.documentElement;
     if (typeof el.requestFullscreen === "function") {
-      return el.requestFullscreen({ navigationUI: "hide" }).then(() => true).catch(() => false);
+      return el.requestFullscreen({ navigationUI: "hide" }).then(() => afterFullscreenToggle(true)).catch(() => false);
     }
     if (typeof el.webkitRequestFullscreen === "function") {
       try {
         el.webkitRequestFullscreen();
-        return Promise.resolve(true);
+        return Promise.resolve(afterFullscreenToggle(true));
       } catch (e2) {
         return Promise.resolve(false);
       }
@@ -56324,12 +57071,12 @@ ${parts.map(cssSlice).join("\n")}
     if (typeof document === "undefined") return Promise.resolve(false);
     const doc = document;
     if (typeof doc.exitFullscreen === "function") {
-      return doc.exitFullscreen().then(() => true).catch(() => false);
+      return doc.exitFullscreen().then(() => afterFullscreenToggle(true)).catch(() => false);
     }
     if (typeof doc.webkitExitFullscreen === "function") {
       try {
         doc.webkitExitFullscreen();
-        return Promise.resolve(true);
+        return Promise.resolve(afterFullscreenToggle(true));
       } catch (e2) {
         return Promise.resolve(false);
       }
@@ -56695,6 +57442,23 @@ ${parts.map(cssSlice).join("\n")}
       { className: "ecu-phone-sheet__body" },
       e("div", { className: "ecu-phone-sheet__sec" }, "Home screens"),
       e("div", { className: "ecu-phone-sheet__actions" }, ...screenTabs),
+      e("div", { className: "ecu-phone-sheet__sec" }, "HUD preset"),
+      e(
+        "div",
+        { className: "ecu-phone-sheet__actions", "data-ecu-tour": "phone-hud-presets" },
+        ...PHONE_HUD_PRESET_IDS.map(
+          (pid) => e(
+            "button",
+            {
+              key: "preset-" + pid,
+              type: "button",
+              className: "ecu-phone-sheet__chip",
+              onClick: () => props.applyPhoneHudPreset(pid)
+            },
+            PHONE_HUD_PRESET_LABELS[pid]
+          )
+        )
+      ),
       e(
         "div",
         { className: "ecu-phone-sheet__actions" },
@@ -56826,17 +57590,22 @@ ${parts.map(cssSlice).join("\n")}
               onClick: () => setEditHome(false)
             },
             "Apps"
-          ) : e(
+          ) : null
+        ),
+        body,
+        !editHome ? e(
+          "div",
+          { className: "ecu-phone-sheet__foot" },
+          e(
             "button",
             {
               type: "button",
-              className: "ecu-phone-sheet__done",
+              className: "ecu-phone-sheet__done ecu-phone-sheet__done--foot",
               onClick: () => props.onClose()
             },
             "Done"
           )
-        ),
-        body
+        ) : null
       )
     );
   }
@@ -57351,7 +58120,8 @@ ${parts.map(cssSlice).join("\n")}
         setPhoneHomePage: (page) => {
           props.setPhoneHomePage(page);
           storePhoneHomePage(page);
-        }
+        },
+        applyPhoneHudPreset: props.applyPhoneHudPreset
       }),
       e(PhoneObserveSheet, {
         open: observeOpen,
@@ -57572,6 +58342,31 @@ ${parts.map(cssSlice).join("\n")}
   height: 22px;
   flex-shrink: 0;
   cursor: pointer;
+}
+.ecu-settings-seg {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 0;
+  border: 1px solid #555;
+  background: #1a1a1a;
+}
+.ecu-settings-seg button {
+  appearance: none;
+  margin: 0;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: #bbb;
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+.ecu-settings-seg button + button {
+  border-left: 1px solid #555;
+}
+.ecu-settings-seg button.is-on {
+  background: #2a3640;
+  color: #9dd4ec;
 }
 .ecu-pick-wrap {
   margin: 8px 0 4px;
@@ -58048,39 +58843,97 @@ ${parts.map(cssSlice).join("\n")}
   left: 0;
   width: auto;
   height: auto;
+  display: flex;
+  flex-direction: column;
   align-items: stretch;
-  justify-content: stretch;
+  justify-content: flex-end;
   padding: 0;
   background: rgba(0, 0, 0, 0.72);
 }
 .ecu-settings-modal.is-phone {
   width: 100%;
-  height: 100%;
+  height: auto;
   max-width: none;
   max-height: none;
-  border-radius: 16px 16px 0 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: max(10px, env(safe-area-inset-top, 0px));
+  border-radius: 20px 20px 0 0;
   border-left: none;
   border-right: none;
   border-bottom: none;
-  box-shadow: none;
+  box-shadow: 0 -10px 36px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
 }
 .ecu-settings-modal.is-phone .ecu-settings-split {
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .ecu-settings-modal.is-phone .ecu-settings-nav {
+  order: 40;
   width: 100%;
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   border-right: none;
-  border-bottom: 1px solid #2e343a;
-  padding: 10px 12px;
+  border-top: 1px solid #2e343a;
+  border-bottom: none;
+  margin-top: auto;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: rgba(12, 14, 16, 0.96);
   scrollbar-width: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav--foot {
+  flex-wrap: wrap;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav--foot .ecu-settings-phone-pill {
+  flex: 1 1 calc(33% - 8px);
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav--foot .ecu-settings-phone-done {
+  flex: 1 1 100%;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font-size: 16px;
+  font-weight: 600;
+}
+.ecu-settings-modal.is-phone .ecu-settings-pane {
+  order: 20;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ecu-settings-phone-pill {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #3d4650;
+  border-radius: 999px;
+  background: #1a1f24;
+  color: #c8cdd4;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ecu-settings-phone-pill.is-on,
+.ecu-settings-phone-pill[aria-pressed="true"] {
+  border-color: #5a8aa8;
+  background: #2a3640;
+  color: #9dd4ec;
 }
 .ecu-settings-modal.is-phone .ecu-settings-nav::-webkit-scrollbar {
   display: none;
@@ -58120,17 +58973,49 @@ ${parts.map(cssSlice).join("\n")}
   border-radius: 16px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-pane {
-  padding: 14px 16px 24px;
+  padding: 8px 12px 10px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-pane-title {
-  font-size: 22px;
+  font-size: 18px;
+  margin: 0 0 6px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-pane-desc {
-  font-size: 15px;
+  display: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-lead {
+  display: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-help {
+  display: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-sec {
+  margin: 10px 0 4px;
+  padding-top: 6px;
+  font-size: 12px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-row {
+  padding: 6px 0;
+  gap: 6px;
+  min-height: 40px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-row--bag-rule {
+  padding: 4px 0;
+  min-height: 0;
+  flex-wrap: wrap;
+}
+.ecu-settings-modal.is-phone .ecu-settings-bag-add .ecu-settings-reset {
+  flex: 1 1 calc(50% - 6px);
+  min-width: 0;
+}
+.ecu-settings-modal.is-phone .ecu-settings-reset {
+  font-size: 14px;
+  padding: 8px 12px;
+  min-height: 40px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-hd {
-  gap: 10px;
+  gap: 8px;
   align-items: center;
+  padding: 8px 10px;
 }
 .ecu-settings-phone-done {
   flex: 0 0 auto;
@@ -61455,8 +62340,7 @@ ${parts.map(cssSlice).join("\n")}
     { id: settingsSectionId("Updates"), label: "Updates" },
     {
       id: settingsSectionId("Controls"),
-      label: "Controls",
-      visible: () => !isPhoneViewport()
+      label: "Controls"
     },
     {
       id: settingsSectionId("Mobile install"),
@@ -61484,11 +62368,84 @@ ${parts.map(cssSlice).join("\n")}
     return hay.includes(q);
   }
   function controlsSectionMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const phone = "joystick side left right thumb camera stick pan phone hand controls";
+    const desktop = "wheel zoom trackpad scroll camera fov middle accidental laptop desktop controls";
+    if (isPhoneViewport()) return phone.includes(q) || "controls".includes(q);
+    return (phone + " " + desktop).includes(q);
+  }
+  function wheelZoomRowMatches(query) {
     if (isPhoneViewport()) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
-    return "wheel zoom trackpad scroll camera fov middle accidental laptop desktop controls".includes(
+    return "wheel zoom trackpad scroll camera fov middle accidental laptop desktop".includes(
       q
+    );
+  }
+  function joystickSideRowMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return "joystick side left right thumb camera stick pan phone hand".includes(
+      q
+    );
+  }
+  function pushCameraJoystickSideRow(kids, bump) {
+    const settings = getSettings();
+    const side = settings.cameraJoystickSide === "left" ? "left" : "right";
+    kids.push(
+      e(
+        "div",
+        { key: "joystick-side", className: "ecu-settings-row" },
+        e(
+          "div",
+          { className: "ecu-settings-row-copy" },
+          e(
+            "span",
+            { className: "ecu-settings-row-label" },
+            "Camera joystick side"
+          ),
+          e(
+            "span",
+            { className: "ecu-settings-help" },
+            "Default right for one-handed right-thumb pan. Also flip with \u2190 side / side \u2192 above the stick."
+          )
+        ),
+        e(
+          "div",
+          {
+            className: "ecu-settings-seg",
+            role: "group",
+            "aria-label": "Joystick side"
+          },
+          e(
+            "button",
+            {
+              type: "button",
+              className: side === "left" ? "is-on" : "",
+              "aria-pressed": side === "left" ? "true" : "false",
+              onClick: () => {
+                patchSettings({ cameraJoystickSide: "left" });
+                bump();
+              }
+            },
+            "Left"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: side === "right" ? "is-on" : "",
+              "aria-pressed": side === "right" ? "true" : "false",
+              onClick: () => {
+                patchSettings({ cameraJoystickSide: "right" });
+                bump();
+              }
+            },
+            "Right"
+          )
+        )
+      )
     );
   }
   var TAMPERMONKEY_MOBILE_FAQ = "https://www.tampermonkey.net/faq.php?locale=en&q=Q406";
@@ -61509,7 +62466,7 @@ ${parts.map(cssSlice).join("\n")}
     for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
       if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
     }
-    if (controlsSectionMatches(query)) total += 1;
+    if (wheelZoomRowMatches(query) || joystickSideRowMatches(query)) total += 1;
     if (installSectionMatches(query)) total += 1;
     if (dataSectionMatches(query)) total += 1;
     return total;
@@ -61559,21 +62516,30 @@ ${parts.map(cssSlice).join("\n")}
     }
     if (controlsSectionMatches(query)) {
       const settings = getSettings();
-      kids.push(settingsSection("Controls"));
-      kids.push(
-        settingsCheckboxRow(
-          "wheel-zoom",
-          "Mouse wheel / trackpad zoom",
-          settings.worldWheelZoomEnabled !== false,
-          (next) => {
-            patchSettings({ worldWheelZoomEnabled: next });
-            setCtrlTick((n) => n + 1);
-          },
-          {
-            help: "Desktop only. Scroll over the map changes camera FOV. Turn off if a laptop trackpad zooms by accident. Pinch and Map out\xB7in still work."
-          }
-        )
-      );
+      const showWheel = wheelZoomRowMatches(query);
+      const showStick = joystickSideRowMatches(query);
+      if (showWheel || showStick) {
+        kids.push(settingsSection("Controls"));
+      }
+      if (showStick) {
+        pushCameraJoystickSideRow(kids, () => setCtrlTick((n) => n + 1));
+      }
+      if (showWheel) {
+        kids.push(
+          settingsCheckboxRow(
+            "wheel-zoom",
+            "Mouse wheel / trackpad zoom",
+            settings.worldWheelZoomEnabled !== false,
+            (next) => {
+              patchSettings({ worldWheelZoomEnabled: next });
+              setCtrlTick((n) => n + 1);
+            },
+            {
+              help: "Desktop only. Scroll over the map changes camera FOV. Turn off if a laptop trackpad zooms by accident. Pinch and Map out\xB7in still work."
+            }
+          )
+        );
+      }
     }
     if (installSectionMatches(query)) {
       kids.push(settingsSection("Mobile install"));
@@ -61916,10 +62882,17 @@ ${parts.map(cssSlice).join("\n")}
   function metersMatches(query) {
     return matchesQuery2("meters hide dps hps combat skada", query);
   }
+  function phoneCameraControlsMatch(query) {
+    if (!isPhoneViewport()) return false;
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return "joystick camera stick pan side display fov nameplate".includes(q);
+  }
   function countCommHudSettingsMatches(query) {
     const q = query.trim().toLowerCase();
     const sections = overlayToggleSectionsForPane("commHud");
     let total = 0;
+    if (phoneCameraControlsMatch(query)) total += 1;
     if (hudDensityMatches(query)) total += 1;
     if (metersMatches(query)) total += 1;
     for (let s = 0; s < sections.length; s++) {
@@ -61947,7 +62920,11 @@ ${parts.map(cssSlice).join("\n")}
       patchSettings({ hudDensity: mode });
       setTick((n) => n + 1);
     });
-    const sections = overlayToggleSectionsForPane("commHud");
+    const phone = isPhoneViewport();
+    const sections = phone ? [
+      ...overlayToggleSectionsForPane("commHud"),
+      ...overlayToggleSectionsForPane("drawings")
+    ] : overlayToggleSectionsForPane("commHud");
     const kids = [
       e(
         "p",
@@ -61956,6 +62933,34 @@ ${parts.map(cssSlice).join("\n")}
       )
     ];
     let rowCount = 0;
+    for (let s = 0; s < sections.length; s++) {
+      const section3 = sections[s];
+      const rows = [];
+      for (let i = 0; i < section3.defs.length; i++) {
+        const def = section3.defs[i];
+        if (!matchesOverlayToggle(def, query)) continue;
+        rows.push(
+          settingsCheckboxRow(
+            def.key,
+            def.label,
+            vizSettings[def.key],
+            (next) => patchVizSettings({ [def.key]: next }),
+            {
+              help: def.help,
+              tag: tagLabel(def.tag) || void 0
+            }
+          )
+        );
+      }
+      if (!rows.length) continue;
+      rowCount += rows.length;
+      kids.push(settingsSection(section3.title), ...rows);
+    }
+    if (phoneCameraControlsMatch(query)) {
+      rowCount += 1;
+      kids.push(settingsSection("Camera"));
+      pushCameraJoystickSideRow(kids, () => setTick((n) => n + 1));
+    }
     if (hudDensityMatches(query)) {
       rowCount += 1;
       kids.push(settingsSection("HUD density"));
@@ -62006,29 +63011,6 @@ ${parts.map(cssSlice).join("\n")}
           }
         )
       );
-    }
-    for (let s = 0; s < sections.length; s++) {
-      const section3 = sections[s];
-      const rows = [];
-      for (let i = 0; i < section3.defs.length; i++) {
-        const def = section3.defs[i];
-        if (!matchesOverlayToggle(def, query)) continue;
-        rows.push(
-          settingsCheckboxRow(
-            def.key,
-            def.label,
-            vizSettings[def.key],
-            (next) => patchVizSettings({ [def.key]: next }),
-            {
-              help: def.help,
-              tag: tagLabel(def.tag) || void 0
-            }
-          )
-        );
-      }
-      if (!rows.length) continue;
-      rowCount += rows.length;
-      kids.push(settingsSection(section3.title), ...rows);
     }
     if (!rowCount) {
       kids.push(
@@ -62680,39 +63662,62 @@ ${parts.map(cssSlice).join("\n")}
       );
     }
     if (!query || matchesText("sort rule priority add", query)) {
-      kids.push(settingsSection("Sort rules (priority order)"), ...ruleRows);
-      kids.push(
-        e(
-          "div",
-          { style: { marginTop: "6px" } },
+      const used = /* @__PURE__ */ Object.create(null);
+      for (let i = 0; i < prefs.rules.length; i++) {
+        used[prefs.rules[i].key] = true;
+      }
+      const addChips = [];
+      for (let i = 0; i < BAG_SORT_KEY_CATALOG.length; i++) {
+        const d = BAG_SORT_KEY_CATALOG[i];
+        if (used[d.key]) continue;
+        if (query && !matchesText(`${d.label} ${d.key} ${d.help} add sort`, query)) {
+          continue;
+        }
+        addChips.push(
           e(
-            "select",
+            "button",
             {
-              defaultValue: "",
-              onChange: (ev) => {
-                const key = ev.target.value;
-                if (!key) return;
+              type: "button",
+              key: "add-" + d.key,
+              className: "ecu-settings-reset",
+              title: d.help || d.label,
+              onClick: () => {
                 patchBagSortPrefs({
                   preset: "custom",
-                  rules: addBagSortRule(prefs.rules, key)
+                  rules: addBagSortRule(prefs.rules, d.key)
                 });
-                ev.target.value = "";
                 refresh();
               },
               style: {
-                fontSize: "12px",
-                background: "#1a1a1a",
-                color: "#ddd",
-                border: "1px solid #555"
+                fontSize: "13px",
+                padding: "8px 10px",
+                minHeight: "40px"
               }
             },
-            e("option", { value: "" }, "+ Add sort rule\u2026"),
-            ...BAG_SORT_KEY_CATALOG.map(
-              (d) => e("option", { key: d.key, value: d.key }, d.label)
-            )
+            "+ " + d.label
           )
-        )
-      );
+        );
+      }
+      if (addChips.length) {
+        kids.push(
+          settingsSection("Add rules"),
+          e(
+            "div",
+            {
+              key: "add-rules",
+              className: "ecu-settings-bag-add",
+              style: {
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "6px",
+                marginBottom: "8px"
+              }
+            },
+            ...addChips
+          )
+        );
+      }
+      kids.push(settingsSection("Sort rules (priority order)"), ...ruleRows);
     }
     if (ruleRows.length === 0 && query) {
       kids.push(
@@ -62815,6 +63820,11 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/frames/SettingsPanel.ts
+  var PHONE_SETTINGS_PILLS = [
+    { id: "commUi", label: "Phone" },
+    { id: "bag", label: "Bag" },
+    { id: "commHud", label: "Display" }
+  ];
   function scrollPaneToSection(secId) {
     const el = document.getElementById(secId);
     if (!el) return;
@@ -62836,7 +63846,10 @@ ${parts.map(cssSlice).join("\n")}
   function SettingsPanel(props) {
     const React = getReact();
     ensureSettingsPanelCss();
-    const [cat, setCat] = React.useState(defaultSettingsPaneId);
+    const phone = detectViewportProfile() === "phone";
+    const [cat, setCat] = React.useState(
+      () => phone ? "commHud" : defaultSettingsPaneId()
+    );
     const [query, setQuery] = React.useState("");
     const [activeSec, setActiveSec] = React.useState("");
     const propsRef = React.useRef(props);
@@ -62864,6 +63877,26 @@ ${parts.map(cssSlice).join("\n")}
       setActiveSec("");
     }, [cat]);
     const navKids = React.useMemo(() => {
+      if (phone && !trimmedQuery) {
+        const kids2 = [];
+        for (let i = 0; i < PHONE_SETTINGS_PILLS.length; i++) {
+          const pill = PHONE_SETTINGS_PILLS[i];
+          kids2.push(
+            e(
+              "button",
+              {
+                type: "button",
+                key: pill.id,
+                className: "ecu-settings-phone-pill" + (cat === pill.id ? " is-on" : ""),
+                "aria-pressed": cat === pill.id ? "true" : "false",
+                onClick: () => setCat(pill.id)
+              },
+              pill.label
+            )
+          );
+        }
+        return kids2;
+      }
       const kids = [];
       for (let i = 0; i < SETTINGS_PANES.length; i++) {
         const pane = SETTINGS_PANES[i];
@@ -62923,13 +63956,17 @@ ${parts.map(cssSlice).join("\n")}
         );
       }
       return kids;
-    }, [cat, counts, trimmedQuery, setCat, activeSec]);
-    const phone = detectViewportProfile() === "phone";
+    }, [cat, counts, trimmedQuery, setCat, activeSec, phone]);
     const headRef = React.useRef(null);
     React.useEffect(() => {
       if (!phone) return;
       return bindSwipeDownClose(headRef.current, onClose);
     }, [phone, onClose]);
+    React.useEffect(() => {
+      if (!phone) return;
+      syncPhoneSheetOpenClass();
+      return () => syncPhoneSheetOpenClass();
+    }, [phone]);
     const modalBody = e(
       "div",
       {
@@ -62952,26 +63989,32 @@ ${parts.map(cssSlice).join("\n")}
             value: query,
             onChange: (ev) => setQuery(ev.target.value || "")
           })
-        ),
-        phone ? e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-settings-phone-done",
-            onClick: onClose
-          },
-          "Done"
-        ) : null
+        )
       ),
       e(
         "div",
         { className: "ecu-settings-split" },
-        e("div", { className: "ecu-settings-nav" }, ...navKids),
+        e(
+          "div",
+          { className: "ecu-settings-nav" + (phone ? " ecu-settings-nav--foot" : "") },
+          ...navKids,
+          phone ? e(
+            "button",
+            {
+              type: "button",
+              key: "phone-done",
+              className: "ecu-settings-phone-done",
+              onClick: onClose
+            },
+            "Done"
+          ) : null
+        ),
         e(
           "div",
           { className: "ecu-settings-pane" },
           e("div", { className: "ecu-settings-pane-title" }, active.label),
-          e("p", { className: "ecu-settings-pane-desc" }, active.description),
+          // Phone: skip the long pane blurb — rows + foot pills need the height.
+          phone ? null : e("p", { className: "ecu-settings-pane-desc" }, active.description),
           active.render({
             query: trimmedQuery,
             visible: props.visible,
@@ -65046,7 +66089,7 @@ ${parts.map(cssSlice).join("\n")}
         `<div class="line"><span>Level</span><b>${escapeCooltipHtml(String(ent.level))}</b></div>`
       );
     }
-    if (ent.ctype) {
+    if (isPlayerClass(ent.ctype)) {
       lines.push(
         `<div class="line"><span>Class</span><b>${escapeCooltipHtml(String(ent.ctype))}</b></div>`
       );
@@ -65160,6 +66203,15 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/frames/Players.ts
+  var PHONE_CHIP_WIDTH = 152;
+  var PHONE_MAX_COLS = 2;
+  function chipRowMaxWidth(chipW, cols) {
+    const n = Math.max(1, Math.floor(cols));
+    return n * chipW + (n - 1) * PARTY_CHIP_GAP;
+  }
+  function rosterMaxWidth(chipW, cols) {
+    return PARTY_ROSTER_PAD * 2 + chipRowMaxWidth(chipW, cols);
+  }
   function hpPct(entity) {
     const max = entity.max_hp || 1;
     return Math.max(0, Math.min(100, Math.round((entity.hp || 0) / max * 100)));
@@ -65227,7 +66279,7 @@ ${parts.map(cssSlice).join("\n")}
         style: {
           position: "relative",
           flex: "0 0 auto",
-          width: PARTY_CHIP_WIDTH + "px",
+          width: ctx.chipWidth + "px",
           background: "transparent",
           cursor: "pointer",
           overflow: "visible",
@@ -65402,7 +66454,7 @@ ${parts.map(cssSlice).join("\n")}
             flexWrap: "wrap",
             alignItems: "flex-start",
             gap: PARTY_CHIP_GAP + "px",
-            maxWidth: solo ? PARTY_CHIP_WIDTH + "px" : partyChipRowWidth(PARTY_MAX_COLS) + "px"
+            maxWidth: solo ? chipCtx.chipWidth + "px" : chipRowMaxWidth(chipCtx.chipWidth, chipCtx.maxCols) + "px"
           }
         },
         ...members.map((player) => renderPlayerChip(player, chipCtx))
@@ -65436,6 +66488,9 @@ ${parts.map(cssSlice).join("\n")}
     const [rosterShow, setRosterShow] = React.useState(
       () => getSettings().partyRosterShow || "all"
     );
+    const phone = detectViewportProfile() === "phone";
+    const chipWidth = phone ? PHONE_CHIP_WIDTH : PARTY_CHIP_WIDTH;
+    const maxCols = phone ? PHONE_MAX_COLS : PARTY_MAX_COLS;
     const observing = findObserving(props.entities, props.observingId);
     const allParties = partyGroups(props.entities);
     const parties = filterPartiesForShow({
@@ -65447,6 +66502,8 @@ ${parts.map(cssSlice).join("\n")}
     const visibleChipCount = countMembers(parties);
     const sharedMode = buffMode === "shared";
     const chipCtx = {
+      chipWidth,
+      maxCols,
       byTarget: props.byTarget,
       selectedEntity: props.selectedEntity,
       observingId: props.observingId,
@@ -65482,14 +66539,18 @@ ${parts.map(cssSlice).join("\n")}
     return e(
       "div",
       {
-        className: "ecu-roster" + (props.layoutEdit ? " is-layout-edit" : ""),
+        className: "ecu-roster" + (props.layoutEdit ? " is-layout-edit" : "") + (phone ? " is-phone" : ""),
         style: {
           padding: PARTY_ROSTER_PAD + "px",
           display: "flex",
           gap: "6px",
           flexDirection: "column",
           width: "fit-content",
-          maxWidth: partyRosterMaxWidth(PARTY_MAX_COLS) + "px",
+          maxWidth: rosterMaxWidth(chipWidth, maxCols) + "px",
+          maxHeight: phone ? "min(42vh, 380px)" : void 0,
+          overflowX: "hidden",
+          overflowY: phone ? "auto" : "visible",
+          WebkitOverflowScrolling: phone ? "touch" : void 0,
           boxSizing: "border-box",
           position: "relative"
         }
@@ -65527,7 +66588,7 @@ ${parts.map(cssSlice).join("\n")}
             flexWrap: "wrap",
             alignItems: "flex-start",
             gap: "6px " + PARTY_CHIP_GAP + "px",
-            maxWidth: partyChipRowWidth(PARTY_MAX_COLS) + "px"
+            maxWidth: chipRowMaxWidth(chipWidth, maxCols) + "px"
           }
         },
         ...singles.map(
@@ -70068,7 +71129,7 @@ ${ESTIMATE_HINT}`,
       if (!props.layoutEdit) return null;
       return e(PaperdollDummy);
     }
-    const accent = classColors[entity.ctype || ""] || (entity.type === "monster" ? "#c44" : "#888");
+    const accent = isPlayerClass(entity.ctype) ? resolveClassColor(entity.ctype) : entity.type === "monster" ? "#c44" : "#888";
     const isPlayer = !!(entity.player || entity.type === "character");
     const title = `${entity.name || entity.id}` + (entity.mtype ? ` (${entity.mtype})` : "") + ` \xB7 ${(_a = entity.level) != null ? _a : 1}` + (entity.type === "monster" ? ` #${entity.id}` : "");
     const watching = props.observing;
@@ -70170,7 +71231,7 @@ ${ESTIMATE_HINT}`,
               ...PIXEL_TEXT
             }
           },
-          entity.ctype ? e("span", { style: { color: accent } }, entity.ctype) : null,
+          isPlayerClass(entity.ctype) ? e("span", { style: { color: accent } }, entity.ctype) : null,
           entity.party ? e("span", {}, `party ${entity.party}`) : null,
           entity.age != null ? e("span", {}, `age ${entity.age}`) : null,
           !isPlayer && entity.mtype ? e("span", {}, entity.mtype) : null
@@ -71170,16 +72231,24 @@ ${ESTIMATE_HINT}`,
     overflow: "visible",
     boxSizing: "border-box"
   };
+  var UNIT_FRAME_STYLE_PHONE = {
+    width: "min(360px, calc(100vw - 16px))",
+    minWidth: 0,
+    maxWidth: "calc(100vw - 16px)",
+    overflow: "visible",
+    boxSizing: "border-box"
+  };
   function PlayerFrame(props) {
     const { observing, aggroMobs = [], layoutEdit } = props;
+    const phone = props.compact === true;
     if (observing) {
       return e(ObservedUnit, {
         key: `obs-${String(observing.id)}`,
         entity: observing,
         hpColor: classColors[observing.ctype || ""] || "#666",
-        fontSize: "21px",
+        fontSize: phone ? "16px" : "21px",
         // Match party/boss density — default EffectsRow 36px dominates the frame.
-        effectsIconSize: 22,
+        effectsIconSize: phone ? 18 : 22,
         effectsOverlay: true,
         aggroMobs,
         onSelect: (id) => {
@@ -71234,17 +72303,18 @@ ${ESTIMATE_HINT}`,
     return parts.join(" \xB7 ");
   }
   function TargetFrame(props) {
-    const { observing, target, layoutEdit, aggroMobs = [] } = props;
+    const { observing, target, layoutEdit, aggroMobs = [], compact } = props;
+    const phone = compact === true;
     if (target) {
       const tid = String(target.id);
       return e(ObservedUnit, {
         key: `tgt-${tid}`,
         entity: target,
         hpColor: classColors[target.ctype || ""] || "red",
-        fontSize: "21px",
+        fontSize: phone ? "16px" : "21px",
         trailing: targetTrailing(observing, target),
         // Match party/boss density — default EffectsRow 36px dominates the frame.
-        effectsIconSize: 22,
+        effectsIconSize: phone ? 18 : 22,
         effectsOverlay: true,
         aggroMobs,
         onSelect: (id) => {
@@ -74723,31 +75793,63 @@ ${ESTIMATE_HINT}`,
     const React = getReact();
     const preExpandSizeRef = React.useRef(null);
     React.useEffect(() => {
-      const shell = findPanelShell(args.rootRef.current, args.panelId);
-      if (!shell) return;
-      if (args.expanded) {
-        if (!preExpandSizeRef.current) {
-          preExpandSizeRef.current = {
-            w: Math.round(shell.offsetWidth),
-            h: Math.round(shell.offsetHeight)
-          };
+      let cancelled = false;
+      let tries = 0;
+      let timer = 0;
+      const maxTries = 80;
+      const apply = () => {
+        if (cancelled) return;
+        let shell = findPanelShell(args.rootRef.current, args.panelId);
+        if (!shell && typeof document !== "undefined") {
+          shell = document.querySelector(
+            '[data-panel="' + args.panelId + '"]'
+          );
         }
-        shell.setAttribute("data-ecu-suspend-frame-resize", "1");
-        shell.classList.add(args.shellClass);
-        return () => {
+        if (!shell) {
+          if (args.expanded && tries < maxTries) {
+            tries += 1;
+            timer = window.setTimeout(apply, 50);
+          }
+          return;
+        }
+        if (args.expanded) {
+          if (!preExpandSizeRef.current) {
+            preExpandSizeRef.current = {
+              w: Math.round(shell.offsetWidth),
+              h: Math.round(shell.offsetHeight)
+            };
+          }
+          shell.setAttribute("data-ecu-suspend-frame-resize", "1");
+          shell.classList.add(args.shellClass);
+          document.documentElement.classList.add("ecu-phone-sheet-open");
+          if (tries < 8) {
+            tries += 1;
+            timer = window.setTimeout(apply, 100);
+          }
+          return;
+        }
+        shell.classList.remove(args.shellClass);
+        shell.removeAttribute("data-ecu-suspend-frame-resize");
+        syncPhoneSheetOpenClass();
+        const saved = preExpandSizeRef.current;
+        preExpandSizeRef.current = null;
+        if (saved && saved.w >= 80 && saved.h >= 80 && typeof args.onFrameSizeRestore === "function") {
+          window.requestAnimationFrame(() => {
+            args.onFrameSizeRestore({ w: saved.w, h: saved.h });
+          });
+        }
+      };
+      apply();
+      return () => {
+        cancelled = true;
+        if (timer) window.clearTimeout(timer);
+        const shell = findPanelShell(args.rootRef.current, args.panelId);
+        if (shell) {
           shell.classList.remove(args.shellClass);
           shell.removeAttribute("data-ecu-suspend-frame-resize");
-        };
-      }
-      shell.classList.remove(args.shellClass);
-      shell.removeAttribute("data-ecu-suspend-frame-resize");
-      const saved = preExpandSizeRef.current;
-      preExpandSizeRef.current = null;
-      if (saved && saved.w >= 80 && saved.h >= 80 && typeof args.onFrameSizeRestore === "function") {
-        window.requestAnimationFrame(() => {
-          args.onFrameSizeRestore({ w: saved.w, h: saved.h });
-        });
-      }
+        }
+        syncPhoneSheetOpenClass();
+      };
     }, [
       args.expanded,
       args.onFrameSizeRestore,
@@ -75167,8 +76269,40 @@ ${ESTIMATE_HINT}`,
   gap: 8px;
 }
 .CommandPanel.is-narrow .CommandPanel-editor {
-  min-height: 180px;
+  min-height: 240px;
   flex: 1 1 auto;
+}
+.CommandPanel.is-phone {
+  background: #0e0e10;
+}
+.CommandPanel.is-phone .CommandPanel-side,
+.CommandPanel.is-phone .CommandPanel-main {
+  background: #0e0e10;
+}
+.CommandPanel.is-phone .CommandPanel-editor {
+  min-height: 200px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+/* Code tab: editor fills leftover space; Run + Save template stay in the foot. */
+.CommandPanel.is-phone.tab-code .CommandPanel-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 8px;
+  overflow: hidden;
+}
+.CommandPanel.is-phone.tab-code .CommandPanel-editor,
+.CommandPanel.is-phone.tab-code .CodeMirror {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: 100%;
+  height: 100%;
+}
+.CommandPanel.is-phone.tab-code .CommandPanel-toolbar,
+.CommandPanel.is-phone.tab-code .CommandPanel-status {
+  flex: 0 0 auto;
 }
 .CommandPanel.is-narrow .CommandPanel-side {
   flex: 1 1 auto;
@@ -75202,6 +76336,29 @@ ${ESTIMATE_HINT}`,
   font-size: 16px;
   padding: 10px 12px;
 }
+/* Phone: Run owns a full row; name + Save as share the second. */
+.CommandPanel.is-phone .CommandPanel-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.CommandPanel.is-phone .CommandPanel-run {
+  flex: 1 1 100%;
+  width: 100%;
+  min-height: 48px !important;
+  padding: 12px 14px !important;
+  font-size: 16px !important;
+  font-weight: 600;
+}
+.CommandPanel.is-phone .CommandPanel-toolbar input {
+  flex: 1 1 140px;
+}
+.CommandPanel.is-phone .CommandPanel-toolbar > button:not(.CommandPanel-run) {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+.CommandPanel.is-phone.tab-code .CommandPanel-toolbar {
+  flex: 0 0 auto;
+}
 .CommandPanel.is-narrow .CommandPanel-rerun {
   min-height: 40px;
   padding: 8px 12px;
@@ -75216,6 +76373,117 @@ ${ESTIMATE_HINT}`,
 }
 .CommandPanel.is-phone-tabs .CommandPanel-sub {
   display: none;
+}
+/* Phone Quick tab \u2014 macro cards with thumb-sized Run. */
+.CommandPanel.is-phone.tab-snippets .CommandPanel-side__head {
+  gap: 8px;
+}
+.CommandPanel.is-phone.tab-snippets .CommandPanel-snip {
+  min-height: 56px;
+  padding: 12px 10px;
+  gap: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #3a3a3a;
+  margin-bottom: 8px;
+}
+.CommandPanel.is-phone.tab-snippets .CommandPanel-snip__pick {
+  font-size: 17px;
+  font-weight: 600;
+  padding: 8px 6px;
+}
+.CommandPanel.is-phone.tab-snippets .CommandPanel-snip__run {
+  min-height: 44px;
+  min-width: 72px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+.CommandPanel.is-phone.tab-snippets .CommandPanel-snip__del {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+.CommandPanel.is-phone .CommandPanel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 8px;
+}
+.CommandPanel.is-phone .CommandPanel-empty__code {
+  appearance: none;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #a86;
+  border-radius: 10px;
+  background: #2a2410;
+  color: #ffe08a;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.CommandPanel.is-phone {
+  display: flex;
+  flex-direction: column;
+}
+.CommandPanel.is-phone .CommandPanel-phoneFoot {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #3a3a3a;
+  background: rgba(12, 12, 12, 0.96);
+}
+.CommandPanel.is-phone .CommandPanel-phoneFoot .CommandPanel-toolbar {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+.CommandPanel.is-phone .CommandPanel-tabs {
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border-top: none;
+  background: transparent;
+}
+.CommandPanel.is-phone .CommandPanel-phoneDone {
+  appearance: none;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.CommandPanel.is-phone .CommandPanel-head {
+  order: 1;
+}
+.CommandPanel.is-phone .CommandPanel-body {
+  order: 20;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.CommandPanel.is-phone .CommandPanel-phoneFoot {
+  order: 40;
+}
+.CommandPanel.is-phone .CommandPanel-tab {
+  flex: 1 1 0;
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 10px 14px;
 }
 ` + phoneShellExpandCss("command", "ecu-command-shell-expanded", ".CommandPanel");
   var injected12 = false;
@@ -75283,7 +76551,9 @@ ${ESTIMATE_HINT}`,
     const [expanded, setExpanded] = React.useState(
       () => detectViewportProfile() === "phone"
     );
-    const [phoneTab, setPhoneTab] = React.useState("code");
+    const [phoneTab, setPhoneTab] = React.useState(
+      () => detectViewportProfile() === "phone" ? "snippets" : "code"
+    );
     const rootRef = React.useRef(null);
     const headRef = React.useRef(null);
     usePhoneShellExpand({
@@ -75739,10 +77009,10 @@ ${ESTIMATE_HINT}`,
       })
     });
     const lastSnip = findSnippetById(snippets, lastRunId);
-    const usePhoneTabs = narrow;
+    const usePhoneTabs = phoneUi || narrow;
     const showCode = !usePhoneTabs || phoneTab === "code";
     const showSnippets = !usePhoneTabs || phoneTab === "snippets";
-    const hintLabel = phoneUi ? "observer \u2192 code_eval \xB7 swipe title to close" : "observer \u2192 code_eval \xB7 Ctrl+Enter \xB7 Ctrl+Space";
+    const hintLabel = phoneUi ? "Write code \xB7 Save template \xB7 Quick to re-run" : "observer \u2192 code_eval \xB7 Ctrl+Enter \xB7 Ctrl+Space";
     const toolbar = e(
       "div",
       { className: "CommandPanel-toolbar" },
@@ -75759,14 +77029,14 @@ ${ESTIMATE_HINT}`,
       e("input", {
         type: "text",
         value: newName,
-        placeholder: "Snippet name",
+        placeholder: phoneUi ? "Template name" : "Snippet name",
         onChange: (ev) => setNewName(ev.target.value),
         style: Object.assign({}, inputStyle, {
           flex: "1 1 120px",
           minWidth: "100px"
         })
       }),
-      e("input", {
+      phoneUi ? null : e("input", {
         type: "text",
         value: newFolder,
         placeholder: "Folder (optional)",
@@ -75791,12 +77061,47 @@ ${ESTIMATE_HINT}`,
         {
           type: "button",
           onClick: onSaveAsSnippet,
-          style: btnStyle2(),
-          title: "Save as a new snippet"
+          style: btnStyle2({ accent: phoneUi && !selected }),
+          title: "Save editor as a new template"
         },
-        "Save as"
+        phoneUi ? "Save template" : "Save as"
       )
     );
+    const phoneTabs = usePhoneTabs ? e(
+      "div",
+      {
+        className: "CommandPanel-tabs",
+        role: "tablist",
+        "aria-label": "Command views"
+      },
+      e(
+        "button",
+        {
+          type: "button",
+          role: "tab",
+          className: "CommandPanel-tab" + (phoneTab === "code" ? " is-active" : ""),
+          "aria-selected": phoneTab === "code",
+          onClick: () => setPhoneTab("code")
+        },
+        "Code"
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          role: "tab",
+          className: "CommandPanel-tab" + (phoneTab === "snippets" ? " is-active" : ""),
+          "aria-selected": phoneTab === "snippets",
+          onClick: () => setPhoneTab("snippets")
+        },
+        "Quick",
+        snippets.length ? e(
+          "span",
+          { className: "CommandPanel-tabCount" },
+          String(snippets.length)
+        ) : null
+      )
+    ) : null;
     const statusEl = e(
       "div",
       {
@@ -75861,14 +77166,31 @@ ${ESTIMATE_HINT}`,
       treeNodes.length ? e("div", { className: "CommandPanel-tree" }, ...treeNodes) : e(
         "div",
         { className: "CommandPanel-empty" },
-        snippets.length ? "No snippets match this search." : "No snippets yet \u2014 write a command and Save as."
+        snippets.length ? "No snippets match this search." : phoneUi ? e(
+          React.Fragment,
+          null,
+          e(
+            "div",
+            null,
+            "No templates yet \u2014 write code, then Save template."
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "CommandPanel-empty__code",
+              onClick: () => setPhoneTab("code")
+            },
+            "Open Code"
+          )
+        ) : "No snippets yet \u2014 write a command and Save as."
       )
     );
     return e(
       "div",
       {
         ref: rootRef,
-        className: "CommandPanel" + (narrow ? " is-narrow" : "") + (expanded ? " is-expanded" : "") + (usePhoneTabs ? " is-phone-tabs" : "") + (usePhoneTabs ? " tab-" + phoneTab : ""),
+        className: "CommandPanel" + (narrow ? " is-narrow" : "") + (phoneUi ? " is-phone" : "") + (expanded ? " is-expanded" : "") + (usePhoneTabs ? " is-phone-tabs" : "") + (usePhoneTabs ? " tab-" + phoneTab : ""),
         "data-ecu-panel": "command",
         "data-ecu-tour": "command-panel",
         style: {
@@ -75915,37 +77237,7 @@ ${ESTIMATE_HINT}`,
           className: "CommandPanel-expand"
         })
       ),
-      usePhoneTabs ? e(
-        "div",
-        {
-          className: "CommandPanel-tabs",
-          role: "tablist",
-          "aria-label": "Command views"
-        },
-        e(
-          "button",
-          {
-            type: "button",
-            role: "tab",
-            className: "CommandPanel-tab" + (phoneTab === "code" ? " is-active" : ""),
-            "aria-selected": phoneTab === "code",
-            onClick: () => setPhoneTab("code")
-          },
-          "Code"
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            role: "tab",
-            className: "CommandPanel-tab" + (phoneTab === "snippets" ? " is-active" : ""),
-            "aria-selected": phoneTab === "snippets",
-            onClick: () => setPhoneTab("snippets")
-          },
-          "Snippets",
-          snippets.length ? e("span", { className: "CommandPanel-tabCount" }, String(snippets.length)) : null
-        )
-      ) : null,
+      !phoneUi ? phoneTabs : null,
       e(
         "div",
         { className: "CommandPanel-body" },
@@ -75953,11 +77245,27 @@ ${ESTIMATE_HINT}`,
           "div",
           { className: "CommandPanel-main" },
           editor,
-          toolbar,
-          statusEl
+          phoneUi ? null : toolbar,
+          phoneUi ? null : statusEl
         ) : null,
         showSnippets ? side : null
-      )
+      ),
+      phoneUi ? e(
+        "div",
+        { className: "CommandPanel-phoneFoot" },
+        phoneTab === "code" ? toolbar : null,
+        phoneTab === "code" ? statusEl : null,
+        phoneTabs,
+        props.onRequestClose ? e(
+          "button",
+          {
+            type: "button",
+            className: "CommandPanel-phoneDone",
+            onClick: () => props.onRequestClose && props.onRequestClose()
+          },
+          "Done"
+        ) : null
+      ) : null
     );
   }
 
@@ -76781,6 +78089,10 @@ ${ESTIMATE_HINT}`,
 .ecu-chat-status.is-visible {
   display: block;
 }
+.ecu-chat.is-phone .ecu-chat-status.is-err {
+  /* Fixture / hub pull noise shouldn't eat the compose stack on phone. */
+  display: none;
+}
 .ecu-chat-status.is-err {
   color: #f0a0a0;
 }
@@ -76878,6 +78190,11 @@ ${ESTIMATE_HINT}`,
   border-bottom: 1px solid var(--ecu-chat-line);
   background: var(--ecu-chat-panel);
 }
+/* Phone: keep server pager above the log so compose stays a clean thumb path. */
+.ecu-chat.is-narrow .ecu-chat-server-dots {
+  flex-shrink: 0;
+  padding: 2px 6px 4px;
+}
 .ecu-chat.is-narrow .ecu-chat-main {
   width: 100%;
   min-width: 0;
@@ -76911,10 +78228,14 @@ ${ESTIMATE_HINT}`,
 }
 .ecu-chat.is-narrow .ecu-chat-log {
   padding: 6px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 .ecu-chat.is-narrow .ecu-chat-log .ecu-chat-line {
   padding-top: 6px;
   padding-bottom: 6px;
+  flex: 0 0 auto;
 }
 .ecu-chat.is-narrow .ecu-chat-log,
 .ecu-chat.is-narrow .ecu-chat-body {
@@ -76947,6 +78268,294 @@ ${ESTIMATE_HINT}`,
 .ecu-chat.is-narrow .ecu-chat-send {
   min-width: 72px;
   flex: 0 0 auto;
+}
+
+/* Phone hub \u2014 Material-style segment + bubble transcript. */
+.ecu-chat.is-phone .ecu-chat-phone-hub {
+  flex-shrink: 0;
+  padding: 6px 10px 4px;
+  border-bottom: 1px solid var(--ecu-chat-line);
+  background: var(--ecu-chat-panel);
+}
+.ecu-chat.is-phone .ecu-chat-phone-hub--foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 0;
+  border-top: 1px solid var(--ecu-chat-line);
+  background: var(--ecu-chat-panel);
+}
+.ecu-chat.is-phone .ecu-chat-phone-done {
+  appearance: none;
+  flex: 0 0 auto;
+  width: calc(100% - 20px);
+  margin: 0 10px 8px;
+  min-height: 44px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ecu-chat.is-phone .ecu-chat-phone-seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #101214;
+  border: 1px solid #333;
+}
+.ecu-chat.is-phone .ecu-chat-phone-seg-btn {
+  appearance: none;
+  cursor: pointer;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #a8aeb6;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.ecu-chat.is-phone .ecu-chat-phone-seg-btn.is-on {
+  background: #2a3340;
+  color: #e8f0ff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.ecu-chat.is-phone .ecu-chat-server-pick {
+  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #555;
+  border-radius: 999px;
+  background: #181a20;
+  color: #c9e4ff;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: normal;
+  text-align: left;
+}
+.ecu-chat.is-phone .ecu-chat-server-pick.is-open {
+  border-color: var(--ecu-chat-accent);
+  background: #2a2410;
+  color: #ffe08a;
+}
+.ecu-chat.is-phone .ecu-chat-server-pick-caret {
+  flex: 0 0 auto;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  z-index: 5;
+  max-height: min(52%, 320px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px 14px 0 0;
+  border: 1px solid var(--ecu-chat-line);
+  border-bottom: none;
+  background: var(--ecu-chat-panel);
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.5);
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-head {
+  flex-shrink: 0;
+  padding: 10px 12px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ecu-chat-muted);
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 10px;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-row {
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 6px;
+  padding: 10px 12px;
+  min-height: 44px;
+  border: 1px solid #444;
+  border-radius: 10px;
+  background: #181a20;
+  color: #e8e8e8;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 20px;
+  text-align: left;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-row.is-active {
+  border-color: var(--ecu-chat-accent);
+  background: #2a2410;
+  color: #ffe08a;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-count {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--ecu-chat-muted);
+}
+.ecu-chat.is-phone .ecu-chat-quick-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 2px;
+}
+.ecu-chat.is-phone .ecu-chat-quick-chip {
+  cursor: pointer;
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #555;
+  background: #181a20;
+  color: #ddd;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.1;
+  font-weight: 600;
+}
+.ecu-chat.is-phone .ecu-chat-quick-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ecu-chat.is-phone .ecu-chat-log {
+  padding: 8px 10px 10px;
+}
+.ecu-chat.is-phone .ecu-chat-line {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 88%;
+  padding: 3px 0;
+  align-self: flex-start;
+}
+.ecu-chat.is-phone .ecu-chat-line.ecu-chat-row--mine {
+  align-self: flex-end;
+}
+.ecu-chat.is-phone .ecu-chat-line.ecu-chat-row--system {
+  align-self: center;
+  max-width: 96%;
+}
+.ecu-chat.is-phone .ecu-chat-row {
+  margin: 0;
+  max-width: 100%;
+}
+.ecu-chat.is-phone .ecu-chat-bubble {
+  box-sizing: border-box;
+  padding: 8px 10px 10px;
+  border-radius: 16px 16px 16px 4px;
+  background: #22252c;
+  border: 1px solid #3a4048;
+  color: inherit;
+}
+.ecu-chat.is-phone .ecu-chat-row--mine .ecu-chat-bubble {
+  border-radius: 16px 16px 4px 16px;
+  background: #2a2410;
+  border-color: rgba(201, 162, 39, 0.45);
+}
+.ecu-chat.is-phone .ecu-chat-row--party .ecu-chat-bubble {
+  background: rgba(40, 56, 72, 0.95);
+  border-color: rgba(126, 200, 239, 0.35);
+}
+.ecu-chat.is-phone .ecu-chat-row--pm .ecu-chat-bubble {
+  background: rgba(56, 36, 44, 0.95);
+  border-color: rgba(240, 160, 180, 0.35);
+}
+.ecu-chat.is-phone .ecu-chat-row--system .ecu-chat-bubble {
+  background: transparent;
+  border-color: transparent;
+  font-style: italic;
+}
+.ecu-chat.is-phone .ecu-chat-bubble-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 18px;
+}
+.ecu-chat.is-phone .ecu-chat-row--mine .ecu-chat-bubble-meta {
+  flex-direction: row-reverse;
+}
+.ecu-chat.is-phone .ecu-chat-bubble-meta .ecu-chat-time {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.ecu-chat.is-phone .ecu-chat-bubble-meta .ecu-chat-owner {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: inherit;
+  line-height: inherit;
+}
+.ecu-chat.is-phone .ecu-chat-bubble .ecu-chat-body {
+  display: block;
+  font-size: 16px;
+  line-height: 1.35;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-phone-hub,
+.ecu-chat.is-phone.is-keyboard .ecu-chat-title-from,
+.ecu-chat.is-phone.is-keyboard .ecu-chat-expand {
+  display: none;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-title {
+  min-height: 0;
+  padding: 4px 8px;
+  gap: 6px;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-title-label,
+.ecu-chat.is-phone.is-keyboard .ecu-chat-server-pick {
+  font-size: 14px;
+  line-height: 18px;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-quick-row {
+  display: none;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-status.is-visible {
+  padding-top: 0;
+  line-height: 16px;
+  font-size: 12px;
 }
 ` + phoneShellExpandCss("chat", "ecu-chat-shell-expanded", ".ecu-chat");
   var injected13 = false;
@@ -77123,6 +78732,12 @@ ${ESTIMATE_HINT}`,
     { id: "private", label: "PM" },
     { id: "party", label: "Party" }
   ];
+  var PHONE_HUB_SEGS = [
+    { id: "party", label: "Party" },
+    { id: "server", label: "Server" },
+    { id: "private", label: "Whisper" }
+  ];
+  var PHONE_QUICK_REPLIES = ["omw", "packing", "brb", "heal", "pull"];
   function isLoggedIn() {
     const id = window.user_id;
     return id != null && String(id) !== "";
@@ -77223,13 +78838,25 @@ ${ESTIMATE_HINT}`,
     active.sender = fromName;
     if (active.type === "new") active.to = whisperTo;
   }
-  function rowClassName(msg) {
+  function rowClassName(msg, mine) {
     const parts = ["ecu-chat-row"];
     if (msg.local) parts.push("ecu-chat-local");
+    if (mine) parts.push("ecu-chat-row--mine");
     if (msg.channel === "party") parts.push("ecu-chat-row--party");
     else if (msg.channel === "pm") parts.push("ecu-chat-row--pm");
     else if (msg.channel === "system") parts.push("ecu-chat-row--system");
     return parts.join(" ");
+  }
+  function isMineChatMessage(msg, fromName, observingName) {
+    if (msg.local) return true;
+    const owner = msg.owner && msg.owner !== "^" ? msg.owner : "";
+    if (!owner) return false;
+    const o = owner.toLowerCase();
+    if (fromName && o === fromName.toLowerCase()) return true;
+    if (observingName && msg.channel === "party" && o === observingName.toLowerCase()) {
+      return true;
+    }
+    return false;
   }
   function formatChatTimestamp(at) {
     if (!(at > 0)) return "";
@@ -77255,6 +78882,11 @@ ${ESTIMATE_HINT}`,
     const msg = props.msg;
     const time = formatChatTimestamp(msg.at);
     const ownerName = msg.owner && msg.owner !== "^" ? msg.owner : "";
+    const mine = isMineChatMessage(
+      msg,
+      props.fromName || "",
+      props.observingName || ""
+    );
     const owner = ownerName ? e(
       "button",
       {
@@ -77264,21 +78896,47 @@ ${ESTIMATE_HINT}`,
           if (props.onAuthorClick) props.onAuthorClick(ownerName);
         }
       },
-      ownerName + ":"
+      props.phoneUi ? ownerName : ownerName + ":"
     ) : null;
     const inline = resolveChatInlineColor(msg.channel, msg.color);
     const style = inline ? { color: inline } : void 0;
+    const body = e(
+      "span",
+      { className: "ecu-chat-body" },
+      msg.message,
+      msg.xserver ? e("span", { className: "ecu-chat-x" }, "[X]") : null
+    );
+    if (props.phoneUi) {
+      return e(
+        "div",
+        {
+          className: "ecu-chat-line " + rowClassName(msg, mine),
+          style,
+          title: msg.at ? new Date(msg.at).toLocaleString() : void 0
+        },
+        e(
+          "div",
+          { className: "ecu-chat-bubble" },
+          e(
+            "div",
+            { className: "ecu-chat-bubble-meta" },
+            owner,
+            time ? e("span", { className: "ecu-chat-time" }, time) : null
+          ),
+          body
+        )
+      );
+    }
     return e(
       "div",
       {
-        className: rowClassName(msg),
+        className: rowClassName(msg, mine),
         style,
         title: msg.at ? new Date(msg.at).toLocaleString() : void 0
       },
       time ? e("span", { className: "ecu-chat-time" }, time) : null,
       owner,
-      e("span", { className: "ecu-chat-body" }, msg.message),
-      msg.xserver ? e("span", { className: "ecu-chat-x" }, "[X]") : null
+      body
     );
   }
   function ChatPanel(props = {}) {
@@ -77308,6 +78966,9 @@ ${ESTIMATE_HINT}`,
     const [expanded, setExpanded] = React.useState(
       () => detectViewportProfile() === "phone"
     );
+    const [phoneUi] = React.useState(() => detectViewportProfile() === "phone");
+    const [keyboardOpen, setKeyboardOpen] = React.useState(false);
+    const [serverSheetOpen, setServerSheetOpen] = React.useState(false);
     const [listFilter, setListFilter] = React.useState("all");
     const rootRef = React.useRef(null);
     const mainRef = React.useRef(null);
@@ -77509,6 +79170,11 @@ ${ESTIMATE_HINT}`,
         const shell = findPanelShell(root, "chat");
         if (root) root.style.setProperty("--ecu-vv-keyboard", px);
         if (shell) shell.style.setProperty("--ecu-vv-keyboard", px);
+        if (typeof document !== "undefined") {
+          document.documentElement.style.setProperty("--ecu-vv-keyboard", px);
+          document.body.style.setProperty("--ecu-vv-keyboard", px);
+        }
+        setKeyboardOpen((prev) => prev === inset > 0 ? prev : inset > 0);
         if (inset > 0 && root) {
           const focused = root.querySelector(
             ".ecu-chat-input:focus, .ecu-chat-to:focus"
@@ -77528,34 +79194,60 @@ ${ESTIMATE_HINT}`,
         const shell = findPanelShell(root, "chat");
         if (root) root.style.removeProperty("--ecu-vv-keyboard");
         if (shell) shell.style.removeProperty("--ecu-vv-keyboard");
+        if (typeof document !== "undefined") {
+          document.documentElement.style.removeProperty("--ecu-vv-keyboard");
+          document.body.style.removeProperty("--ecu-vv-keyboard");
+        }
       };
     }, []);
     React.useEffect(() => {
-      const shell = findPanelShell(rootRef.current, "chat");
-      if (!shell) return;
-      if (expanded) {
-        if (!preExpandSizeRef.current) {
-          preExpandSizeRef.current = {
-            w: Math.round(shell.offsetWidth),
-            h: Math.round(shell.offsetHeight)
-          };
+      let cancelled = false;
+      let tries = 0;
+      let timer = 0;
+      const apply = () => {
+        if (cancelled) return;
+        const shell = findPanelShell(rootRef.current, "chat");
+        if (!shell) {
+          if (tries < 12) {
+            tries += 1;
+            timer = window.setTimeout(apply, 50);
+          }
+          return;
         }
-        shell.setAttribute("data-ecu-suspend-frame-resize", "1");
-        shell.classList.add("ecu-chat-shell-expanded");
-        return () => {
+        if (expanded) {
+          if (!preExpandSizeRef.current) {
+            preExpandSizeRef.current = {
+              w: Math.round(shell.offsetWidth),
+              h: Math.round(shell.offsetHeight)
+            };
+          }
+          shell.setAttribute("data-ecu-suspend-frame-resize", "1");
+          shell.classList.add("ecu-chat-shell-expanded");
+          syncPhoneSheetOpenClass();
+          return;
+        }
+        shell.classList.remove("ecu-chat-shell-expanded");
+        shell.removeAttribute("data-ecu-suspend-frame-resize");
+        syncPhoneSheetOpenClass();
+        const saved = preExpandSizeRef.current;
+        preExpandSizeRef.current = null;
+        if (saved && saved.w >= 80 && saved.h >= 80 && typeof props.onFrameSizeRestore === "function") {
+          window.requestAnimationFrame(() => {
+            props.onFrameSizeRestore({ w: saved.w, h: saved.h });
+          });
+        }
+      };
+      apply();
+      return () => {
+        cancelled = true;
+        if (timer) window.clearTimeout(timer);
+        const shell = findPanelShell(rootRef.current, "chat");
+        if (shell) {
           shell.classList.remove("ecu-chat-shell-expanded");
           shell.removeAttribute("data-ecu-suspend-frame-resize");
-        };
-      }
-      shell.classList.remove("ecu-chat-shell-expanded");
-      shell.removeAttribute("data-ecu-suspend-frame-resize");
-      const saved = preExpandSizeRef.current;
-      preExpandSizeRef.current = null;
-      if (saved && saved.w >= 80 && saved.h >= 80 && typeof props.onFrameSizeRestore === "function") {
-        window.requestAnimationFrame(() => {
-          props.onFrameSizeRestore({ w: saved.w, h: saved.h });
-        });
-      }
+        }
+        syncPhoneSheetOpenClass();
+      };
     }, [expanded, props.onFrameSizeRestore]);
     React.useEffect(() => {
       if (!expanded || detectViewportProfile() !== "phone") return;
@@ -77628,6 +79320,7 @@ ${ESTIMATE_HINT}`,
       setWhisperTo(chat.to || "");
       stickBottomRef.current = true;
       if (narrow) setSidebarOpen(false);
+      if (chat.type !== "server") setServerSheetOpen(false);
       bump();
       if (chat.type !== "new" && chat.type !== "party") void pullActiveChat(false);
     };
@@ -77672,11 +79365,59 @@ ${ESTIMATE_HINT}`,
       setWhisperTo(chat.to || to || "");
       stickBottomRef.current = true;
       if (narrow) setSidebarOpen(false);
+      setServerSheetOpen(false);
       bump();
       window.setTimeout(() => {
         const el = inputRef.current;
         if (el && typeof el.focus === "function") el.focus();
       }, 30);
+    };
+    const selectFirstPrivateChat = () => {
+      const list = listHubConversations();
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].type === "private") {
+          selectConversation(list[i].key);
+          return;
+        }
+      }
+      startNewWhisper();
+    };
+    const selectDefaultServerChat = () => {
+      const want = resolveCurrentServerKey();
+      if (want) {
+        rememberHubChat({ type: "server", server: want });
+        selectConversation(hubChatKey({ type: "server", server: want }));
+        return;
+      }
+      const list = listHubConversations();
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].type === "server") {
+          selectConversation(list[i].key);
+          return;
+        }
+      }
+      seedServerChats();
+      const keys = readServerOrderKeys();
+      if (keys.length) {
+        rememberHubChat({ type: "server", server: keys[0] });
+        selectConversation(hubChatKey({ type: "server", server: keys[0] }));
+      }
+    };
+    const activatePhoneHubSeg = (seg) => {
+      if (seg === "party") {
+        setListFilter("party");
+        ensurePartyConversation();
+        selectConversation("party");
+        return;
+      }
+      if (seg === "server") {
+        setListFilter("server");
+        selectDefaultServerChat();
+        return;
+      }
+      setListFilter("private");
+      if ((active == null ? void 0 : active.type) === "private" || (active == null ? void 0 : active.type) === "new") return;
+      selectFirstPrivateChat();
     };
     const loadOlder = async () => {
       if (loadingOlderRef.current) return;
@@ -77704,8 +79445,8 @@ ${ESTIMATE_HINT}`,
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
       stickBottomRef.current = dist < 40;
     };
-    const send = async () => {
-      const text = draft.trim();
+    const send = async (overrideText) => {
+      const text = (overrideText != null ? overrideText : draftRef.current).trim();
       if (!text || sending) return;
       const chat = getHubActiveConversation();
       if (!chat) {
@@ -77793,11 +79534,17 @@ ${ESTIMATE_HINT}`,
       }, 250);
     };
     const observing = getObserving();
+    const observingName = observing && observing.name ? String(observing.name) : "";
     const canParty = !!(observing && observing.name);
     const isParty = !!(active && active.type === "party");
     const partyMessages = isParty ? getChatMessages().filter((m) => m.channel === "party") : [];
     const messages2 = active && !isParty ? sortedMessages(active) : [];
     const title = active ? conversationTitle(active) : "Chat";
+    let phoneHubActiveSeg = "server";
+    if ((active == null ? void 0 : active.type) === "party") phoneHubActiveSeg = "party";
+    else if ((active == null ? void 0 : active.type) === "private" || (active == null ? void 0 : active.type) === "new") {
+      phoneHubActiveSeg = "private";
+    }
     const statusLine = !isLoggedIn() && !isParty ? "Log in to use Hub chat" : isParty && !canParty ? "Observe a character to use party chat" : statusErr ? status : status;
     const titleBusy = !!(active && active.loading && !active.loaded && !isParty);
     const fromOptions = [];
@@ -77879,6 +79626,81 @@ ${ESTIMATE_HINT}`,
         )
       );
     }
+    const phoneHubSegButtons = [];
+    if (phoneUi) {
+      for (let i = 0; i < PHONE_HUB_SEGS.length; i++) {
+        const seg = PHONE_HUB_SEGS[i];
+        phoneHubSegButtons.push(
+          e(
+            "button",
+            {
+              key: seg.id,
+              type: "button",
+              className: "ecu-chat-phone-seg-btn" + (phoneHubActiveSeg === seg.id ? " is-on" : ""),
+              "aria-pressed": phoneHubActiveSeg === seg.id,
+              onClick: () => activatePhoneHubSeg(seg.id)
+            },
+            seg.label
+          )
+        );
+      }
+    }
+    const serverSheetRows = [];
+    if (phoneUi) {
+      const servers = window.X && Array.isArray(window.X.servers) ? window.X.servers : [];
+      for (let i = 0; i < servers.length; i++) {
+        const server = servers[i];
+        if (!(server == null ? void 0 : server.key)) continue;
+        const key = hubChatKey({ type: "server", server: String(server.key) });
+        const selected = (active == null ? void 0 : active.key) === key;
+        const label = serverUiLabel(String(server.key));
+        const online = Number(server.players) || 0;
+        serverSheetRows.push(
+          e(
+            "button",
+            {
+              key,
+              type: "button",
+              className: "ecu-chat-server-sheet-row" + (selected ? " is-active" : ""),
+              onClick: () => {
+                rememberHubChat({ type: "server", server: String(server.key) });
+                selectConversation(key);
+                setServerSheetOpen(false);
+              }
+            },
+            e("span", { className: "ecu-chat-server-sheet-label" }, label),
+            e(
+              "span",
+              { className: "ecu-chat-server-sheet-count" },
+              String(online) + " online"
+            )
+          )
+        );
+      }
+    }
+    const quickReplyChips = [];
+    if (phoneUi) {
+      for (let i = 0; i < PHONE_QUICK_REPLIES.length; i++) {
+        const text = PHONE_QUICK_REPLIES[i];
+        quickReplyChips.push(
+          e(
+            "button",
+            {
+              key: text,
+              type: "button",
+              className: "ecu-chat-quick-chip",
+              disabled: sending || (isParty ? !canParty : !isLoggedIn()),
+              onClick: () => {
+                setDraft(text);
+                draftRef.current = text;
+                void send(text);
+              }
+            },
+            text
+          )
+        );
+      }
+    }
     const filterButtons = [];
     for (let i = 0; i < SIDEBAR_FILTERS.length; i++) {
       const f = SIDEBAR_FILTERS[i];
@@ -77905,6 +79727,9 @@ ${ESTIMATE_HINT}`,
             e(ChatRow, {
               key: msg.id,
               msg,
+              phoneUi,
+              fromName,
+              observingName,
               onAuthorClick: (name) => startNewWhisper(name)
             })
           );
@@ -77955,6 +79780,9 @@ ${ESTIMATE_HINT}`,
             e(ChatRow, {
               key: msg.id,
               msg,
+              phoneUi,
+              fromName,
+              observingName,
               onAuthorClick: (name) => startNewWhisper(name)
             })
           );
@@ -77972,7 +79800,7 @@ ${ESTIMATE_HINT}`,
     return e(
       "div",
       {
-        className: "ecu-chat" + (narrow ? " is-narrow" : "") + (narrow && sidebarOpen ? " is-sidebar-open" : "") + (expanded ? " is-expanded" : ""),
+        className: "ecu-chat" + (phoneUi ? " is-phone" : "") + (narrow ? " is-narrow" : "") + (narrow && sidebarOpen ? " is-sidebar-open" : "") + (expanded ? " is-expanded" : "") + (keyboardOpen ? " is-keyboard" : ""),
         "data-ecu-chat": "1",
         ref: rootRef
       },
@@ -78038,7 +79866,7 @@ ${ESTIMATE_HINT}`,
               ref: titleRef,
               className: "ecu-chat-title" + (titleBusy ? " is-busy" : "")
             },
-            narrow ? e(
+            narrow && !phoneUi ? e(
               "button",
               {
                 type: "button",
@@ -78048,7 +79876,28 @@ ${ESTIMATE_HINT}`,
               },
               sidebarOpen ? "Hide" : "Chats"
             ) : null,
-            e("span", { className: "ecu-chat-title-label" }, title),
+            phoneUi && phoneHubActiveSeg === "private" ? e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-chat-title-toggle" + (sidebarOpen ? " is-open" : ""),
+                onClick: () => setSidebarOpen(!sidebarOpen),
+                "aria-expanded": sidebarOpen
+              },
+              sidebarOpen ? "Hide" : "Chats"
+            ) : null,
+            !(phoneUi && (active == null ? void 0 : active.type) === "server") ? e("span", { className: "ecu-chat-title-label" }, title) : null,
+            phoneUi && (active == null ? void 0 : active.type) === "server" ? e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-chat-server-pick" + (serverSheetOpen ? " is-open" : ""),
+                "aria-expanded": serverSheetOpen,
+                onClick: () => setServerSheetOpen(!serverSheetOpen)
+              },
+              title,
+              e("span", { className: "ecu-chat-server-pick-caret" }, "\u25BE")
+            ) : null,
             !isParty ? e(
               "label",
               {
@@ -78084,7 +79933,7 @@ ${ESTIMATE_HINT}`,
             })
           ),
           (() => {
-            if (!narrow) return null;
+            if (!narrow || phoneUi) return null;
             const serverKeys = listServerChatKeys(
               conversations,
               readServerOrderKeys()
@@ -78126,9 +79975,45 @@ ${ESTIMATE_HINT}`,
             },
             statusLine
           ) : null,
+          phoneUi && serverSheetOpen ? e("button", {
+            key: "server-sheet-backdrop",
+            type: "button",
+            className: "ecu-chat-server-sheet-backdrop",
+            "aria-label": "Close server list",
+            onClick: () => setServerSheetOpen(false)
+          }) : null,
+          phoneUi && serverSheetOpen ? e(
+            "div",
+            {
+              key: "server-sheet",
+              className: "ecu-chat-server-sheet",
+              role: "dialog",
+              "aria-label": "Server chats"
+            },
+            e("div", { className: "ecu-chat-server-sheet-head" }, "Servers"),
+            e("div", { className: "ecu-chat-server-sheet-list" }, serverSheetRows)
+          ) : null,
+          phoneUi ? e(
+            "div",
+            {
+              className: "ecu-chat-phone-hub ecu-chat-phone-hub--foot",
+              role: "group",
+              "aria-label": "Chat channel"
+            },
+            e("div", { className: "ecu-chat-phone-seg" }, phoneHubSegButtons)
+          ) : null,
           e(
             "div",
             { className: "ecu-chat-compose" },
+            phoneUi && quickReplyChips.length ? e(
+              "div",
+              {
+                className: "ecu-chat-quick-row",
+                role: "group",
+                "aria-label": "Quick replies"
+              },
+              quickReplyChips
+            ) : null,
             e(
               "div",
               { className: "ecu-chat-compose-row" },
@@ -78174,7 +80059,16 @@ ${ESTIMATE_HINT}`,
                 sending ? "\u2026" : "Send"
               )
             )
-          )
+          ),
+          phoneUi && props.onRequestClose ? e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-chat-phone-done",
+              onClick: () => props.onRequestClose && props.onRequestClose()
+            },
+            "Done"
+          ) : null
         )
       )
     );
@@ -79243,6 +81137,139 @@ ${ESTIMATE_HINT}`,
   function compoundStation(G) {
     return mainShrineCoords("compound", G);
   }
+  var VENDOR_SELL_PREF = [
+    "basics",
+    "scrolls",
+    "fancypots",
+    "pots",
+    "wbartender",
+    "tbartender"
+  ];
+  function vendorSellPrefRank(id) {
+    if (!id) return 999;
+    const i = VENDOR_SELL_PREF.indexOf(id);
+    return i >= 0 ? i : 100;
+  }
+  function isGoldMerchantNpc(npc) {
+    if (!npc || npc.role !== "merchant") return false;
+    if (!Array.isArray(npc.items) || !npc.items.length) return false;
+    for (let i = 0; i < npc.items.length; i++) {
+      if (npc.items[i]) return true;
+    }
+    return false;
+  }
+  function pushVendorStation(out, seen, station) {
+    const key = String(station.map) + "|" + String(station.id || "") + "|" + station.x + "|" + station.y;
+    if (seen[key]) return;
+    seen[key] = true;
+    out.push(station);
+  }
+  function listVendorSellStations(G) {
+    const g = G || getG();
+    if (!g || !g.maps) return [];
+    const out = [];
+    const seen = {};
+    const mapNames = Object.keys(g.maps);
+    for (let i = 0; i < mapNames.length; i++) {
+      const mapName = mapNames[i];
+      const map = g.maps[mapName];
+      if (!map) continue;
+      const merchants = map.merchants;
+      if (Array.isArray(merchants) && merchants.length) {
+        for (let j = 0; j < merchants.length; j++) {
+          const c = merchants[j];
+          if (!c) continue;
+          const id = c.id != null ? String(c.id) : "";
+          const npc = id && g.npcs ? g.npcs[id] : null;
+          if (!isGoldMerchantNpc(npc)) continue;
+          const x = Number(c.x);
+          const y = Number(c.y);
+          if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+          pushVendorStation(out, seen, {
+            map: String(c.map || mapName),
+            x,
+            y,
+            id: id || void 0
+          });
+        }
+        continue;
+      }
+      const npcs = map.npcs;
+      if (Array.isArray(npcs)) {
+        for (let j = 0; j < npcs.length; j++) {
+          const entry = npcs[j];
+          if (!entry || entry.id == null) continue;
+          const id = String(entry.id);
+          const npc = g.npcs ? g.npcs[id] : null;
+          if (!isGoldMerchantNpc(npc)) continue;
+          const pos = entry.position;
+          if (pos && pos.length >= 2) {
+            const x = Number(pos[0]);
+            const y = Number(pos[1]);
+            if (Number.isFinite(x) && Number.isFinite(y)) {
+              pushVendorStation(out, seen, { map: mapName, x, y, id });
+              continue;
+            }
+          }
+          const fromRef = findNpcCoords(id, g);
+          if (fromRef) pushVendorStation(out, seen, fromRef);
+        }
+      }
+    }
+    if (!out.length && g.npcs) {
+      const ids = Object.keys(g.npcs);
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
+        if (!isGoldMerchantNpc(g.npcs[id])) continue;
+        const coords = findNpcCoords(id, g);
+        if (coords) pushVendorStation(out, seen, coords);
+      }
+    }
+    return out;
+  }
+  function findVendorSellStation(G, entity) {
+    var _a;
+    const g = G || getG();
+    const stations = listVendorSellStations(g);
+    if (!stations.length) {
+      for (let i = 0; i < VENDOR_SELL_PREF.length; i++) {
+        const coords = findNpcCoords(VENDOR_SELL_PREF[i], g);
+        if (coords) return coords;
+      }
+      return null;
+    }
+    const ent = resolveObservedEntity(entity);
+    const entMap = ent && ent.map != null && String(ent.map) ? String(ent.map) : "";
+    const sameMap = entMap ? stations.filter((s) => s.map === entMap) : [];
+    const pool = sameMap.length ? sameMap : stations;
+    if (!ent || !Number.isFinite(Number((_a = ent.x) != null ? _a : ent.real_x))) {
+      let best2 = null;
+      let bestRank2 = Infinity;
+      for (let i = 0; i < pool.length; i++) {
+        const s = pool[i];
+        const rank = vendorSellPrefRank(s.id);
+        if (rank < bestRank2) {
+          bestRank2 = rank;
+          best2 = s;
+        }
+      }
+      return best2 || pool[0] || null;
+    }
+    let best = null;
+    let bestDist = Infinity;
+    let bestRank = Infinity;
+    for (let i = 0; i < pool.length; i++) {
+      const s = pool[i];
+      const dist = distToStation(ent, s);
+      const rank = vendorSellPrefRank(s.id);
+      if (!best || dist < bestDist - 0.5 || Math.abs(dist - bestDist) <= 0.5 && rank < bestRank) {
+        best = s;
+        bestDist = dist;
+        bestRank = rank;
+      }
+    }
+    return best;
+  }
   function findVendorCoordsForItem(itemName, G) {
     const g = G || getG();
     const name = String(itemName || "").trim();
@@ -79965,6 +81992,21 @@ ${ESTIMATE_HINT}`,
       `if(${slotVar}<0){game_log(${lit7(commLogText("station \xB7 missing after buy \xB7 " + itemName))});return;}`
     ].join("");
   }
+  function buildShrineSkillPrefixJs(opts) {
+    if (!opts) return "";
+    const parts = [];
+    if (opts.massproduction) {
+      parts.push(
+        `try{if(!(character.s&&character.s.massproduction)){await use_skill("massproduction");game_log(${lit7(commLogText("skill \xB7 massproduction"))});}}catch(__e){}`
+      );
+    }
+    if (opts.massproductionpp) {
+      parts.push(
+        `try{if(!(character.s&&character.s.massproductionpp)){await use_skill("massproductionpp");game_log(${lit7(commLogText("skill \xB7 massproductionpp"))});}}catch(__e){}`
+      );
+    }
+    return parts.join("");
+  }
   function vendorForBuy(name) {
     if (!name) return null;
     return findVendorCoordsForItem(name, getG());
@@ -79985,6 +82027,7 @@ ${ESTIMATE_HINT}`,
       parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
     }
     parts.push(buildEnsureStationJs(station));
+    parts.push(buildShrineSkillPrefixJs(buyOpts));
     parts.push(resolveInvSlotNamedJs(item, "__uItem"));
     if (scroll) {
       if (buyScroll) {
@@ -80036,6 +82079,7 @@ ${ESTIMATE_HINT}`,
       parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
     }
     parts.push(buildEnsureStationJs(station));
+    parts.push(buildShrineSkillPrefixJs(buyOpts));
     parts.push(resolveInvSlotNamedJs(items[0], "__c0"));
     parts.push(resolveInvSlotNamedJs(items[1], "__c1"));
     parts.push(resolveInvSlotNamedJs(items[2], "__c2"));
@@ -80159,6 +82203,126 @@ ${ESTIMATE_HINT}`,
     if (!obs || !Array.isArray(obs.items)) return null;
     return obs.items;
   }
+
+  // src/host/vendorSellCommands.ts
+  function lit8(value) {
+    return JSON.stringify(String(value));
+  }
+  function scheduleBagRefresh5() {
+    const delays = [1200, 4e3, 1e4];
+    for (let i = 0; i < delays.length; i++) {
+      window.setTimeout(() => {
+        try {
+          refreshObservedInventory();
+        } catch (e2) {
+        }
+      }, delays[i]);
+    }
+  }
+  function defaultVendorSellStation(G, entity) {
+    return findVendorSellStation(G || getG(), entity);
+  }
+  function itemIsLocked(item) {
+    if (!item) return false;
+    const lock = item.l;
+    return lock != null && lock !== false && lock !== 0;
+  }
+  function itemIsCash(itemName) {
+    const name = String(itemName || "").trim();
+    if (!name) return false;
+    const G = getG();
+    const def = G && G.items && G.items[name];
+    return !!(def && def.cash);
+  }
+  function canVendorSellItem(fp, item) {
+    if (!fp || !fp.name) return false;
+    if (itemIsLocked(item)) return false;
+    if (itemIsCash(fp.name)) return false;
+    const unit = vendorGoldPrice(fp.name, fp.level);
+    return unit != null && unit > 0;
+  }
+  function buildVendorSellScript(fp, quantity, station) {
+    const qty = Number(quantity) | 0;
+    if (qty <= 0) {
+      return wrapCommandScript(
+        `game_log(${lit8(commLogText("vendor-sell aborted \u2014 invalid quantity"))});`
+      );
+    }
+    const dest = station !== void 0 ? station : observingHasComputer() ? null : defaultVendorSellStation(getG());
+    const sellCall = qty === 1 ? `await sell(__slot)` : `await sell(__slot,${qty})`;
+    const okLabel = commLogText(
+      "vendor-sell ok \xB7 " + fp.name + (qty > 1 ? " \xD7" + qty : "")
+    );
+    const via = dest == null ? "computer" : dest.id ? String(dest.id) : "merchant";
+    return wrapCommandScript(
+      [
+        buildEnsureStationJs(dest),
+        resolveInvSlotJs(fp),
+        `if(it&&it.l){game_log(${lit8(commLogText("vendor-sell aborted \u2014 locked"))});return;}`,
+        `try{${sellCall};game_log(${lit8(okLabel + " \xB7 " + via)});}`,
+        `catch(__e){game_log(${lit8(commLogText("vendor-sell failed"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));}`
+      ].join("")
+    );
+  }
+  function vendorSellCommand(fp, quantity) {
+    const script = buildVendorSellScript(fp, quantity);
+    const ok = emitObserverCommand(
+      script,
+      `vendor-sell ${fp.name}` + (quantity > 1 ? ` \xD7${quantity}` : "")
+    );
+    if (!ok) return false;
+    scheduleBagRefresh5();
+    return true;
+  }
+
+  // src/host/vendorSellBagMenuActions.ts
+  function confirmVendorSell(itemName, unitPrice, quantity) {
+    const total = unitPrice * quantity;
+    return window.confirm(
+      `Sell ${quantity}\xD7 ${itemName} to NPC vendor for ${formatTradeGold(total)} gold (${formatTradeGold(unitPrice)} each)?`
+    );
+  }
+  function buildVendorSellBagMenuActions(ctx) {
+    if (!canEditObservedBag()) return [];
+    if (!ctx.fp || !ctx.fp.name) return [];
+    const unit = vendorGoldPrice(ctx.fp.name, ctx.fp.level);
+    const locked = itemIsLocked(ctx.item);
+    const cash = itemIsCash(ctx.fp.name);
+    const sellable = canVendorSellItem(ctx.fp, ctx.item);
+    let title = observingHasComputer() ? "sell() via computer \u2014 no travel" : "sell() on the observed character \u2014 smart_moves to the nearest G gold merchant if needed";
+    if (locked) title = "Item is locked";
+    else if (cash) title = "Shells / cash items cannot be sold for gold";
+    else if (unit == null || !(unit > 0)) title = "No NPC vendor gold value";
+    const goldHint = unit != null && unit > 0 ? ` (${formatTradeGold(unit)}g)` : "";
+    return [
+      {
+        id: "vendor-sell",
+        label: sellable ? `Sell to vendor${goldHint}\u2026` : locked ? "Sell to vendor (locked)" : "Sell to vendor\u2026",
+        title,
+        separatorBefore: true,
+        disabled: !sellable,
+        run: () => {
+          if (!sellable || unit == null) return;
+          const maxQ = ctx.fp.q != null && Number(ctx.fp.q) > 0 ? Number(ctx.fp.q) | 0 : 1;
+          void (async () => {
+            let q = 1;
+            if (maxQ > 1) {
+              const picked = await showTradeQuantityDialog({
+                itemName: ctx.fp.name,
+                maxQ,
+                defaultQ: maxQ
+              });
+              if (picked == null) return;
+              q = picked;
+            }
+            if (!confirmVendorSell(ctx.fp.name, unit, q)) return;
+            vendorSellCommand(ctx.fp, q);
+          })();
+        }
+      }
+    ];
+  }
+  registerBagMenuProvider(buildVendorSellBagMenuActions);
 
   // src/lib/bagUpgradeCompound.ts
   function shrinePickId(pick) {
@@ -80519,6 +82683,55 @@ ${ESTIMATE_HINT}`,
   function formatApproxChancePct(chance) {
     const pct = chance <= 1 ? chance * 100 : chance;
     return "~" + pct.toFixed(0) + "%";
+  }
+
+  // src/lib/shrineOutcomeWatch.ts
+  function isBagPlaceholder(it) {
+    return !!(it && it.name === "placeholder");
+  }
+  function countNameLevel(items, name, level) {
+    if (!items) return 0;
+    let n = 0;
+    const want = Number(level) || 0;
+    const wantName = String(name || "");
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || it.name !== wantName) continue;
+      const lv = it.level != null ? Number(it.level) : 0;
+      if (lv === want) n += 1;
+    }
+    return n;
+  }
+  function evaluateShrineBagWatch(opts) {
+    const items = opts.items;
+    const name = String(opts.name || "");
+    const fromLevel = Number(opts.fromLevel) || 0;
+    const nextLevel = fromLevel + 1;
+    const atNext = countNameLevel(items, name, nextLevel);
+    if (atNext > opts.beforeNext) return "success";
+    const slots = opts.watchedSlots || [];
+    let hasPlaceholder = false;
+    let allMissing = slots.length > 0;
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i] | 0;
+      const it = items && items[slot];
+      if (isBagPlaceholder(it)) {
+        hasPlaceholder = true;
+        allMissing = false;
+        continue;
+      }
+      if (it && it.name) {
+        allMissing = false;
+        const lv = it.level != null ? Number(it.level) : 0;
+        if (it.name === name && lv === nextLevel) return "success";
+      }
+    }
+    if (hasPlaceholder) return "progress";
+    const debounce = opts.failureDebounceMs != null && opts.failureDebounceMs > 0 ? opts.failureDebounceMs : 2500;
+    if (allMissing && atNext <= opts.beforeNext && opts.elapsedMs > debounce) {
+      return "failure";
+    }
+    return "pending";
   }
 
   // src/ui/bag/upgradeCompoundDialogCss.ts
@@ -81069,6 +83282,31 @@ ${ESTIMATE_HINT}`,
   opacity: 0.42;
   cursor: not-allowed;
 }
+.ecu-upg__skills {
+  margin: 0 0 10px;
+}
+.ecu-upg__skills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.22);
+}
+.ecu-upg__skill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  color: rgba(220, 210, 185, 0.92);
+  cursor: pointer;
+  user-select: none;
+}
+.ecu-upg__skill input {
+  margin: 0;
+  accent-color: #c9a24a;
+}
 `;
   function ensureUpgradeCompoundDialogCss() {
     if (injected14) return;
@@ -81080,6 +83318,8 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/bag/upgradeCompoundDialog.ts
+  var shrineSkillMassproduction = true;
+  var shrineSkillMassproductionPp = true;
   var openBackdrop3 = null;
   var finishOpen3 = null;
   var onDialogCleanup = null;
@@ -81153,22 +83393,68 @@ ${ESTIMATE_HINT}`,
     return levelPlus(from) + " \u2192 " + levelPlus(from + 1) + " " + base;
   }
   var CHANCE_TITLE = "Rough ~estimate from local tables \u2014 not live calculate(). Exact odds only on the character client.";
-  function countNameLevel(items, name, level) {
-    if (!items) return 0;
-    let n = 0;
-    const want = Number(level) || 0;
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (!it || it.name !== name) continue;
-      const lv = it.level != null ? Number(it.level) : 0;
-      if (lv === want) n += 1;
+  function observingIsMerchant() {
+    try {
+      const obs = getObserving() || window.observing;
+      if (!obs) return false;
+      const id = obs.id != null ? String(obs.id) : obs.name != null ? String(obs.name) : void 0;
+      const ctype = resolvePlayerCtype(id, obs);
+      return ctype === "merchant";
+    } catch (e2) {
+      return false;
     }
-    return n;
+  }
+  function makeMerchantSkillChecks() {
+    if (!observingIsMerchant()) return null;
+    const root = document.createElement("div");
+    root.className = "ecu-upg__skills";
+    const label = document.createElement("div");
+    label.className = "ecu-upg__section-label";
+    label.textContent = "Merchant skills";
+    root.appendChild(label);
+    const row3 = document.createElement("div");
+    row3.className = "ecu-upg__skills-row";
+    const mk = (id, text, initial) => {
+      const wrap = document.createElement("label");
+      wrap.className = "ecu-upg__skill";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = initial;
+      input.setAttribute("data-skill", id);
+      const span = document.createElement("span");
+      span.textContent = text;
+      wrap.appendChild(input);
+      wrap.appendChild(span);
+      wrap.title = "Cast before upgrade/compound if the buff is not already up";
+      row3.appendChild(wrap);
+      return input;
+    };
+    const mass = mk("massproduction", "Mass Production", shrineSkillMassproduction);
+    const massPp = mk(
+      "massproductionpp",
+      "Mass Production PP",
+      shrineSkillMassproductionPp
+    );
+    mass.addEventListener("change", () => {
+      shrineSkillMassproduction = mass.checked;
+    });
+    massPp.addEventListener("change", () => {
+      shrineSkillMassproductionPp = massPp.checked;
+    });
+    root.appendChild(row3);
+    return {
+      root,
+      read: () => ({
+        massproduction: mass.checked,
+        massproductionpp: massPp.checked
+      })
+    };
   }
   function watchLevelBump(opts) {
     let done = false;
     const started2 = Date.now();
     const timers = [];
+    let sawProgress = false;
     const finish = (fn) => {
       if (done) return;
       done = true;
@@ -81182,25 +83468,70 @@ ${ESTIMATE_HINT}`,
       } catch (e2) {
       }
       const items = observingBagItems();
-      const atLevel = countNameLevel(items, opts.name, opts.fromLevel);
-      const atNext = countNameLevel(items, opts.name, opts.fromLevel + 1);
-      if (atNext > opts.beforeNext) {
+      const verdict = evaluateShrineBagWatch({
+        items,
+        name: opts.name,
+        fromLevel: opts.fromLevel,
+        beforeNext: opts.beforeNext,
+        watchedSlots: opts.watchedSlots,
+        elapsedMs: Date.now() - started2
+      });
+      if (verdict === "success") {
         finish(() => opts.onSuccess());
         return;
       }
-      if (atLevel < opts.beforeAtLevel && atNext <= opts.beforeNext && Date.now() - started2 > 1600) {
+      if (verdict === "failure") {
         finish(() => opts.onDestroyed());
         return;
       }
+      if (verdict === "progress") {
+        sawProgress = true;
+        if (opts.onProgress) opts.onProgress();
+      }
     };
-    const kicks = [700, 1400, 2800, 5200, 9e3];
+    const kicks = [500, 1e3, 1800, 2800, 4200, 6500, 9e3, 12e3, 16e3];
     for (let i = 0; i < kicks.length; i++) {
       timers.push(window.setTimeout(poll, kicks[i]));
     }
     timers.push(
       window.setTimeout(() => {
+        if (done) return;
+        if (sawProgress) {
+          try {
+            refreshObservedInventory();
+          } catch (e2) {
+          }
+          const items = observingBagItems();
+          const verdict = evaluateShrineBagWatch({
+            items,
+            name: opts.name,
+            fromLevel: opts.fromLevel,
+            beforeNext: opts.beforeNext,
+            watchedSlots: opts.watchedSlots,
+            elapsedMs: Date.now() - started2,
+            failureDebounceMs: 4e3
+          });
+          if (verdict === "success") {
+            finish(() => opts.onSuccess());
+            return;
+          }
+          if (verdict === "failure") {
+            finish(() => opts.onDestroyed());
+            return;
+          }
+          if (verdict === "progress") {
+            timers.push(
+              window.setTimeout(() => {
+                if (done) return;
+                poll();
+                if (!done) finish(() => opts.onTimeout());
+              }, 8e3)
+            );
+            return;
+          }
+        }
         finish(() => opts.onTimeout());
-      }, 12e3)
+      }, 18e3)
     );
     return {
       cancel: () => finish(() => {
@@ -81899,27 +84230,25 @@ ${ESTIMATE_HINT}`,
         watch = null;
         unsubBagClick();
       };
+      const skillChecks = makeMerchantSkillChecks();
       const tryConfirm = () => {
         if (okBtn.disabled || busy) return;
         const scroll = findScroll(liveOffer.scrolls, scrollId);
         const offering = findOffering(liveOffer.offerings, offeringId);
+        const skills = skillChecks ? skillChecks.read() : void 0;
         const picked = {
           item: fpFromPick(liveOffer.item),
           scroll: scroll ? fpFromShrinePick(scroll) : null,
           offering: offering ? fpFromShrinePick(offering) : null,
           buyScroll: scroll && scroll.buy ? scroll.name : null,
-          buyOffering: offering && offering.buy ? offering.name : null
+          buyOffering: offering && offering.buy ? offering.name : null,
+          skills
         };
         if (!options || !options.execute) {
           closeDialog2(picked);
           return;
         }
         const bag = observingBagItems();
-        const beforeAtLevel = countNameLevel(
-          bag,
-          liveOffer.item.name,
-          fromLevel
-        );
         const beforeNext = countNameLevel(
           bag,
           liveOffer.item.name,
@@ -81939,8 +84268,8 @@ ${ESTIMATE_HINT}`,
         watch = watchLevelBump({
           name: liveOffer.item.name,
           fromLevel,
-          beforeAtLevel,
           beforeNext,
+          watchedSlots: [liveOffer.item.slot],
           onSuccess: () => {
             watch = null;
             hint.textContent = "Success \u2014 preparing next\u2026";
@@ -81954,6 +84283,9 @@ ${ESTIMATE_HINT}`,
             busy = false;
             hint.textContent = "Failed \u2014 item gone.";
             window.setTimeout(() => closeDialog2(null), 1600);
+          },
+          onProgress: () => {
+            hint.textContent = "Rolling\u2026";
           },
           onTimeout: () => {
             watch = null;
@@ -81974,6 +84306,7 @@ ${ESTIMATE_HINT}`,
       panel.appendChild(trial.root);
       panel.appendChild(scrollSection);
       panel.appendChild(offerSection);
+      if (skillChecks) panel.appendChild(skillChecks.root);
       panel.appendChild(hint);
       panel.appendChild(actions);
       paint();
@@ -82384,6 +84717,7 @@ ${ESTIMATE_HINT}`,
         watch = null;
         unsubBagClick();
       };
+      const skillChecks = makeMerchantSkillChecks();
       const tryConfirm = () => {
         if (okBtn.disabled || busy) return;
         const scroll = findScroll(liveOffer.scrolls, scrollId);
@@ -82393,23 +84727,20 @@ ${ESTIMATE_HINT}`,
         const p1 = liveOffer.partners.find((p) => p.slot === partnerSlots[1]);
         if (!p0 || !p1) return;
         const offering = findOffering(liveOffer.offerings, offeringId);
+        const skills = skillChecks ? skillChecks.read() : void 0;
         const picked = {
           items: [fpFromPick(liveOffer.item), fpFromPick(p0), fpFromPick(p1)],
           scroll: fpFromShrinePick(scroll),
           offering: offering ? fpFromShrinePick(offering) : null,
           buyScroll: scroll.buy ? scroll.name : null,
-          buyOffering: offering && offering.buy ? offering.name : null
+          buyOffering: offering && offering.buy ? offering.name : null,
+          skills
         };
         if (!options || !options.execute) {
           closeDialog2(picked);
           return;
         }
         const bag = observingBagItems();
-        const beforeAtLevel = countNameLevel(
-          bag,
-          liveOffer.item.name,
-          fromLevel
-        );
         const beforeNext = countNameLevel(
           bag,
           liveOffer.item.name,
@@ -82429,8 +84760,8 @@ ${ESTIMATE_HINT}`,
         watch = watchLevelBump({
           name: liveOffer.item.name,
           fromLevel,
-          beforeAtLevel,
           beforeNext,
+          watchedSlots: [liveOffer.item.slot, p0.slot, p1.slot],
           onSuccess: () => {
             watch = null;
             hint.textContent = "Success \u2014 preparing next\u2026";
@@ -82444,6 +84775,9 @@ ${ESTIMATE_HINT}`,
             busy = false;
             hint.textContent = "Failed \u2014 copies gone.";
             window.setTimeout(() => closeDialog2(null), 1600);
+          },
+          onProgress: () => {
+            hint.textContent = "Rolling\u2026";
           },
           onTimeout: () => {
             watch = null;
@@ -82465,6 +84799,7 @@ ${ESTIMATE_HINT}`,
       panel.appendChild(partnerSection);
       panel.appendChild(scrollSection);
       panel.appendChild(offerSection);
+      if (skillChecks) panel.appendChild(skillChecks.root);
       panel.appendChild(hint);
       panel.appendChild(actions);
       paint();
@@ -82615,7 +84950,9 @@ ${ESTIMATE_HINT}`,
               upgrade.station,
               {
                 buyScroll: picked.buyScroll,
-                buyOffering: picked.buyOffering
+                buyOffering: picked.buyOffering,
+                massproduction: !!(picked.skills && picked.skills.massproduction),
+                massproductionpp: !!(picked.skills && picked.skills.massproductionpp)
               }
             )
           });
@@ -82655,7 +84992,9 @@ ${ESTIMATE_HINT}`,
               compound.station,
               {
                 buyScroll: picked.buyScroll,
-                buyOffering: picked.buyOffering
+                buyOffering: picked.buyOffering,
+                massproduction: !!(picked.skills && picked.skills.massproduction),
+                massproductionpp: !!(picked.skills && picked.skills.massproductionpp)
               }
             )
           });
@@ -83283,25 +85622,91 @@ ${ESTIMATE_HINT}`,
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 12px;
-  padding: 24px 16px;
-  text-align: center;
+  padding: 20px 16px 16px;
+  text-align: left;
   color: #a8aeb6;
   font-size: 14px;
+  min-height: 0;
+}
+.comm-bag-panel__empty-icon {
+  align-self: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  background: #2a2410;
+  border: 1px solid #a86;
+  color: #ffe08a;
+  font-size: 34px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.comm-bag-panel__empty-title {
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: #e8eef4;
+}
+.comm-bag-panel__empty-copy {
+  text-align: center;
+  line-height: 1.45;
+  color: #a8aeb6;
+}
+.comm-bag-panel__empty-steps {
+  margin: 4px 0 0;
+  padding: 14px 14px 14px 14px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  background: #121212;
+  color: #c8cdd4;
+  font-size: 14px;
+  line-height: 1.5;
+  list-style: none;
+  counter-reset: ecu-bag-step;
+}
+.comm-bag-panel__empty-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  counter-increment: ecu-bag-step;
+}
+.comm-bag-panel__empty-steps li::before {
+  content: counter(ecu-bag-step);
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #2a2410;
+  border: 1px solid #a86;
+  color: #ffe08a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 26px;
+  text-align: center;
+}
+.comm-bag-panel__empty-steps li + li {
+  margin-top: 10px;
 }
 .comm-bag-panel__empty-btn {
   appearance: none;
   border: 1px solid #a86;
   background: #2a2410;
   color: #ffe08a;
-  min-height: 44px;
-  padding: 10px 16px;
+  min-height: 48px;
+  padding: 12px 16px;
   font: inherit;
   font-size: 15px;
+  font-weight: 600;
   border-radius: 8px;
   cursor: pointer;
+  margin-top: auto;
+  width: 100%;
 }
 .comm-bag-panel.is-phone .comm-bag-sync-chrome {
   min-height: 48px;
@@ -83314,26 +85719,33 @@ ${ESTIMATE_HINT}`,
   box-sizing: border-box;
 }
 .comm-bag-panel.is-phone .comm-bag-sync-chrome button {
-  min-height: 40px;
-  padding: 8px 12px;
-  font-size: 14px;
+  min-height: 48px;
+  min-width: 88px;
+  padding: 10px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
 }
-/* Phone expand: sync/actions sit as a foot so the sheet isn\u2019t an empty void under the grid. */
+/* Phone expand: grid fills the sheet; actions live in the foot. */
+.comm-bag-panel.is-phone {
+  display: flex;
+  flex-direction: column;
+}
 .comm-bag-panel.is-phone.is-expanded .comm-bag-panel__head {
   order: 1;
 }
-.comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
-  order: 2;
-}
 .comm-bag-panel.is-phone.is-expanded .comm-bag-sync-chrome {
-  order: 3;
-  margin-top: auto;
+  order: 2;
+  margin-top: 0;
   margin-bottom: 0;
-  border-left: none;
-  border-right: none;
-  border-bottom: none;
-  border-top: 1px solid #333;
-  background: #121212;
+}
+.comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
+  order: 3;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneFoot {
+  order: 40;
 }
 .comm-bag-panel.is-expanded {
   width: 100% !important;
@@ -83362,10 +85774,54 @@ ${ESTIMATE_HINT}`,
   zoom: 1.45;
 }
 .comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
-  /* Pin the board to the sync foot \u2014 empty flex space stays under the title. */
-  align-items: flex-end;
+  /* Pack the board under the title \u2014 avoid a black void above the grid. */
+  align-items: flex-start;
   justify-content: center;
   padding: 8px 4px 10px;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneFoot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #3a3a3a;
+  background: rgba(12, 12, 12, 0.96);
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneActs {
+  display: flex;
+  gap: 8px;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneAct {
+  appearance: none;
+  flex: 1 1 0;
+  min-height: 48px;
+  border: 1px solid #555;
+  border-radius: 12px;
+  background: #1c1c1c;
+  color: #eee;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneAct:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneDone {
+  appearance: none;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
 }
 ` + phoneShellExpandCss("bag", "ecu-bag-shell-expanded", ".comm-bag-panel");
   var injected15 = false;
@@ -83501,7 +85957,8 @@ ${ESTIMATE_HINT}`,
       commandPending,
       canSort,
       sortRunning,
-      onSort
+      onSort,
+      statusOnly
     } = props;
     const [now, setNow] = React.useState(() => Date.now());
     React.useEffect(() => {
@@ -83568,7 +86025,7 @@ ${ESTIMATE_HINT}`,
         },
         label
       ),
-      canSort ? e(
+      statusOnly ? null : canSort ? e(
         "button",
         {
           type: "button",
@@ -83595,7 +86052,7 @@ ${ESTIMATE_HINT}`,
         },
         sortRunning ? "Sorting\u2026" : "Sort"
       ) : null,
-      e(
+      statusOnly ? null : e(
         "button",
         {
           type: "button",
@@ -83741,7 +86198,28 @@ ${ESTIMATE_HINT}`,
       showNeedObserve ? e(
         "div",
         { className: "comm-bag-panel__empty" },
-        e("div", null, "Pick a character to watch before opening Bag."),
+        e(
+          "div",
+          { className: "comm-bag-panel__empty-icon", "aria-hidden": true },
+          "B"
+        ),
+        e(
+          "div",
+          { className: "comm-bag-panel__empty-title" },
+          "Bag needs a character"
+        ),
+        e(
+          "div",
+          { className: "comm-bag-panel__empty-copy" },
+          "Watch someone first so inventory sync has a source. Your bag stays closed until then."
+        ),
+        e(
+          "ol",
+          { className: "comm-bag-panel__empty-steps" },
+          e("li", null, "Tap Watch a character below."),
+          e("li", null, "Choose someone in your party or nearby."),
+          e("li", null, "Bag opens when you are watching them.")
+        ),
         e(
           "button",
           {
@@ -83752,7 +86230,7 @@ ${ESTIMATE_HINT}`,
               openPhoneObserve();
             }
           },
-          "Choose character"
+          "Watch a character"
         )
       ) : null,
       !showNeedObserve && showChrome ? e(BagSyncChrome, {
@@ -83765,6 +86243,7 @@ ${ESTIMATE_HINT}`,
         commandPending,
         canSort,
         sortRunning,
+        statusOnly: phoneUi,
         onSort: () => {
           if (bagSortCommand()) setSortRunning(true);
         }
@@ -83779,7 +86258,46 @@ ${ESTIMATE_HINT}`,
           display: showDummy || showNeedObserve ? "none" : void 0,
           pointerEvents: "auto"
         }
-      })
+      }),
+      phoneUi && !showNeedObserve ? e(
+        "div",
+        { className: "comm-bag-panel__phoneFoot" },
+        e(
+          "div",
+          { className: "comm-bag-panel__phoneActs" },
+          canSort ? e(
+            "button",
+            {
+              type: "button",
+              className: "comm-bag-panel__phoneAct",
+              disabled: refreshing || commandPending || sortRunning,
+              onClick: () => {
+                if (bagSortCommand()) setSortRunning(true);
+              }
+            },
+            sortRunning ? "Sorting\u2026" : "Sort"
+          ) : null,
+          e(
+            "button",
+            {
+              type: "button",
+              className: "comm-bag-panel__phoneAct",
+              disabled: refreshing,
+              onClick: () => refreshObservedInventory()
+            },
+            refreshing ? "Refreshing\u2026" : "Refresh"
+          )
+        ),
+        props.onRequestClose ? e(
+          "button",
+          {
+            type: "button",
+            className: "comm-bag-panel__phoneDone",
+            onClick: () => props.onRequestClose && props.onRequestClose()
+          },
+          "Done"
+        ) : null
+      ) : null
     );
   }
 
@@ -87177,13 +89695,116 @@ ${ESTIMATE_HINT}`,
 .MarketPanel.is-phone .MarketPanel-togs {
   width: 100%;
   margin-left: 0;
-  flex-wrap: wrap;
-  gap: 8px 14px;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 10px 4px;
+}
+.MarketPanel.is-phone {
+  display: flex;
+  flex-direction: column;
+}
+.MarketPanel.is-phone .MarketPanel-head {
+  flex: 0 0 auto;
+}
+.MarketPanel.is-phone .MarketPanel-tools {
+  flex: 0 0 auto;
+}
+.MarketPanel.is-phone .MarketPanel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFoot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #333;
+  background: rgba(12, 12, 12, 0.96);
+}
+.MarketPanel.is-phone .MarketPanel-phoneDone {
+  appearance: none;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.MarketPanel.is-phone .MarketPanel-offerActs {
+  gap: 8px;
+}
+.MarketPanel.is-phone .MarketPanel-offerActs > button:not(.MarketPanel-rowMore) {
+  min-height: 44px;
+  min-width: 72px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+}
+.MarketPanel.is-phone .MarketPanel-rowMore {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+  border-radius: 10px;
+}
+.MarketPanel.is-phone .MarketPanel-togs--phoneBar {
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  scrollbar-width: none;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFacets {
+  width: 100%;
+  gap: 6px;
+  margin: 0;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFacets button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+.MarketPanel.is-phone .MarketPanel-you.is-collapsed {
+  /* Keep catalog tall \u2014 bag/stand is a one-line toggle only. */
+  flex: 0 0 auto;
+}
+.MarketPanel.is-phone .MarketPanel-togs--phoneBar::-webkit-scrollbar {
+  display: none;
+}
+.MarketPanel.is-phone .MarketPanel-togs--phoneBar .MarketPanel-tog {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 12px;
+  border-radius: 18px;
 }
 .MarketPanel.is-phone .MarketPanel-tog {
+  flex: 0 0 auto;
   min-height: 40px;
-  font-size: 14px;
-  padding: 6px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 14px;
+  border: 1px solid #333;
+  border-radius: 20px;
+  background: #141414;
+  color: #aaa;
+  white-space: nowrap;
+}
+.MarketPanel.is-phone .MarketPanel-tog:has(input:checked),
+.MarketPanel.is-phone .MarketPanel-tog.is-on {
+  border-color: #3a5;
+  background: #1a2a1a;
+  color: #7ad86a;
 }
 .MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch,
 .MarketPanel.is-phone .MarketPanel-tools input[type="search"] {
@@ -87217,19 +89838,41 @@ ${ESTIMATE_HINT}`,
   .MarketPanel.is-phone .MarketPanel-you.is-collapsed .MarketPanel-youStand {
     display: none;
   }
+  /* Open You as a bottom sheet over the catalog so browse context stays. */
   .MarketPanel.is-phone .MarketPanel-you.is-open {
-    flex: 0 0 min(40vh, 300px);
-    max-height: min(40vh, 300px);
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    flex: none;
+    width: 100%;
+    max-height: min(58vh, 420px);
+    border-radius: 16px 16px 0 0;
+    border-top: 1px solid #444;
+    background: #1c1b1f;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+    overflow: auto;
   }
-  .MarketPanel.is-phone .MarketPanel-col[data-ecu-tour="market-focus"] {
-    order: 3;
-    flex: 0 0 auto;
-    max-height: min(38vh, 280px);
+  .MarketPanel.is-phone {
+    position: relative;
+  }
+  .MarketPanel.is-phone .MarketPanel-col[data-ecu-slot="market-focus"] {
+    order: 1;
+    flex: 1 1 auto;
+    min-height: 200px;
+    max-height: none;
     border-bottom: 0;
-    border-top: 1px solid var(--mk-line);
+    border-top: 0;
+  }
+  .MarketPanel.is-phone:has(
+      .MarketPanel-col[data-ecu-slot="market-focus"][data-ecu-has-focus="1"]
+    )
+    .MarketPanel-col[data-ecu-slot="market-grid"] {
+    display: none;
   }
   .MarketPanel.is-phone
-    .MarketPanel-col[data-ecu-tour="market-focus"]:not([data-ecu-has-focus="1"]) {
+    .MarketPanel-col[data-ecu-slot="market-focus"]:not([data-ecu-has-focus="1"]) {
     display: none;
   }
 }
@@ -87270,7 +89913,11 @@ ${ESTIMATE_HINT}`,
 }
 .MarketPanel.is-phone .MarketPanel-pageDots {
   flex-shrink: 0;
-  padding: 2px 6px 4px;
+  order: 20;
+  margin-top: auto;
+  padding: 6px 8px 8px;
+  border-top: 1px solid #2a2a2a;
+  background: #101214;
 }
 .MarketPanel.is-phone .MarketPanel-tools {
   display: flex;
@@ -87298,7 +89945,88 @@ ${ESTIMATE_HINT}`,
   font-size: 12px;
 }
 .MarketPanel.is-phone .MarketPanel-head {
-  padding: 8px 10px;
+  padding: 4px 8px;
+  gap: 6px;
+  min-height: 0;
+}
+.MarketPanel.is-phone .MarketPanel-title {
+  font-size: 14px;
+}
+.MarketPanel.is-phone .MarketPanel-pill {
+  font-size: 11px;
+}
+.MarketPanel.is-phone .MarketPanel-tools {
+  padding: 4px 8px;
+  gap: 6px;
+}
+.MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch,
+.MarketPanel.is-phone .MarketPanel-tools input[type="search"] {
+  min-height: 36px;
+  font-size: 15px;
+}
+.MarketPanel.is-phone .MarketPanel-ph,
+.MarketPanel.is-phone .MarketPanel-ph--phone {
+  padding: 3px 8px;
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+.MarketPanel.is-phone .MarketPanel-sort select {
+  height: 26px;
+  font-size: 11px;
+  padding: 0 6px;
+}
+.MarketPanel.is-phone .MarketPanel-youToggle {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFacets button {
+  min-height: 44px;
+  font-size: 15px;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFoot {
+  gap: 4px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+}
+.MarketPanel.is-phone .MarketPanel-phoneDone {
+  min-height: 44px;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard {
+  min-height: 0;
+  overflow: hidden;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard__top {
+  padding: 6px 24px 2px 8px;
+  gap: 6px;
+  min-height: 40px;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard .nm {
+  min-height: 0;
+  padding: 2px 8px 4px;
+  font-size: 12px;
+  line-height: 1.25;
+  margin: 0;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard__prices .row-p {
+  padding: 5px 8px 6px;
+  gap: 1px;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard__counts {
+  gap: 2px;
+  font-size: 9px;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard__counts .s,
+.MarketPanel.is-phone .MarketPanel-itemCard__counts .b,
+.MarketPanel.is-phone .MarketPanel-itemCard__counts .g {
+  padding: 1px 4px;
+  min-width: 24px;
+}
+.MarketPanel.is-phone .MarketPanel-itemGrid {
+  grid-template-columns: 1fr;
+  /* Fit icon + name + sell/buy without clipping (~4\u20135 visible rows). */
+  grid-auto-rows: minmax(108px, auto);
+  gap: 4px;
+  padding: 4px 6px 8px;
 }
 ` + phoneShellExpandCss("market", "ecu-market-shell-expanded", ".MarketPanel");
   var marketPanelCssInjected = false;
@@ -87327,6 +90055,11 @@ ${ESTIMATE_HINT}`,
     { key: "wanted", label: "Buying" },
     { key: "giveaway", label: "Giveaways" },
     { key: "trade", label: "Trades" }
+  ];
+  var MARKET_FACET_PAGES_PHONE = [
+    { key: "all", label: "All" },
+    { key: "sale", label: "Buy" },
+    { key: "wanted", label: "Sell" }
   ];
   var MARKET_FACET_KEYS = MARKET_FACET_PAGES.map((p) => p.key);
   function bagNameSet(observing) {
@@ -87503,7 +90236,7 @@ ${ESTIMATE_HINT}`,
     const bodyRef = React.useRef(null);
     const phoneUi = detectViewportProfile() === "phone";
     const [expanded, setExpanded] = React.useState(() => phoneUi);
-    const [filtersOpen, setFiltersOpen] = React.useState(false);
+    const [filtersOpen, setFiltersOpen] = React.useState(() => phoneUi);
     const [youOpen, setYouOpen] = React.useState(false);
     usePhoneShellExpand({
       panelId: "market",
@@ -87612,6 +90345,14 @@ ${ESTIMATE_HINT}`,
       const res = await pullMerchants();
       setCatalogLoading(false);
       if (!res.ok) {
+        if (window.__ecuOverlayPreview) {
+          const seeded = getCachedMarketMerchants();
+          if (seeded.length) {
+            setCatalogMerchants(seeded);
+            setCatalogMsg("");
+            return;
+          }
+        }
         setCatalogMsg(res.message || "Catalog refresh failed");
         return;
       }
@@ -87666,6 +90407,7 @@ ${ESTIMATE_HINT}`,
       setNearOnly(sync.nearOnly);
       setCanAfford(sync.canAfford);
       setHaveStock(sync.haveStock);
+      if (phoneUi && next.trim().length > 0) setFiltersOpen(true);
       if (merchantFilter && next.toLowerCase().indexOf("merchant:") < 0) {
         setMerchantFilter(null);
       }
@@ -88378,7 +91120,7 @@ ${ESTIMATE_HINT}`,
                 level: g.level,
                 p: g.p,
                 data: g.data,
-                size: 48,
+                size: phoneUi ? 36 : 48,
                 bankQ,
                 title: itemLabel(g.name, g.level, g.p) + (g.data ? " \xB7 " + g.data : "") + (bankQ > 0 ? " \xB7 Bank \xD7" + bankQ : "")
               }),
@@ -88653,7 +91395,7 @@ ${ESTIMATE_HINT}`,
           )
         )
       )
-    ] : [
+    ] : phoneUi ? null : [
       e("div", { key: "ph", className: "MarketPanel-ph" }, "Focus"),
       e(
         "div",
@@ -88688,13 +91430,13 @@ ${ESTIMATE_HINT}`,
           },
           "Cancel travel"
         ) : null,
-        e(PanelExpandButton, {
+        !phoneUi ? e(PanelExpandButton, {
           expanded,
           onToggle: () => setExpanded(!expanded),
           expandTitle: "Expand market",
           restoreTitle: "Restore market size",
           className: "MarketPanel-expand"
-        }),
+        }) : null,
         e(
           "button",
           {
@@ -88706,7 +91448,7 @@ ${ESTIMATE_HINT}`,
             },
             title: pulledAt ? "Catalog " + String(pulledAt) : "Refresh catalog"
           },
-          catalogLoading ? "\u2026" : "Refresh"
+          catalogLoading ? "\u2026" : phoneUi ? "\u21BB" : "Refresh"
         )
       ),
       e(
@@ -88737,16 +91479,7 @@ ${ESTIMATE_HINT}`,
           trailingAliases: { mer: "merchant" },
           onClear: () => setMerchantFilter(null)
         }),
-        phoneUi ? e(
-          "button",
-          {
-            type: "button",
-            className: "MarketPanel-btn MarketPanel-filtersBtn" + (filtersOpen ? " is-on" : "") + (filterActive ? " is-active" : ""),
-            "aria-expanded": filtersOpen,
-            onClick: () => setFiltersOpen(!filtersOpen)
-          },
-          filtersOpen ? "Hide filters" : filterActive ? "Filters \u25CF" : "Filters"
-        ) : e(
+        !phoneUi ? e(
           "div",
           { className: "MarketPanel-seg" },
           MARKET_FACET_PAGES.map(
@@ -88766,8 +91499,8 @@ ${ESTIMATE_HINT}`,
               p.label
             )
           )
-        ),
-        !phoneUi || filtersOpen ? e(
+        ) : null,
+        !phoneUi ? e(
           "div",
           { className: "MarketPanel-togs" },
           e(
@@ -88827,18 +91560,6 @@ ${ESTIMATE_HINT}`,
           )
         ) : null
       ),
-      phoneUi ? e(PeerPageDots, {
-        pages: MARKET_FACET_PAGES,
-        activeKey: facet,
-        onSelect: (key) => applyToggleSync({
-          facet: key,
-          nearOnly,
-          canAfford,
-          haveStock
-        }),
-        ariaLabel: "Market facets",
-        className: "MarketPanel-pageDots"
-      }) : null,
       e(
         "div",
         { className: "MarketPanel-body", ref: bodyRef },
@@ -89253,12 +91974,18 @@ ${ESTIMATE_HINT}`,
           },
           e(
             "div",
-            { className: "MarketPanel-ph" },
-            "Market ",
-            e(
-              "em",
+            {
+              className: "MarketPanel-ph" + (phoneUi ? " MarketPanel-ph--phone" : "")
+            },
+            phoneUi ? e("em", null, groups.length + " \xB7 " + rows.length) : e(
+              React.Fragment,
               null,
-              groups.length + " items \xB7 " + rows.length + " listings"
+              "Market ",
+              e(
+                "em",
+                null,
+                groups.length + " items \xB7 " + rows.length + " listings"
+              )
             ),
             e(
               "span",
@@ -89266,7 +91993,7 @@ ${ESTIMATE_HINT}`,
               e(
                 "label",
                 { className: "MarketPanel-sort" },
-                e("span", null, "Sort"),
+                phoneUi ? null : e("span", null, "Sort"),
                 e(
                   "select",
                   {
@@ -89274,7 +92001,8 @@ ${ESTIMATE_HINT}`,
                     onChange: (ev) => {
                       setGroupSort(String(ev.target.value));
                     },
-                    title: "Sort market cards"
+                    title: "Sort market cards",
+                    "aria-label": "Sort market cards"
                   },
                   MARKET_GROUP_SORT_OPTIONS.map(
                     (opt) => e(
@@ -89298,7 +92026,45 @@ ${ESTIMATE_HINT}`,
           },
           focusPane
         )
-      )
+      ),
+      phoneUi ? e(
+        "div",
+        { className: "MarketPanel-phoneFoot" },
+        e(
+          "div",
+          {
+            className: "MarketPanel-seg MarketPanel-phoneFacets",
+            role: "group",
+            "aria-label": "Market Buy / Sell"
+          },
+          MARKET_FACET_PAGES_PHONE.map(
+            (p) => e(
+              "button",
+              {
+                type: "button",
+                key: p.key,
+                className: facet === p.key ? "is-on" : "",
+                onClick: () => applyToggleSync({
+                  facet: p.key,
+                  nearOnly,
+                  canAfford,
+                  haveStock
+                })
+              },
+              p.label
+            )
+          )
+        ),
+        props.onRequestClose ? e(
+          "button",
+          {
+            type: "button",
+            className: "MarketPanel-phoneDone",
+            onClick: () => props.onRequestClose && props.onRequestClose()
+          },
+          "Done"
+        ) : null
+      ) : null
     );
   }
 
@@ -90578,6 +93344,11 @@ ${ESTIMATE_HINT}`,
 }
 
 /* Phone \u2014 larger head / seg / search targets. */
+.BankPanel.is-phone {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .BankPanel.is-phone .BankPanel-btn {
   min-height: 40px;
   padding: 8px 12px;
@@ -90597,22 +93368,87 @@ ${ESTIMATE_HINT}`,
   min-height: 44px;
   font-size: 16px;
 }
-.BankPanel.is-phone .BankPanel-pageDots {
-  flex-shrink: 0;
-  padding-top: 2px;
-  padding-bottom: 4px;
+.BankPanel.is-phone .BankPanel-phoneTabs {
+  width: 100%;
+  margin-top: 4px;
+}
+.BankPanel.is-phone .BankPanel-phoneFoot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #3a3a3a;
+  background: rgba(12, 12, 12, 0.96);
+}
+.BankPanel.is-phone .BankPanel-phoneTabs--foot {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border-top: none;
+  background: transparent;
+  gap: 6px;
+}
+.BankPanel.is-phone .BankPanel-phoneTabs button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.BankPanel.is-phone .BankPanel-phoneTabs--foot button {
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+.BankPanel.is-phone .BankPanel-phoneFootActs {
+  display: flex;
+  gap: 8px;
+}
+.BankPanel.is-phone .BankPanel-phoneAct {
+  appearance: none;
+  flex: 1 1 0;
+  min-height: 48px;
+  border: 1px solid #555;
+  border-radius: 12px;
+  background: #1c1c1c;
+  color: #eee;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.BankPanel.is-phone .BankPanel-phoneAct:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.BankPanel.is-phone .BankPanel-phoneDone {
+  appearance: none;
+  flex: 1 1 0;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.BankPanel.is-phone .BankPanel-readySub {
+  display: none;
 }
 .BankPanel.is-phone .BankPanel-body {
   touch-action: pan-y;
 }
-/* Larger phone slots \u2014 7\xD748px is too dense for thumbs. */
+/* Larger phone slots \u2014 3\xD796px for reliable thumbs. */
 .BankPanel.is-phone .BankPanel-packGrid {
-  grid-template-columns: repeat(4, 72px);
-  gap: 3px;
+  grid-template-columns: repeat(3, 96px);
+  gap: 6px;
+  justify-content: center;
 }
 .BankPanel.is-phone .BankPanel-slot {
-  width: 72px;
-  height: 72px;
+  width: 96px;
+  height: 96px;
 }
 .BankPanel.is-phone .BankPanel-grid {
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
@@ -90620,6 +93456,18 @@ ${ESTIMATE_HINT}`,
 }
 .BankPanel.is-phone .BankPanel-tools {
   padding: 6px 10px 4px;
+}
+.BankPanel.is-phone .BankPanel-head .BankPanel-sub,
+.BankPanel.is-phone .BankPanel-help,
+.BankPanel.is-phone .BankPanel-tourHint {
+  display: none;
+}
+.BankPanel.is-phone .BankPanel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.BankPanel.is-phone .BankPanel-sortSeg {
+  display: none;
 }
 
 ` + phoneShellExpandCss("bank", "ecu-bank-shell-expanded", ".BankPanel");
@@ -90653,6 +93501,16 @@ ${ESTIMATE_HINT}`,
     { key: "ready", label: "Ready" }
   ];
   var BANK_VIEW_KEYS = BANK_VIEW_PAGES.map((p) => p.key);
+  var BANK_PHONE_TABS = [
+    { key: "items", label: "Items" },
+    { key: "ready", label: "Ready" },
+    { key: "almost", label: "Almost" }
+  ];
+  var BANK_PHONE_TAB_KEYS = BANK_PHONE_TABS.map((p) => p.key);
+  function bankPhoneTab(view, readySection) {
+    if (view !== "ready") return "items";
+    return readySection === "almost" ? "almost" : "ready";
+  }
   var MISSING_Q = "#ff6b5a";
   function gItems() {
     const G = window.G;
@@ -90851,8 +93709,12 @@ ${ESTIMATE_HINT}`,
     snapRef.current = snap;
     const viewRef = React.useRef(view);
     viewRef.current = view;
+    const readySectionRef = React.useRef(readySection);
+    readySectionRef.current = readySection;
     const setViewRef = React.useRef(setView);
     setViewRef.current = setView;
+    const setReadySectionRef = React.useRef(setReadySection);
+    setReadySectionRef.current = setReadySection;
     usePhoneShellExpand({
       panelId: "bank",
       shellClass: "ecu-bank-shell-expanded",
@@ -90869,10 +93731,17 @@ ${ESTIMATE_HINT}`,
       if (!panelEl) return;
       return installPeerPageGestures(panelEl, {
         onPageSwipe: (dir) => {
-          const next = stepPeerPage(BANK_VIEW_KEYS, viewRef.current, dir);
-          if (next && next !== viewRef.current) {
-            setViewRef.current(next);
+          const tab = bankPhoneTab(viewRef.current, readySectionRef.current);
+          const nextTab = stepPeerPage(BANK_PHONE_TAB_KEYS, tab, dir);
+          if (!nextTab || nextTab === tab) return;
+          if (nextTab === "items") {
+            setViewRef.current("all");
+            return;
           }
+          setViewRef.current("ready");
+          setReadySectionRef.current(
+            nextTab === "almost" ? "almost" : "ready"
+          );
         },
         allowStart: (target) => {
           if (!(target instanceof Element)) return false;
@@ -90912,7 +93781,11 @@ ${ESTIMATE_HINT}`,
         const fromIdb = await hydrateBankCacheFromIdb();
         if (cancelled) return;
         if (fromIdb) setSnap(fromIdb);
-        refresh({ force: true, baseline: fromIdb });
+        const soft = !!window.__ecuOverlayPreview;
+        refresh({
+          force: !soft,
+          baseline: fromIdb
+        });
       })();
       return () => {
         cancelled = true;
@@ -91454,7 +94327,7 @@ ${ESTIMATE_HINT}`,
           restoreTitle: "Restore bank size",
           className: "BankPanel-expand"
         }),
-        e(
+        phoneUi ? null : e(
           "button",
           {
             type: "button",
@@ -91580,7 +94453,7 @@ ${ESTIMATE_HINT}`,
             trailingOps: BANK_TRAILING_OPS
           })
         ),
-        phoneUi ? null : e(
+        !phoneUi ? e(
           "div",
           {
             className: "BankPanel-seg",
@@ -91600,7 +94473,7 @@ ${ESTIMATE_HINT}`,
               p.label
             )
           )
-        ),
+        ) : null,
         view === "all" || view === "types" ? e(
           "div",
           {
@@ -91624,13 +94497,6 @@ ${ESTIMATE_HINT}`,
           )
         ) : null
       ),
-      phoneUi ? e(PeerPageDots, {
-        pages: BANK_VIEW_PAGES,
-        activeKey: view,
-        onSelect: (key) => setView(key),
-        ariaLabel: "Bank views",
-        className: "BankPanel-pageDots"
-      }) : null,
       e(
         "div",
         {
@@ -91639,7 +94505,68 @@ ${ESTIMATE_HINT}`,
           ref: bodyRef
         },
         body
-      )
+      ),
+      phoneUi ? e(
+        "div",
+        {
+          className: "BankPanel-phoneFoot",
+          "data-ecu-tour": "bank-views"
+        },
+        e(
+          "div",
+          {
+            className: "BankPanel-seg BankPanel-phoneTabs BankPanel-phoneTabs--foot",
+            role: "group",
+            "aria-label": "Bank view"
+          },
+          BANK_PHONE_TABS.map((p) => {
+            const active = bankPhoneTab(view, readySection) === p.key;
+            return e(
+              "button",
+              {
+                type: "button",
+                key: p.key,
+                className: active ? "is-on" : "",
+                onClick: () => {
+                  if (p.key === "items") {
+                    if (view === "ready") setView("all");
+                    return;
+                  }
+                  setView("ready");
+                  setReadySection(p.key === "almost" ? "almost" : "ready");
+                }
+              },
+              p.label
+            );
+          })
+        ),
+        e(
+          "div",
+          { className: "BankPanel-phoneFootActs" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "BankPanel-phoneAct",
+              disabled: loading,
+              onClick: () => refresh({
+                force: !window.__ecuOverlayPreview
+              }),
+              "data-ecu-tour": "bank-refresh"
+            },
+            loading ? "Loading\u2026" : "Refresh"
+          ),
+          props.onRequestClose ? e(
+            "button",
+            {
+              type: "button",
+              className: "BankPanel-phoneDone",
+              onClick: () => props.onRequestClose && props.onRequestClose()
+            },
+            "Done"
+          ) : null
+        )
+      ) : null
     );
   }
 
@@ -93561,15 +96488,23 @@ ${ESTIMATE_HINT}`,
   }
   function MailSearchBar(props) {
     const React = getReact();
-    const { query, setQuery, pill, setPillPersist, compact } = props;
+    const { query, setQuery, pill, setPillPersist, compact, onFiltersScreenChange } = props;
     const [open, setOpen] = React.useState(false);
     const [filtersOpen, setFiltersOpen] = React.useState(false);
     const [form, setForm] = React.useState(
       () => queryToMailSearchForm(query, pill)
     );
     const wrapRef = React.useRef(null);
-    const showPills = !compact || filtersOpen;
+    const showPills = !compact;
     const filtersActive = pill !== "all";
+    React.useEffect(() => {
+      if (!compact) return;
+      onFiltersScreenChange == null ? void 0 : onFiltersScreenChange(filtersOpen);
+    }, [compact, filtersOpen, onFiltersScreenChange]);
+    React.useEffect(() => {
+      if (!compact || !filtersOpen) return;
+      setForm(queryToMailSearchForm(query, pill));
+    }, [compact, filtersOpen]);
     React.useEffect(() => {
       if (!open) return;
       setForm(queryToMailSearchForm(query, pill));
@@ -93606,6 +96541,12 @@ ${ESTIMATE_HINT}`,
       setPillPersist(form.scope);
       setOpen(false);
     };
+    const applyFiltersScreen = () => {
+      setQuery(mailSearchFormToQuery(form));
+      setPillPersist(form.scope);
+      setFiltersOpen(false);
+    };
+    const closeFiltersScreen = () => setFiltersOpen(false);
     const clearAll = () => {
       setQuery("");
       setForm({ ...EMPTY_MAIL_SEARCH_FORM, scope: pill });
@@ -93633,6 +96574,130 @@ ${ESTIMATE_HINT}`,
         )
       );
     }
+    const scopeRows = [];
+    for (let i = 0; i < MAIL_SEARCH_SCOPES.length; i++) {
+      const s = MAIL_SEARCH_SCOPES[i];
+      scopeRows.push(
+        e(
+          "button",
+          {
+            key: s.id,
+            type: "button",
+            className: "comm-mail__filters-row" + (form.scope === s.id ? " is-on" : ""),
+            onClick: () => patchForm({ scope: s.id })
+          },
+          e("span", { className: "comm-mail__filters-row-label" }, s.label),
+          form.scope === s.id ? e("span", { className: "comm-mail__filters-row-check", "aria-hidden": "true" }, "\u2713") : null
+        )
+      );
+    }
+    const filtersScreen = compact && filtersOpen ? e(
+      "div",
+      {
+        className: "comm-mail__filters-screen",
+        role: "dialog",
+        "aria-label": "Mail filters"
+      },
+      e(
+        "div",
+        { className: "comm-mail__filters-head" },
+        e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__filters-back",
+            "aria-label": "Back",
+            onClick: closeFiltersScreen
+          },
+          "\u2190"
+        ),
+        e("span", { className: "comm-mail__filters-title" }, "Filters")
+      ),
+      e(
+        "div",
+        { className: "comm-mail__filters-body" },
+        e(
+          "div",
+          { className: "comm-mail__filters-section" },
+          e(
+            "div",
+            { className: "comm-mail__filters-section-title" },
+            "Scope"
+          ),
+          ...scopeRows
+        ),
+        e(
+          "div",
+          { className: "comm-mail__filters-section" },
+          e(
+            "div",
+            { className: "comm-mail__filters-section-title" },
+            "Attachment"
+          ),
+          e(
+            "label",
+            { className: "comm-mail__filters-toggle" },
+            e("input", {
+              type: "checkbox",
+              checked: form.hasAttachment,
+              onChange: (ev) => patchForm({ hasAttachment: !!ev.target.checked })
+            }),
+            "Has attachment"
+          ),
+          e(
+            "label",
+            {
+              className: "comm-mail__filters-toggle",
+              title: "Attachment still in the mail \u2014 ready to take"
+            },
+            e("input", {
+              type: "checkbox",
+              checked: form.untakenOnly,
+              onChange: (ev) => {
+                const on = !!ev.target.checked;
+                patchForm({
+                  untakenOnly: on,
+                  takenOnly: on ? false : form.takenOnly
+                });
+              }
+            }),
+            "Untaken only"
+          ),
+          e(
+            "label",
+            {
+              className: "comm-mail__filters-toggle",
+              title: "Attachment already taken \u2014 useful for cleanup / batch delete"
+            },
+            e("input", {
+              type: "checkbox",
+              checked: form.takenOnly,
+              onChange: (ev) => {
+                const on = !!ev.target.checked;
+                patchForm({
+                  takenOnly: on,
+                  untakenOnly: on ? false : form.untakenOnly
+                });
+              }
+            }),
+            "Taken only"
+          )
+        )
+      ),
+      e(
+        "div",
+        { className: "comm-mail__filters-foot" },
+        e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__btn comm-mail__btn--gold comm-mail__filters-apply",
+            onClick: applyFiltersScreen
+          },
+          "Apply filters"
+        )
+      )
+    ) : null;
     return e(
       "div",
       {
@@ -93843,7 +96908,8 @@ ${ESTIMATE_HINT}`,
             "Search"
           )
         )
-      ) : null
+      ) : null,
+      filtersScreen
     );
   }
 
@@ -93867,7 +96933,8 @@ ${ESTIMATE_HINT}`,
       browseMode,
       setBrowseMode,
       selectedItemMailIds,
-      compact
+      compact,
+      onFiltersScreenChange
     } = props;
     const itemsMode = browseMode === "items";
     const itemsSelect = itemsMode ? mailIdsForItemsSelectAll(filtered, selectedItemMailIds) : null;
@@ -94030,7 +97097,8 @@ ${ESTIMATE_HINT}`,
         setQuery,
         pill,
         setPillPersist,
-        compact
+        compact,
+        onFiltersScreenChange
       }),
       e(
         "div",
@@ -94127,6 +97195,7 @@ ${ESTIMATE_HINT}`,
     const mailObs = useMailObservingSnap();
     const phoneUi = detectViewportProfile() === "phone";
     const [expanded, setExpanded] = React.useState(() => phoneUi);
+    const [filtersScreenOpen, setFiltersScreenOpen] = React.useState(false);
     const rootRef = React.useRef(null);
     const headRef = React.useRef(null);
     const bodyRef = React.useRef(null);
@@ -94366,7 +97435,7 @@ ${ESTIMATE_HINT}`,
       }
       return rebuilt[0] || null;
     })();
-    const className = "comm-mail" + (wide ? "" : " is-narrow") + (phoneUi ? " is-phone" : "") + (expanded ? " is-expanded" : "") + (isReading ? " is-reading" : "") + (isCompose ? " is-compose" : "") + (itemsMode ? " is-items" : "");
+    const className = "comm-mail" + (wide ? "" : " is-narrow") + (phoneUi ? " is-phone" : "") + (filtersScreenOpen ? " is-filters-screen" : "") + (expanded ? " is-expanded" : "") + (isReading ? " is-reading" : "") + (isCompose ? " is-compose" : "") + (itemsMode ? " is-items" : "");
     const toggleCheck = (id, on) => {
       setSelectedIds((prev) => {
         const next = { ...prev };
@@ -94507,7 +97576,7 @@ ${ESTIMATE_HINT}`,
           "swipe right for list"
         ) : null,
         e("span", { className: "comm-mail__headGrow" }),
-        e(PanelExpandButton, {
+        phoneUi && props.onRequestClose ? null : e(PanelExpandButton, {
           expanded,
           onToggle: () => setExpanded(!expanded),
           expandTitle: "Expand mail",
@@ -94532,7 +97601,8 @@ ${ESTIMATE_HINT}`,
         browseMode,
         setBrowseMode: setBrowseModePersist,
         selectedItemMailIds,
-        compact: phoneUi
+        compact: phoneUi,
+        onFiltersScreenChange: phoneUi ? setFiltersScreenOpen : void 0
       }),
       e(MailBannerBar, { snap, caps, compact: phoneUi }),
       e(
@@ -94566,7 +97636,20 @@ ${ESTIMATE_HINT}`,
           },
           pane
         )
-      )
+      ),
+      phoneUi && props.onRequestClose ? e(
+        "div",
+        { className: "comm-mail__phoneFoot" },
+        e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__phoneDone",
+            onClick: () => props.onRequestClose && props.onRequestClose()
+          },
+          "Done"
+        )
+      ) : null
     );
   }
 
@@ -94978,9 +98061,12 @@ ${ESTIMATE_HINT}`,
           observing: framePlayer,
           aggroMobs: aggroMobsForFramedEntity(byTarget, framePlayer),
           setSelectedEntity: deps.setSelectedEntity,
-          layoutEdit: deps.layoutEdit
+          layoutEdit: deps.layoutEdit,
+          compact: deps.viewportProfile === "phone"
         }),
-        { style: UNIT_FRAME_STYLE }
+        {
+          style: deps.viewportProfile === "phone" ? UNIT_FRAME_STYLE_PHONE : UNIT_FRAME_STYLE
+        }
       ) : null,
       frameTarget || deps.layoutEdit ? panel(
         "targetFrame",
@@ -94989,9 +98075,12 @@ ${ESTIMATE_HINT}`,
           target: frameTarget,
           aggroMobs: aggroMobsForFramedEntity(byTarget, frameTarget),
           setSelectedEntity: deps.setSelectedEntity,
-          layoutEdit: deps.layoutEdit
+          layoutEdit: deps.layoutEdit,
+          compact: deps.viewportProfile === "phone"
         }),
-        { style: UNIT_FRAME_STYLE }
+        {
+          style: deps.viewportProfile === "phone" ? UNIT_FRAME_STYLE_PHONE : UNIT_FRAME_STYLE
+        }
       ) : null,
       panel(
         "threat",
@@ -95203,7 +98292,8 @@ ${ESTIMATE_HINT}`,
       opacityFor,
       setPanelPos,
       hudDensity,
-      setHudDensity
+      setHudDensity,
+      applyPhoneHudPreset
     } = layoutState;
     const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(
       (open) => setVisible("bag", open)
@@ -95792,7 +98882,8 @@ ${ESTIMATE_HINT}`,
         phoneHomePage,
         setPhoneHomePage,
         phoneHomeScreens,
-        setPhoneHomeScreens
+        setPhoneHomeScreens,
+        applyPhoneHudPreset
       }) : renderCommTogglesPanel(
         panelDeps,
         e(
@@ -95823,18 +98914,96 @@ ${ESTIMATE_HINT}`,
   // src/host/nameplateStyle.ts
   var STOCK_NAME_BORDER = 7433580;
   var STOCK_NAME_FILL = 2105119;
-  function softPlateFill(stockColor) {
+  var NAMEPLATE_FONT_FAMILIES = [
+    "Consolas",
+    "Menlo",
+    "Monaco",
+    "Courier New",
+    "monospace"
+  ];
+  function resolveNameplateFontFamily() {
+    const faces = NAMEPLATE_FONT_FAMILIES;
+    const fonts = typeof document !== "undefined" ? document.fonts : void 0;
+    if (fonts && typeof fonts.check === "function") {
+      for (let i = 0; i < faces.length; i++) {
+        const face = faces[i];
+        try {
+          if (fonts.check('12px "' + face + '"') || fonts.check("12px " + face)) {
+            return face;
+          }
+        } catch (e2) {
+        }
+      }
+    }
+    return faces[0] || "Consolas";
+  }
+  function hexLuminance(hex) {
+    const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || "").trim());
+    if (!m) return 1;
+    const n = parseInt(m[1], 16);
+    const toLin = (c) => {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    const r = toLin(n >> 16 & 255);
+    const g = toLin(n >> 8 & 255);
+    const b = toLin(n & 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  function mixHexTowardBlack(hex, t) {
+    const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || "").trim());
+    if (!m) return "#0a0c12";
+    const n = parseInt(m[1], 16);
+    const amt = Math.max(0, Math.min(1, t));
+    const shade = (c) => Math.round(c * (1 - amt));
+    const r = shade(n >> 16 & 255);
+    const g = shade(n >> 8 & 255);
+    const b = shade(n & 255);
+    const h = (r << 16 | g << 8 | b).toString(16).padStart(6, "0");
+    return "#" + h;
+  }
+  function ghostPlateForClassColor(classHex) {
+    const raw = String(classHex || "").trim() || "#ffffff";
+    const key = raw.charAt(0) === "#" ? raw : "#" + raw;
+    if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
+      return { color: 658450, alpha: 0.28 };
+    }
+    const L = hexLuminance(key);
+    const darken = L > 0.4 ? 0.42 : L > 0.3 ? 0.16 : L > 0.2 ? 0.08 : 0.04;
+    const mixed = mixHexTowardBlack(key, darken);
+    const n = parseInt(mixed.slice(1), 16);
+    return { color: n >>> 0, alpha: 0.28 };
+  }
+  function ghostPlateRimForClassColor(classHex) {
+    const raw = String(classHex || "").trim() || "#ffffff";
+    const key = raw.charAt(0) === "#" ? raw : "#" + raw;
+    if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
+      return { color: 131844, alpha: 0.35 };
+    }
+    const mixed = mixHexTowardBlack(key, 0.62);
+    const n = parseInt(mixed.slice(1), 16);
+    return { color: n >>> 0, alpha: 0.4 };
+  }
+  function softPlateFill(stockColor, classHex) {
     const c = stockColor >>> 0;
-    if (c === STOCK_NAME_BORDER) return { color: 1447964, alpha: 0.42 };
-    if (c === STOCK_NAME_FILL) return { color: 460810, alpha: 0.72 };
+    if (c === STOCK_NAME_BORDER) return ghostPlateRimForClassColor(classHex);
+    if (c === STOCK_NAME_FILL) return ghostPlateForClassColor(classHex);
     return null;
   }
   function isNameBandShape(y, height) {
     if (!(height > 0) || !(height <= 10)) return false;
     return y >= 0 && y < 8;
   }
-  function softTextStylePatch() {
+  function nameplateFillForClass(_ctype) {
+    return "#ffffff";
+  }
+  function nameplatePlateClassColor(ctype) {
+    return resolveClassColor(ctype, "#ffffff");
+  }
+  function softTextStylePatch(fillColor) {
     return {
+      fontFamily: resolveNameplateFontFamily(),
+      fill: fillColor || "#ffffff",
       stroke: "#000000",
       strokeThickness: 4,
       dropShadow: false
@@ -95867,8 +99036,9 @@ ${ESTIMATE_HINT}`,
       f.color = soft.color;
       f.alpha = soft.alpha;
     }
+    if (typeof d.lineAlpha === "number") d.lineAlpha = 0;
   }
-  function softenNameBandGraphics(gfx) {
+  function softenNameBandGraphics(gfx, classHex) {
     const data = getGraphicsData(gfx);
     if (!data) return 0;
     let changed = 0;
@@ -95881,7 +99051,7 @@ ${ESTIMATE_HINT}`,
       if (!isNameBandShape(y, h)) continue;
       const fill = readFillColor(d);
       if (fill == null) continue;
-      const soft = softPlateFill(fill);
+      const soft = softPlateFill(fill, classHex);
       if (!soft) continue;
       writeFill(d, soft);
       changed++;
@@ -95898,11 +99068,17 @@ ${ESTIMATE_HINT}`,
     }
     return changed;
   }
-  function applySoftTextStyle(node) {
+  function applySoftTextStyle(node, fillColor) {
     const style = node.style;
     if (!style || typeof style !== "object") return false;
-    if (style.__ecuSoft) return false;
-    const patch = softTextStylePatch();
+    const patch = softTextStylePatch(fillColor);
+    const wantFont = String(patch.fontFamily || "Consolas");
+    const curFont = style.fontFamily;
+    const fontOk = curFont === wantFont || Array.isArray(curFont) && curFont[0] === wantFont;
+    const already = !!style.__ecuSoft;
+    if (already && fontOk) return false;
+    style.fontFamily = wantFont;
+    style.fill = patch.fill;
     style.stroke = patch.stroke;
     style.strokeThickness = patch.strokeThickness;
     style.dropShadow = patch.dropShadow;
@@ -95931,13 +99107,136 @@ ${ESTIMATE_HINT}`,
     const n = node;
     return !!(n.graphicsData && n.graphicsData.length || n.geometry && n.geometry.graphicsData && n.geometry.graphicsData.length);
   }
-  function beautifyNameTag(root) {
-    if (!root || root.__ecuNameplateStyled) return;
+  var NAMEPLATE_BAND_PAD = 1.5;
+  var NAMEPLATE_BAND_GROW_MAX = 4;
+  function nameBandGrowUp(fillH, textH, pad3 = NAMEPLATE_BAND_PAD) {
+    const need = textH + 2 * pad3;
+    if (!(fillH > 0) || !(textH > 0)) return 0;
+    if (textH > fillH + NAMEPLATE_BAND_GROW_MAX + 2) return 0;
+    return Math.min(
+      NAMEPLATE_BAND_GROW_MAX,
+      Math.max(0, Math.ceil(need - fillH))
+    );
+  }
+  function nameBandTextY(fillY, fillH, textH) {
+    return fillY + (fillH - textH) / 2;
+  }
+  function textVisualHeight(node) {
+    const scaleY = Math.abs(
+      node.scale && typeof node.scale.y === "number" ? node.scale.y : 0
+    );
+    if (typeof node.height === "number" && node.height > 0 && node.height <= 20) {
+      return node.height;
+    }
+    if (typeof node.getLocalBounds === "function") {
+      try {
+        const b = node.getLocalBounds();
+        if (b && typeof b.height === "number" && b.height > 0) {
+          const local = b.height;
+          const sy = scaleY > 0 ? scaleY : 0.125;
+          return local > 20 ? local * sy : local;
+        }
+      } catch (e2) {
+      }
+    }
+    if (typeof node.height === "number" && node.height > 0) {
+      const sy = scaleY > 0 ? scaleY : 0.125;
+      return node.height > 20 ? node.height * sy : node.height;
+    }
+    return 0;
+  }
+  function isNameBandGeom(y, height) {
+    if (!(height > 0) || height > 14) return false;
+    const bottom = y + height;
+    return bottom > 0 && bottom <= 12 && y < 8;
+  }
+  function fitNameTextInGhostBand(plate) {
+    if (!plate || plate.__ecuNamepad) return false;
+    const data = getGraphicsData(plate);
+    if (!data) return false;
+    let tallestH = 0;
+    for (let i = 0; i < data.length; i++) {
+      const shape = data[i].shape;
+      if (!shape) continue;
+      const y = typeof shape.y === "number" ? shape.y : 0;
+      const h = typeof shape.height === "number" ? shape.height : 0;
+      if (!isNameBandGeom(y, h)) continue;
+      if (h > tallestH) tallestH = h;
+    }
+    let fill = null;
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i];
+      const shape = d.shape;
+      if (!shape) continue;
+      const y = typeof shape.y === "number" ? shape.y : 0;
+      const h = typeof shape.height === "number" ? shape.height : 0;
+      if (!isNameBandGeom(y, h)) continue;
+      if (tallestH > 0 && h >= tallestH) continue;
+      if (h < 5) continue;
+      fill = d;
+      break;
+    }
+    if (!fill || !fill.shape) return false;
+    const kids = plate.children || [];
+    let maxTextH = 0;
+    const texts = [];
+    for (let i = 0; i < kids.length; i++) {
+      const kid = kids[i];
+      if (!looksLikeText(kid)) continue;
+      const ky = typeof kid.y === "number" ? kid.y : 0;
+      if (ky < -2 || ky > 6) continue;
+      const th2 = textVisualHeight(kid);
+      if (th2 > maxTextH) maxTextH = th2;
+      texts.push(kid);
+    }
+    if (!texts.length || !(maxTextH > 0)) return false;
+    const fillY0 = typeof fill.shape.y === "number" ? fill.shape.y : 1;
+    const fillH0 = typeof fill.shape.height === "number" ? fill.shape.height : 7;
+    const grow = nameBandGrowUp(fillH0, maxTextH);
+    if (grow > 0) {
+      for (let i = 0; i < data.length; i++) {
+        const shape = data[i].shape;
+        if (!shape) continue;
+        const y = typeof shape.y === "number" ? shape.y : 0;
+        const h = typeof shape.height === "number" ? shape.height : 0;
+        if (!isNameBandGeom(y, h)) continue;
+        shape.y = y - grow;
+        shape.height = h + grow;
+      }
+      if (typeof plate.dirty === "number") plate.dirty++;
+      if (typeof plate.clearDirty === "number") plate.clearDirty++;
+      if (typeof plate._invalidate === "function") {
+        try {
+          plate._invalidate();
+        } catch (e2) {
+        }
+      }
+    }
+    const fillY = typeof fill.shape.y === "number" ? fill.shape.y : fillY0 - grow;
+    const fillH = typeof fill.shape.height === "number" ? fill.shape.height : fillH0 + grow;
+    for (let i = 0; i < texts.length; i++) {
+      const th2 = textVisualHeight(texts[i]);
+      if (!(th2 > 0)) continue;
+      texts[i].y = nameBandTextY(fillY, fillH, th2);
+    }
+    plate.__ecuNamepad = true;
+    return true;
+  }
+  function beautifyNameTag(root, options) {
+    if (!root) return;
+    const plateClass = nameplatePlateClassColor(options && options.ctype);
+    const textFill = nameplateFillForClass(options && options.ctype);
+    const plateDone = !!root.__ecuNameplateStyled;
     root.__ecuNameplateStyled = true;
     const visit = (node) => {
       if (!node) return;
-      if (looksLikeGraphics(node)) softenNameBandGraphics(node);
-      if (looksLikeText(node)) applySoftTextStyle(node);
+      if (!plateDone && looksLikeGraphics(node)) {
+        softenNameBandGraphics(node, plateClass);
+      }
+      if (looksLikeText(node)) applySoftTextStyle(node, textFill);
+      if (looksLikeGraphics(node)) {
+        fitNameTextInGhostBand(node);
+      }
       const kids = node.children;
       if (!kids || !kids.length) return;
       for (let i = 0; i < kids.length; i++) visit(kids[i]);
@@ -95946,6 +99245,27 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/host/nameplateSharpness.ts
+  function nameplatePhoneBoost(profile) {
+    const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+    if (p === "phone") return 1.85;
+    if (p === "tablet") return 1.25;
+    return 0.88;
+  }
+  function resolveNameplateCtype(ent) {
+    if (!ent) return void 0;
+    const kind = ent.type != null ? String(ent.type).toLowerCase() : "";
+    if (kind === "monster" || kind === "npc") return void 0;
+    if (ent.mtype != null && String(ent.mtype) && kind !== "character") {
+      if (!isPlayerClass(ent.ctype)) return void 0;
+    }
+    const id = ent.id != null && String(ent.id) ? String(ent.id) : ent.name != null && String(ent.name) ? String(ent.name) : void 0;
+    if (id) {
+      const probe = { id, ctype: ent.ctype };
+      const resolved = resolvePlayerCtype(id, probe);
+      if (resolved) return resolved;
+    }
+    return isPlayerClass(ent.ctype) ? String(ent.ctype).trim().toLowerCase() : void 0;
+  }
   function scaleModes() {
     const PIXI = window.PIXI;
     if (!PIXI || !PIXI.SCALE_MODES) return { nearest: null, linear: null };
@@ -95995,11 +99315,10 @@ ${ESTIMATE_HINT}`,
     pv.x = px;
     pv.y = py;
   }
-  function nameplateScreenScale(fov) {
+  function nameplateScreenScale(fov, profile) {
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-    if (f === 1) return 1;
-    if (f > 1) return Math.min(3, f);
-    return Math.max(1 / 3, f);
+    const boost = nameplatePhoneBoost(profile);
+    return Math.max(1 / 3, Math.min(8, f * boost));
   }
   function nameplateAttachPoint(bounds) {
     return {
@@ -96079,12 +99398,15 @@ ${ESTIMATE_HINT}`,
     setNodeScale(root, screen, screen);
     return true;
   }
-  function sharpenNameTagTextures(root, fov) {
+  function sharpenNameTagTextures(root, fov, ctype) {
     if (!root) return;
     const appliedFov2 = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov();
     const screen = nameplateScreenScale(appliedFov2);
     const modes = scaleModes();
     const res = nameplateTextResolution(appliedFov2);
+    if (ctype != null && String(ctype).trim()) {
+      root.__ecuNameplateCtype = String(ctype);
+    }
     if (root.__ecuNameplateFov !== appliedFov2 || screen !== 1) {
       const ok = applyNameplateScreenScale(root, screen);
       if (ok) root.__ecuNameplateFov = appliedFov2;
@@ -96131,7 +99453,7 @@ ${ESTIMATE_HINT}`,
       for (let i = 0; i < kids.length; i++) visit(kids[i]);
     };
     visit(root);
-    beautifyNameTag(root);
+    beautifyNameTag(root, { ctype: root.__ecuNameplateCtype || ctype });
   }
   function bustNameTagCaches() {
     const bump = (ent) => {
@@ -96148,6 +99470,14 @@ ${ESTIMATE_HINT}`,
         ent.name_tag.__ecuNameplateStockX = void 0;
         ent.name_tag.__ecuNameplateStockY = void 0;
         ent.name_tag.__ecuNameplateStyled = void 0;
+        ent.name_tag.__ecuNameplateCtype = void 0;
+        const kids = ent.name_tag.children;
+        if (kids) {
+          for (let i = 0; i < kids.length; i++) {
+            const k = kids[i];
+            if (k) k.__ecuNamepad = void 0;
+          }
+        }
       }
     };
     const w = window;
@@ -96164,7 +99494,7 @@ ${ESTIMATE_HINT}`,
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov();
     const touch = (ent) => {
       if (!ent || !ent.name_tag) return;
-      sharpenNameTagTextures(ent.name_tag, f);
+      sharpenNameTagTextures(ent.name_tag, f, resolveNameplateCtype(ent));
     };
     const w = window;
     touch(w.character);
@@ -96182,29 +99512,423 @@ ${ESTIMATE_HINT}`,
     if (typeof w.add_name_tag !== "function") return false;
     const orig = w.add_name_tag;
     const wrapped = function(element) {
-      orig.call(this, element);
-      if (element && element.name_tag) sharpenNameTagTextures(element.name_tag);
+      const sz = w.SZ;
+      const prevFont = sz && sz.font;
+      if (sz) sz.font = resolveNameplateFontFamily();
+      try {
+        orig.call(this, element);
+      } finally {
+        if (sz) sz.font = prevFont;
+      }
+      if (element && element.name_tag) {
+        sharpenNameTagTextures(
+          element.name_tag,
+          void 0,
+          resolveNameplateCtype(element)
+        );
+      }
     };
     w.__ecuAddNameTag = wrapped;
     w.add_name_tag = wrapped;
     return true;
   }
-  var installed9 = false;
+  var installed10 = false;
   function installNameplateSharpness() {
-    if (installed9) return;
-    installed9 = true;
+    if (installed10) return;
+    installed10 = true;
     window.__ecuBustNameTags = bustNameTagCaches;
     onWorldFovApplied((fov) => {
       bustNameTagCaches();
       resyncNameplateScales(fov);
     });
-    if (wrapAddNameTag()) return;
+    const kick = () => {
+      if (!wrapAddNameTag()) return false;
+      bustNameTagCaches();
+      resyncNameplateScales();
+      return true;
+    };
+    if (kick()) return;
     const started2 = Date.now();
     const id = window.setInterval(() => {
-      if (wrapAddNameTag() || Date.now() - started2 > 3e4) {
+      if (kick() || Date.now() - started2 > 3e4) {
         window.clearInterval(id);
       }
     }, 250);
+  }
+
+  // src/debug/phoneOverlayFixtures.ts
+  var BAG_SYNC_STAMP_KEY2 = "__ecuBagSyncedAt";
+  function seedObservingBag() {
+    const obs = window.observing;
+    if (!obs) return;
+    obs.items = [
+      { name: "mpot1", q: 80 },
+      { name: "hpot1", q: 120 },
+      { name: "shoes", level: 7, q: 1 },
+      { name: "helmet", level: 6, q: 1 },
+      { name: "leather", q: 40 },
+      { name: "fire", q: 12 },
+      { name: "gloves", level: 4, q: 1 },
+      { name: "pants", level: 5, q: 1 },
+      { name: "scroll0", q: 30 },
+      { name: "sword", level: 3, q: 1 },
+      { name: "staff", level: 2, q: 1 },
+      { name: "gem0", q: 2 },
+      { name: "coat", level: 4, q: 1 },
+      { name: "hpbelt", level: 5, q: 1 },
+      { name: "cscroll0", q: 9 },
+      { name: "scroll1", q: 18 },
+      { name: "crabclaw", q: 14 },
+      { name: "frogt", q: 6 },
+      { name: "feather", q: 33 },
+      { name: "wbook0", level: 2, q: 1 },
+      { name: "strring", level: 3, q: 1 },
+      null,
+      { name: "intearring", level: 2, q: 1 },
+      { name: "bow", level: 6, q: 1 },
+      { name: "shield", level: 5, q: 1 },
+      { name: "gem1", q: 1 },
+      { name: "hpamulet", level: 3, q: 1 },
+      { name: "mpamulet", level: 2, q: 1 },
+      { name: "ringsj", level: 4, q: 1 },
+      { name: "vitearring", level: 1, q: 1 },
+      { name: "dexring", level: 2, q: 1 },
+      { name: "orbofstr", level: 1, q: 1 },
+      { name: "sshield", level: 3, q: 1 },
+      { name: "basher", level: 5, q: 1 },
+      { name: "fireblade", level: 4, q: 1 }
+    ];
+    obs[BAG_SYNC_STAMP_KEY2] = Date.now();
+    if (obs.gold == null) obs.gold = 245e4;
+  }
+  function seedBank() {
+    const snap = {
+      gold: 125e5,
+      loadedAt: Date.now(),
+      packs: {
+        items0: [
+          { name: "helmet", level: 8, q: 1 },
+          { name: "shoes", level: 7, q: 1 },
+          { name: "coat", level: 6, q: 1 },
+          { name: "pants", level: 5, q: 1 },
+          { name: "gloves", level: 4, q: 1 },
+          { name: "hpbelt", level: 7, q: 1 },
+          { name: "strring", level: 3, q: 1 },
+          { name: "intearring", level: 2, q: 1 },
+          { name: "leather", q: 220 },
+          { name: "essenceoffire", q: 48 },
+          { name: "scroll1", q: 18 },
+          { name: "cscroll0", q: 9 },
+          null,
+          null,
+          { name: "mpot1", q: 400 },
+          { name: "hpot1", q: 400 },
+          { name: "crabclaw", q: 14 },
+          { name: "frogt", q: 6 },
+          { name: "feather", q: 33 },
+          null,
+          { name: "wbook0", level: 2, q: 1 }
+        ],
+        items1: [
+          { name: "sword", level: 8, q: 1 },
+          { name: "staff", level: 7, q: 1 },
+          { name: "bow", level: 6, q: 1 },
+          { name: "shield", level: 5, q: 1 },
+          null,
+          { name: "gem0", q: 3 },
+          { name: "gem1", q: 1 }
+        ]
+      }
+    };
+    setCachedBankSnapshot(snap);
+  }
+  function seedMail() {
+    const now = Date.now();
+    commit({
+      mails: [
+        {
+          id: "ecu-preview-mail-1",
+          fro: "Brick",
+          to: "Preview",
+          subject: "Mats for tonight",
+          message: "Dropping leather + scrolls \u2014 grab when you can.",
+          sent: new Date(now - 36e5).toISOString(),
+          read: false,
+          item: { name: "leather", q: 40 },
+          canTake: true
+        },
+        {
+          id: "ecu-preview-mail-2",
+          fro: "Ember",
+          to: "Preview",
+          subject: "Stand prices",
+          message: "Undercut crabclaw by 5% if stock is stale.",
+          sent: new Date(now - 864e5).toISOString(),
+          read: true
+        },
+        {
+          id: "ecu-preview-mail-3",
+          fro: "System",
+          to: "Preview",
+          subject: "Daily gift",
+          message: "Thanks for playing.",
+          sent: new Date(now - 1728e5).toISOString(),
+          read: true,
+          system: true,
+          item: { name: "gem0", q: 1 },
+          taken: true
+        },
+        {
+          id: "ecu-preview-mail-4",
+          fro: "MerchantAnn",
+          to: "Preview",
+          subject: "Stand restock",
+          message: "Helmet +7 listed \u2014 undercut if you want the slot.",
+          sent: new Date(now - 24e7).toISOString(),
+          read: true,
+          item: { name: "helmet", level: 7, q: 1 },
+          canTake: true
+        },
+        {
+          id: "ecu-preview-mail-5",
+          fro: "Brick",
+          to: "Preview",
+          subject: "Scrolls inbound",
+          message: "cscroll0 x9 in the next drop.",
+          sent: new Date(now - 32e7).toISOString(),
+          read: true,
+          item: { name: "cscroll0", q: 9 },
+          canTake: true
+        },
+        {
+          id: "ecu-preview-mail-6",
+          fro: "Ember",
+          to: "Preview",
+          subject: "Party invite reminder",
+          message: "Same crypt pull after dinner.",
+          sent: new Date(now - 4e8).toISOString(),
+          read: true
+        },
+        {
+          id: "ecu-preview-mail-7",
+          fro: "System",
+          to: "Preview",
+          subject: "Event reward",
+          message: "Thanks for the weekend event.",
+          sent: new Date(now - 5e8).toISOString(),
+          read: true,
+          system: true,
+          item: { name: "gem1", q: 1 },
+          taken: true
+        },
+        {
+          id: "ecu-preview-mail-8",
+          fro: "Brick",
+          to: "Preview",
+          subject: "Leather bundle",
+          message: "Another stack when bank opens.",
+          sent: new Date(now - 6e8).toISOString(),
+          read: true,
+          item: { name: "leather", q: 80 },
+          canTake: true
+        }
+      ],
+      nextCursor: null,
+      hasMore: false,
+      loading: false,
+      status: "Synced just now",
+      statusKind: "",
+      lastHeadAt: now,
+      lastHeadReason: "mail head",
+      lastSeenUnread: 1
+    });
+    if (window.X && typeof window.X === "object") {
+      window.X.unread = 1;
+    }
+  }
+  function seedChat() {
+    const party = ensurePartyConversation();
+    selectHubChat(party.key);
+    pushPartyChat("Brick", "Ready when you are \u2014 crab farm.");
+    pushPartyChat("Ember", "Buffs up. Call pull.");
+    pushLocalPartyChat("Preview", "omw");
+    pushPartyChat("Brick", "Packing after this wave.");
+    pushPartyChat("Ember", "Mp ok \u2014 keep pace.");
+    pushLocalPartyChat("Preview", "heal");
+    pushPartyChat("Brick", "a2 tagged, hold for Ember.");
+    pushPartyChat("Ember", "pull");
+    pushLocalPartyChat("Preview", "brb");
+    pushPartyChat("Brick", "Back \u2014 loot then next.");
+  }
+  function seedMarket() {
+    const now = Date.now();
+    const merchants = [
+      {
+        name: "MerchantAnn",
+        level: 60,
+        map: "main",
+        x: 40,
+        y: -20,
+        server: "EU_I",
+        stand: true,
+        skin: "mmerchant",
+        lastSeenAt: now,
+        slots: [
+          {
+            slot: "trade1",
+            name: "hpot1",
+            q: 999,
+            price: 120,
+            buyOrder: false,
+            rid: "ecu-preview-rid-hpot",
+            lastRefreshedAt: now
+          },
+          {
+            slot: "trade2",
+            name: "mpot1",
+            q: 999,
+            price: 140,
+            buyOrder: false,
+            rid: "ecu-preview-rid-mpot",
+            lastRefreshedAt: now
+          },
+          {
+            slot: "trade3",
+            name: "helmet",
+            level: 7,
+            q: 1,
+            price: 85e4,
+            buyOrder: false,
+            rid: "ecu-preview-rid-helm",
+            lastRefreshedAt: now
+          },
+          {
+            slot: "trade4",
+            name: "shoes",
+            level: 6,
+            q: 1,
+            price: 42e4,
+            buyOrder: false,
+            rid: "ecu-preview-rid-shoes",
+            lastRefreshedAt: now
+          }
+        ]
+      },
+      {
+        name: "Preview",
+        level: 80,
+        map: "main",
+        x: 0,
+        y: 0,
+        server: "EU_I",
+        stand: true,
+        skin: "fpriest",
+        lastSeenAt: now,
+        slots: [
+          {
+            slot: "trade1",
+            name: "crabclaw",
+            q: 8,
+            price: 42e3,
+            buyOrder: false,
+            rid: "ecu-preview-rid-you-claw",
+            lastRefreshedAt: now
+          },
+          {
+            slot: "trade2",
+            name: "leather",
+            q: 40,
+            price: 2500,
+            buyOrder: false,
+            rid: "ecu-preview-rid-you-leather",
+            lastRefreshedAt: now
+          }
+        ]
+      },
+      {
+        name: "Ember",
+        level: 72,
+        map: "main",
+        x: 80,
+        y: 10,
+        server: "EU_I",
+        stand: true,
+        skin: "fmage",
+        lastSeenAt: now,
+        slots: [
+          {
+            slot: "trade1",
+            name: "scroll0",
+            q: 50,
+            price: 8e3,
+            buyOrder: false,
+            rid: "ecu-preview-rid-scroll",
+            lastRefreshedAt: now
+          },
+          {
+            slot: "trade2",
+            name: "wbook0",
+            level: 2,
+            q: 1,
+            price: 55e3,
+            buyOrder: true,
+            rid: "ecu-preview-rid-wbook-buy",
+            lastRefreshedAt: now
+          },
+          {
+            slot: "trade3",
+            name: "gem0",
+            q: 1,
+            price: 12e4,
+            buyOrder: false,
+            rid: "ecu-preview-rid-gem",
+            lastRefreshedAt: now
+          }
+        ]
+      }
+    ];
+    setCachedMarketMerchants(merchants);
+  }
+  function seedCommandDraft() {
+    patchSettings({
+      // Single home page — hide page-dot chrome for cleaner map-first shots.
+      phoneHomeScreens: [{ id: "home", label: "Home", panels: [], meters: [] }],
+      commandDraft: "// Preview \u2014 phone Command sheet\nloot();\nuse_skill('town');\nstop('move');\nsay('pull');\n",
+      commandSnippets: [
+        { id: "loot", name: "Loot", code: "loot()" },
+        { id: "town", name: "Town", code: "use_skill('town')" },
+        { id: "stop", name: "Stop move", code: "stop('move')" },
+        { id: "say-hi", name: "Say hi", code: "say('hi')" },
+        { id: "pull", name: "Call pull", code: "say('pull')" },
+        { id: "heal", name: "Ask heal", code: "say('heal')" },
+        { id: "omw", name: "OMW", code: "say('omw')" },
+        { id: "use-mp", name: "Use MP pot", code: "use('mpot1')" },
+        { id: "use-hp", name: "Use HP pot", code: "use('hpot1')" },
+        { id: "stop-all", name: "Stop all", code: "stop()" }
+      ]
+    });
+  }
+  function seedPhoneOverlayFixtures() {
+    if (!window.__ecuOverlayPreview) {
+      return;
+    }
+    try {
+      if (window.user_id == null) {
+        window.user_id = "ecu-overlay-preview";
+      }
+      if (window.user_auth == null) {
+        window.user_auth = "ecu-overlay-preview";
+      }
+      seedObservingBag();
+      seedBank();
+      seedMail();
+      seedChat();
+      seedMarket();
+      seedCommandDraft();
+    } catch (err) {
+      console.warn("[ecu] phone overlay fixtures failed", err);
+    }
+    window.__ecuReseedPhoneFixtures = seedPhoneOverlayFixtures;
   }
 
   // src/main.ts
@@ -96371,6 +100095,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     installWorldZoom();
     installNameplateSharpness();
     installCameraPan();
+    seedPhoneOverlayFixtures();
     let domContainer = document.querySelector("#comm-ui");
     if (!domContainer) {
       domContainer = document.createElement("div");

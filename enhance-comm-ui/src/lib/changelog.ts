@@ -119,6 +119,30 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Phone-first Comm UI: Material dock, Samsung-style shade/back/drawer gestures, meter home pages, and sheets that clear the dock — built for Tampermonkey on handsets.",
     highlights: [
       {
+        label: "Center + Follow camera",
+        detail:
+          "Crosshair Center snaps once onto the observed character (keeps free-cam). Person Follow toggles continuous tracking so the observer stays framed; pan/joystick clears Follow. Stick defaults to the right for right-thumb pan — flip with ← / → on the compact track row, or Settings → Controls.",
+        kind: "feature",
+      },
+      {
+        label: "Compact joystick chrome",
+        detail:
+          "Phone camera cluster is tighter: Center, Follow, and side flip share one 30px row above a slightly smaller stick; FOV strip is thinner so more map stays visible.",
+        kind: "ui",
+      },
+      {
+        label: "Phone panel densify",
+        detail:
+          "Expanded panels fill as bottom sheets (dock-clear, camera chrome hidden). Command Run/Save + Code|Quick + Done sit in the foot; Bank/Bag/Chat/Mail/Settings dismiss from a foot Done; Market row Buy/Open CTAs are thumb-sized.",
+        kind: "improve",
+      },
+      {
+        label: "Phone Players page",
+        detail:
+          "Party roster scrolls in a ~42vh cap with two narrower chip columns and an in-flow Show/Buffs row. Player + target frames stack full-width above the dock (no mid-band side-by-side clash).",
+        kind: "fix",
+      },
+      {
         label: "Material phone dock",
         detail:
           "Character + Server on the bar (clear Not observing). Apps via center button or swipe-up. Shade settings cog; Chat/Cmd/Mail/Bag/Bank live in Apps.",
@@ -163,7 +187,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "Phone camera + dock P0 polish",
         detail:
-          "Home-page dots no longer steal stick hits. Always-on FOV out/×/in + clearer Follow above the stick. Observe Stop/empty banner wrap correctly. Apps overlays mutually dismiss peers (incl. market). Edge gestures ignore full sheets. Desktop Settings → Comm UI shows Tampermonkey iOS/Edge/Firefox QR cards.",
+          "Home-page dots no longer steal stick hits. Always-on FOV out/×/in plus Center (crosshair) and Follow (person) icon toggles above the stick. Observe Stop/empty banner wrap correctly. Apps overlays mutually dismiss peers (incl. market). Edge gestures ignore full sheets. Desktop Settings → Comm UI shows Tampermonkey iOS/Edge/Firefox QR cards.",
         kind: "fix",
       },
       {
@@ -179,27 +203,27 @@ export const CHANGELOG: ChangelogEntry[] = [
         kind: "feature",
       },
       {
-        label: "Softer nameplates",
+        label: "Ghost nameplates",
         detail:
-          "Stock name bars restyle after add_name_tag: translucent dark name band (HP/MP/stand chrome untouched) plus a light text stroke so labels read cleaner over busy maps.",
+          "Single ghost name band: white Consolas text (Menlo / Monaco / Courier New fallback — one concrete face) centered with even padding inside a light class-tinted ghost (~28% alpha so town art stays primary; band grows upward when the face is taller than stock m5x7) and a soft darker-class rim. Class from live entity `ctype` only (`type` is kind: character/monster/npc — never class; roster `X.characters[].type` is the class fallback). NPCs / unknown stay white on charcoal. Black text stroke for crowded overlaps. HP/MP/stand untouched. Desktop ~0.88×; phone boost ~1.85×.",
         kind: "ui",
       },
       {
         label: "Phone nameplates readable",
         detail:
-          "Name text keeps LINEAR filtering (NEAREST stays on plate sprites only) and a thinner stroke — Edge Android no longer turns labels into white static under FOV CSS pixelated + high DPR.",
+          "Name text keeps LINEAR filtering (NEAREST stays on plate sprites only). Edge Android no longer turns labels into white static under FOV CSS pixelated + high DPR. Phone counter-scales ghost plates ~1.85× at every FOV (incl. zoom-in); scale is FOV×boost capped at 8, text resolution denseness capped at 6.",
         kind: "fix",
       },
       {
         label: "Nameplates on zoom-in",
         detail:
-          "FOV 0.5× (and other zoom-in) densifies text resolution by 1/fov, counter-scales plates down so they stay screen-sized, drops drop-shadow stroke noise, and uses CSS image-rendering:auto instead of pixelated upscale.",
+          "FOV 0.5× densifies text resolution by 1/fov, keeps the phone boost while counter-scaling (so zoom-in matches FOV=1 size instead of dropping to stock), drops drop-shadow stroke noise, and uses CSS image-rendering:auto instead of pixelated upscale.",
         kind: "fix",
       },
       {
         label: "Phone fullscreen",
         detail:
-          "Apps → Full toggles the document Fullscreen API with navigationUI:hide so Edge/Chrome Android can drop the address and tab bars. Exit FS to leave. Hidden when the browser does not support it.",
+          "Apps → Full toggles the document Fullscreen API with navigationUI:hide so Edge/Chrome Android can drop the address and tab bars. Exit FS to leave. Hidden when the browser does not support it. Enter/exit re-runs stock on_resize + FOV canvas fit (and listens for visualViewport) so the world fills the taller screen instead of leaving a black bar under a short canvas.",
         kind: "feature",
       },
       {
@@ -277,7 +301,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "Free camera pan",
         detail:
-          "WASD / arrows on desktop, middle-drag or left-drag on the canvas, and an on-screen joystick on phone detach the view from the observed character. Stick uses a small deadzone + steep expo so near-center crawls; map/server hops clear free-cam so vision and Follow re-home on live coords. Idle stick stays readable on sand. Follow (or the stick’s Follow chip) snaps then o:home.",
+          "WASD / arrows on desktop, middle-drag or left-drag on the canvas, and an on-screen joystick on phone detach the view from the observed character. Stick uses a small deadzone + steep expo so near-center crawls; map/server hops clear free-cam so vision and Follow re-home on live coords. Idle stick stays readable on sand. Center snaps once; Follow toggles continuous track (pan clears it).",
         kind: "feature",
       },
     ],
@@ -308,6 +332,18 @@ export const CHANGELOG: ChangelogEntry[] = [
       },
     ],
     items: [
+      {
+        label: "Sell to vendor",
+        detail:
+          "Bag item menu (desktop right-click / phone long-press): Sell to vendor… for NPC gold — quantity + confirm. Computer/supercomputer sells in place (no travel); otherwise smart_move to the nearest G gold merchant (role merchant with stock, same map first; e.g. Gabriel / basics — not citizens like Angel). Locked and shells/cash items stay disabled.",
+        kind: "feature",
+      },
+      {
+        label: "Shrine outcome + merchant skills",
+        detail:
+          "Upgrade/Compound no longer treat a bag placeholder as “item gone” — Rolling… until the slot clears; higher level = success, empty = fail. Merchants get Mass Production / Mass Production PP checkboxes (default on) that use_skill before the shrine action when the buff is missing.",
+        kind: "fix",
+      },
       {
         label: "Lite HUD defaults",
         detail:
