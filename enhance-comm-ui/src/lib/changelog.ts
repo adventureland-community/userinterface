@@ -114,224 +114,122 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     id: "0.18.0",
     title: "0.18.0",
-    date: "2026-11-04",
+    date: "2026-11-05",
     summary:
-      "Phone-first Comm UI: Material dock, Samsung-style shade/back/drawer gestures, meter home pages, and sheets that clear the dock — built for Tampermonkey on handsets.",
+      "Play Comm UI on a phone: Material dock, home pages, thumb-sized app sheets, free camera with FOV zoom, and quieter class-tinted nameplates. Desktop also gets sell-to-vendor and reliable shrine outcomes.",
     highlights: [
       {
-        label: "Center + Follow camera",
+        label: "Phone dock and home pages",
         detail:
-          "Crosshair Center snaps once onto the observed character (keeps free-cam). Person Follow toggles continuous tracking so the observer stays framed; pan/joystick clears Follow. Stick defaults to the right for right-thumb pan — flip with ← / → on the compact track row, or Settings → Controls.",
+          "Character and Server sit on the bar. Swipe the center band between Home, Players, and Coop. Apps opens from the center button or a swipe up. Character shows level, class, RIP, and realm; Server shows players and ping.",
         kind: "feature",
       },
       {
-        label: "Compact joystick chrome",
+        label: "Phone gestures and shade",
         detail:
-          "Phone camera cluster is tighter: Center, Follow, and side flip share one 30px row above a slightly smaller stick; FOV strip is thinner so more map stays visible.",
-        kind: "ui",
-      },
-      {
-        label: "Phone panel densify",
-        detail:
-          "Expanded panels fill as bottom sheets (dock-clear, camera chrome hidden). Command Run/Save + Code|Quick + Done sit in the foot; Bank/Bag/Chat/Mail/Settings dismiss from a foot Done; Market row Buy/Open CTAs are thumb-sized.",
-        kind: "improve",
-      },
-      {
-        label: "Phone Players page",
-        detail:
-          "Party roster scrolls in a ~42vh cap with two narrower chip columns and an in-flow Show/Buffs row. Player + target frames stack full-width above the dock (no mid-band side-by-side clash).",
-        kind: "fix",
-      },
-      {
-        label: "Material phone dock",
-        detail:
-          "Character + Server on the bar (clear Not observing). Apps via center button or swipe-up. Shade settings cog; Chat/Cmd/Mail/Bag/Bank live in Apps.",
+          "Edge swipe goes back. Pull down the shade for quick HUD toggles plus Mail and Chat rows. Stock topleft frost and the old action icon row stay hidden so the map stays clear.",
         kind: "feature",
       },
       {
-        label: "Samsung-learned gestures",
+        label: "App sheets for thumbs",
         detail:
-          "Edge in = back. Top shade with settings cog. Swipe up from the slim dock (including the bar) opens Apps. Center swipe flips configurable home screens.",
+          "Command, Mail, Bag, Bank, Market, Chat, and Settings open as bottom sheets above the dock. Swipe the title or tap Done to close. Lists keep the sheet: Mail is list-first, Market puts the catalog first, Bank and Market swipe between pages with labeled prev/current/next. Chat swipes between server conversations; PMs stay in the Chats drawer. Bag asks you to observe first and keeps a full 7-column grid.",
         kind: "feature",
       },
       {
-        label: "Configurable home screens",
+        label: "Free camera and FOV zoom",
         detail:
-          "Default: empty Home → Players → Coop with page dots above chrome. Apps is an icon grid (swipe up). Stock topleft frost + action icon row hidden on phone.",
-        kind: "feature",
-      },
-      {
-        label: "Chat · Settings · zoom",
-        detail:
-          "Chat stays single-pane with a Chats drawer when expanded. Settings/Cmd/Chat dock toggles work under lite HUD. Phone Ctrl+wheel (DevTools pinch) zooms the world.",
-        kind: "fix",
-      },
-      {
-        label: "Phone Server · Character parity",
-        detail:
-          "Dock Server chip puts players on the left and ping bars+ms on the right (desktop-style). Server sheet banner mirrors that; realm rows use a wide name/events column and a clear online count. Character dock/sheet show level, class, RIP, and realm.",
-        kind: "fix",
-      },
-      {
-        label: "Disable wheel zoom",
-        detail:
-          "Desktop Settings → Comm UI → Controls: turn off mouse-wheel / trackpad FOV zoom when a laptop trackpad zooms by accident. Hidden on phone (pinch / Map out·in).",
-        kind: "feature",
-      },
-      {
-        label: "Wheel zoom stays on the world",
-        detail:
-          "Desktop mouse-wheel FOV zoom only when the cursor is on the game canvas — scrolling Attach caps, Mail, and other portaled lists no longer zooms the map behind them.",
-        kind: "fix",
-      },
-      {
-        label: "Settings categories",
-        detail:
-          "Dropped the catch-all Performance pane. HUD density + hide meters → Comm HUD; world overlay master → Drawings; Tampermonkey mobile FAQ → Comm UI.",
-        kind: "improve",
-      },
-      {
-        label: "Phone camera + dock P0 polish",
-        detail:
-          "Home-page dots no longer steal stick hits. Always-on FOV out/×/in plus Center (crosshair) and Follow (person) icon toggles above the stick. Observe Stop/empty banner wrap correctly. Apps overlays mutually dismiss peers (incl. market). Edge gestures ignore full sheets. Desktop Settings → Comm UI shows Tampermonkey iOS/Edge/Firefox QR cards.",
-        kind: "fix",
-      },
-      {
-        label: "Chat server pages",
-        detail:
-          "Phone Chat: swipe left/right on the main pane (same feel as home pages) to flip between server conversations; dots under the title show and select the active server. PMs and party stay in the Chats drawer.",
-        kind: "feature",
-      },
-      {
-        label: "Phone Apps sheets",
-        detail:
-          "Command / Mail / Bag join Bank / Market / Chat: auto-expand above the Material dock, expand control, swipe title to close. Command uses Code|Snippets tabs with 44px targets; Market collapses filters behind a Filters button; Bank/Mail/Bag bump touch sizing.",
+          "Look around without changing sprite scale. Desktop: WASD or arrows, drag on the map, mouse wheel or Map out·in. Phone: on-screen stick, pinch, and always-on FOV out/×/in. Wheel and pinch zoom toward the cursor (or pinch midpoint) so the view does not drift once you are zoomed out. Center snaps once onto the watched character; Follow keeps them framed until you pan or zoom. Vision fog marks the server entity window around who you are watching (or yourself), or the static spectator when nobody is watched — it follows that subject, not the free camera. Map or realm hops re-home the camera.",
         kind: "feature",
       },
       {
         label: "Ghost nameplates",
         detail:
-          "Single ghost name band: white Consolas text (Menlo / Monaco / Courier New fallback — one concrete face) centered with even padding inside a light class-tinted ghost (~28% alpha so town art stays primary; band grows upward when the face is taller than stock m5x7) and a soft darker-class rim. Class from live entity `ctype` only (`type` is kind: character/monster/npc — never class; roster `X.characters[].type` is the class fallback). NPCs / unknown stay white on charcoal. Black text stroke for crowded overlaps. HP/MP/stand untouched. Desktop ~0.88×; phone boost ~1.85×.",
+          "One soft class-tinted band under white Consolas text, quiet enough that town art stays primary. Names stay sharp on phone and when you zoom the camera in or out. On desktop, zoomed-out plates shrink with the map instead of staying HUD-huge at 5×. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
         kind: "ui",
-      },
-      {
-        label: "Phone nameplates readable",
-        detail:
-          "Name text keeps LINEAR filtering (NEAREST stays on plate sprites only). Edge Android no longer turns labels into white static under FOV CSS pixelated + high DPR. Phone counter-scales ghost plates ~1.85× at every FOV (incl. zoom-in); scale is FOV×boost capped at 8, text resolution denseness capped at 6.",
-        kind: "fix",
-      },
-      {
-        label: "Nameplates on zoom-in",
-        detail:
-          "FOV 0.5× densifies text resolution by 1/fov, keeps the phone boost while counter-scaling (so zoom-in matches FOV=1 size instead of dropping to stock), drops drop-shadow stroke noise, and uses CSS image-rendering:auto instead of pixelated upscale.",
-        kind: "fix",
-      },
-      {
-        label: "Phone fullscreen",
-        detail:
-          "Apps → Full toggles the document Fullscreen API with navigationUI:hide so Edge/Chrome Android can drop the address and tab bars. Exit FS to leave. Hidden when the browser does not support it. Enter/exit re-runs stock on_resize + FOV canvas fit (and listens for visualViewport) so the world fills the taller screen instead of leaving a black bar under a short canvas.",
-        kind: "feature",
-      },
-      {
-        label: "Chat dots + keyboard",
-        detail:
-          "Server page dots stay 8px circles (phone button min-height no longer stretches them into tall ovals). Soft keyboard lifts the expanded chat shell via visualViewport instead of leaving a dead pad under compose.",
-        kind: "fix",
-      },
-      {
-        label: "Phone Mail sheet",
-        detail:
-          "List-first sheet: Filters lives in the search row; Msgs|Items + Compose + More on one line (Stack / Select / Mark read / Refresh behind More or when selecting). Info status folds into the strip — progress / undo / warn still card. Message list keeps most of the sheet.",
-        kind: "fix",
-      },
-      {
-        label: "Bag needs observe",
-        detail:
-          "Opening Bag without a watched character toasts and opens the Character picker (phone). Apps Bag tile dims when not observing. Phone bag keeps a full 7-column grid (no 6+1 wrap) and centers it in the expanded sheet.",
-        kind: "fix",
-      },
-      {
-        label: "Bank page swipe + dots",
-        detail:
-          "Phone Bank/Market peer swipes work over item tiles (slots are buttons — they no longer block the gesture). Page dots are spans so phone button min-height cannot stretch them into tall ovals.",
-        kind: "fix",
-      },
-      {
-        label: "Peer page labels",
-        detail:
-          "Bank / Market / Chat page chrome shows the current name, 1/N, and labeled prev/next (not anonymous dots). Swipe flash highlights the page you landed on.",
-        kind: "fix",
-      },
-      {
-        label: "Mobile install · desktop only",
-        detail:
-          "Settings → Comm UI hides Mobile install on phone — QR / LAN handoff is for desktop → phone, not when ECU is already running on the handset.",
-        kind: "fix",
-      },
-      {
-        label: "Phone sheet density pass",
-        detail:
-          "Home pages show labeled prev/current/next. Bank packs use larger 4-col slots. Bag zooms the board and pins Sort/Refresh as a foot. Market search+Filters share one row. Apps Bag shows Observe first when locked.",
-        kind: "fix",
-      },
-      {
-        label: "Phone Market sheet",
-        detail:
-          "Catalog fills the sheet first. Bag & stand collapse behind a one-line toggle (closed by default). Focus only appears after you pick an item — no more empty Bag syncing / Stand chrome eating the viewport.",
-        kind: "fix",
-      },
-      {
-        label: "App peer pages",
-        detail:
-          "Shared swipe language with Chat servers: Bank All/Packs/Types/Ready and Market Selling/Buying/… flip with swipe + dots. Market Filters keeps Near/Afford/Have/Fav only. Mail gets ← Back and swipe-right to return to the list on phone.",
-        kind: "feature",
       },
       {
         label: "Touch item actions",
         detail:
-          "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
+          "Long-press bag, gear, bank, or trade slots for the same action sheet as a desktop right-click. Tap still opens item info.",
         kind: "feature",
       },
       {
-        label: "Sharp FOV + free camera",
+        label: "Sell to vendor",
         detail:
-          "FOV zoom kept (buffer grow + CSS fit, scale unchanged); zoom-out cap raised to 6× for phone headroom. Nameplates counter-scale with FOV and force NEAREST + Text.resolution×FOV; bottom-pivot (from the stock Graphics child) keeps plates glued to heads when zooming out. Joystick uses radial deadzone + expo curve (crawl on a light nudge, full speed at the rim). Free-cam RAF dt fixed so pan works. Vision fog gates on FOV>1 (not only legacy scale below 2) so the entity window shade returns. Vision hole stays on the observer. Chrome cleanup uses pagehide.",
+          "From the bag menu, Sell to vendor… sells for NPC gold with quantity and confirm. Computers sell in place; otherwise you walk to the nearest gold merchant on the map (for example Gabriel). Locked items and shells stay disabled.",
+        kind: "feature",
+      },
+      {
+        label: "Batch upgrade / compound",
+        detail:
+          "In the shrine dialog, turn on Batch to run every matching bag copy one by one (Upgrade all N, or Compound all sets of 3). Matches name, level, and title (shiny / glitched / plain). Shows how many scrolls and offerings the batch will use versus what you have, and stops when materials run out. The inventory highlights those peers while batch is on. Failures skip to the next copy instead of closing the dialog.",
+        kind: "feature",
+      },
+      {
+        label: "Shrine outcomes and Mass Production",
+        detail:
+          "Upgrade and Compound wait through Rolling… instead of treating a bag placeholder as a fail. Higher level means success; an empty slot means fail. Merchants can auto-cast Mass Production / Mass Production PP before the shrine action when the buff is missing (on by default).",
         kind: "fix",
       },
       {
-        label: "Camera FOV zoom",
+        label: "Wheel zoom stays on the map",
         detail:
-          "Wheel / pinch / Map out·in change camera FOV via a larger logical canvas (CSS-fitted). Stock sprite `scale` stays put — desktop and phone.",
+          "Desktop wheel or trackpad FOV zoom only when the cursor is on the game world. Scrolling Mail, Attach caps, and other lists no longer zooms the map. Turn wheel zoom off entirely under Settings → Comm UI → Controls if a laptop trackpad fights you.",
+        kind: "fix",
+      },
+      {
+        label: "Install on phone from desktop",
+        detail:
+          "Settings → Comm UI on desktop: copy or scan the userscript URL, Tampermonkey store QR cards for iOS / Edge / Firefox, and optional LAN install while developing. That section hides when ECU is already running on the phone.",
         kind: "feature",
       },
       {
-        label: "Free camera pan",
+        label: "Phone fullscreen",
         detail:
-          "WASD / arrows on desktop, middle-drag or left-drag on the canvas, and an on-screen joystick on phone detach the view from the observed character. Stick uses a small deadzone + steep expo so near-center crawls; map/server hops clear free-cam so vision and Follow re-home on live coords. Idle stick stays readable on sand. Center snaps once; Follow toggles continuous track (pan clears it).",
+          "Apps → Full drops the browser chrome on supported Android browsers so the world can use the taller screen. Exit Fullscreen to leave.",
         kind: "feature",
       },
     ],
     features: [
       {
         title: "Phone chrome",
-        summary: "Dock, shade, sheets, and safe insets.",
+        summary: "Dock, shade, sheets, and first-run guidance.",
         items: [
-          {
-            label: "App panel sheets",
-            detail:
-              "Shared phoneShellExpandCss + usePhoneShellExpand: Command / Mail / Bag / Bank / Market / Chat lift above the dock with swipe-down close.",
-            kind: "feature",
-          },
           {
             label: "Notification shade",
             detail:
-              "Pull down for Quick HUD toggles (meters/layout/settings) plus Mail/Chat notification rows; More expands the QS band.",
+              "Pull down for meters, layout, and settings shortcuts, plus Mail and Chat notification rows. More expands the quick-settings band.",
             kind: "feature",
           },
           {
-            label: "Mobile install",
+            label: "Lite HUD on phone",
             detail:
-              "Settings → Comm UI: scan/copy the GitHub raw userscript; ECU_DEV builds fold out a LAN /enhance-comm-ui.user.js install (full script + @updateURL; mobile TM cannot rely on the thin GM.xhr loader). Plus iOS/Edge/Firefox Tampermonkey QR cards (official /qr/s|e|f) and FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+              "Phone boots with a quieter HUD: timelines, minimap, paperdoll, events, bag, and unit frames stay closed until you reopen them from Menu.",
+            kind: "improve",
+          },
+          {
+            label: "Guided tours on phone",
+            detail:
+              "First-run welcome and Observe / Apps / Server / Layout tours fit the handset. Character pick opens the Character sheet so you can tap a name without a giant card in the way.",
+            kind: "fix",
+          },
+        ],
+      },
+      {
+        title: "Camera and map",
+        summary: "Look around and zoom without breaking sprites or vision.",
+        items: [
+          {
+            label: "Stick and Center / Follow",
+            detail:
+              "Phone stick defaults to the right for a right thumb; flip side on the compact track row or in Settings → Controls. Light nudges crawl, rim is full speed. Center is a one-shot snap; Follow tracks until you pan.",
+            kind: "feature",
+          },
+          {
+            label: "Players page",
+            detail:
+              "Party roster scrolls in a capped band with narrower chips and Show / Buffs in flow. Player and target frames stack full width above the dock.",
             kind: "ui",
           },
         ],
@@ -339,57 +237,21 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
     items: [
       {
-        label: "Sell to vendor",
+        label: "Settings layout",
         detail:
-          "Bag item menu (desktop right-click / phone long-press): Sell to vendor… for NPC gold — quantity + confirm. Computer/supercomputer sells in place (no travel); otherwise smart_move to the nearest G gold merchant (role merchant with stock, same map first; e.g. Gabriel / basics — not citizens like Angel). Locked and shells/cash items stay disabled.",
-        kind: "feature",
-      },
-      {
-        label: "Shrine outcome + merchant skills",
-        detail:
-          "Upgrade/Compound no longer treat a bag placeholder as “item gone” — Rolling… until the slot clears; higher level = success, empty = fail. Merchants get Mass Production / Mass Production PP checkboxes (default on) that use_skill before the shrine action when the buff is missing.",
-        kind: "fix",
-      },
-      {
-        label: "Lite HUD defaults",
-        detail:
-          "Auto lite on phone hides timelines, minimap, paperdoll, events, bag, and unit frames until reopened from Menu.",
+          "Performance pane is gone. HUD density and hide meters live under Comm HUD; world overlays under Drawings; mobile install FAQ under Comm UI. Left-nav categories fold out jump links.",
         kind: "improve",
       },
       {
-        label: "Settings subsections",
+        label: "Soft keyboard and chat chrome",
         detail:
-          "Active left-nav category folds out jump links (Updates, Mobile install, …). Comm UI Guided tours sit last.",
-        kind: "ui",
-      },
-      {
-        label: "Phone intro sheet",
-        detail:
-          "First-run Comm UI welcome fits the viewport: scroll the overview, Skip / Next stay pinned — no more clipped giant popup.",
+          "Expanded chat lifts with the on-screen keyboard instead of leaving a dead pad under compose. Server page dots stay small circles.",
         kind: "fix",
       },
       {
-        label: "Phone tour · pick character",
+        label: "Phone paperdoll close",
         detail:
-          "Observe tour steps open the Character sheet and spotlight the list with a compact top callout — the huge guide card no longer blocks tapping a name.",
-        kind: "fix",
-      },
-      {
-        label: "Phone tours · Apps / Server / Layout",
-        detail:
-          "Intro retargets Server, Apps, Bag, Cmd, Layout, and Add meter to phone sheets/dock; coverage test + overlay harness walk every tour at phone size.",
-        kind: "fix",
-      },
-      {
-        label: "Vision stays on the observer",
-        detail:
-          "Free-cam / Follow no longer drag the vision fog hole with the camera — the hole tracks the watched character (live entity, then observe snap), not map.real_*.",
-        kind: "fix",
-      },
-      {
-        label: "Phone paperdoll ×",
-        detail:
-          "Locked panels on phone no longer hide the dismiss × inside hover-only arrange chrome — paperdoll (and bag / tips) keep a corner close control.",
+          "Locked panels on phone keep a corner × so paperdoll, bag, and tips stay dismissible without arrange hover chrome.",
         kind: "fix",
       },
     ],
