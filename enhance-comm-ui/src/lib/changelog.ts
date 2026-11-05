@@ -116,7 +116,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: "0.18.0",
     date: "2026-11-05",
     summary:
-      "Play Comm UI on a phone: Material dock, home pages, thumb-sized app sheets, free camera with FOV zoom, and quieter class-tinted nameplates. Desktop also gets sell-to-vendor and reliable shrine outcomes.",
+      "Play Comm UI on a phone: Material dock, home pages, thumb-sized app sheets, free camera with FOV zoom, and denser class-tinted nameplates that stay readable on bright ground. Desktop also gets sell-to-vendor, batch shrine buys, and reliable shrine outcomes.",
     highlights: [
       {
         label: "Phone dock and home pages",
@@ -145,7 +145,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "Ghost nameplates",
         detail:
-          "One soft class-tinted band under white Consolas text, quiet enough that town art stays primary. On bright ground the plate densifies a little (cheap background sample, not every frame). Names stay sharp on phone and when you zoom the camera in or out. On desktop, zoomed-out plates shrink with the map instead of staying HUD-huge at 5×. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
+          "One denser class-tinted band under white Consolas text with a heavier black stroke so names hold on desert sand and light stone. On bright ground the plate densifies further (cheap background sample). Names stay sharp on phone; desktop zoom-out keeps plates readable without going HUD-huge at 5×. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
         kind: "ui",
       },
       {
@@ -163,7 +163,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "Batch upgrade / compound",
         detail:
-          "In the shrine dialog, turn on Batch to run every matching bag copy one by one (Upgrade all N, or Compound all sets of 3). Matches name, level, and title (shiny / glitched / plain). Shows how many scrolls and offerings the batch will use versus what you have, and stops when materials run out. The inventory highlights those peers while batch is on. Failures skip to the next copy instead of closing the dialog.",
+          "In the shrine dialog, turn on Batch to run every matching bag copy one by one (Upgrade all N, or Compound all sets of 3). Matches name, level, and title (shiny / glitched / plain). Shows how many scrolls and offerings the batch will use versus what you have. Optionally buy more of the selected scroll/offering from an NPC after bag stock runs out (capped by gold). The inventory highlights those peers while batch is on. Failures skip to the next copy instead of closing the dialog.",
         kind: "feature",
       },
       {
