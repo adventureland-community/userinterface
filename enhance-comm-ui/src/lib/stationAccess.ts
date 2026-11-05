@@ -168,6 +168,203 @@ export function compoundStation(G?: GLike | null): StationCoords | null {
   return mainShrineCoords("compound", G);
 }
 
+/** Classic dump shops — used only as a stable tie-break / no-entity fallback. */
+const VENDOR_SELL_PREF = [
+  "basics",
+  "scrolls",
+  "fancypots",
+  "pots",
+  "wbartender",
+  "tbartender",
+];
+
+function vendorSellPrefRank(id: string | undefined): number {
+  if (!id) return 999;
+  const i = VENDOR_SELL_PREF.indexOf(id);
+  return i >= 0 ? i : 100;
+}
+
+/**
+ * True when `G.npcs[id]` is a gold shop (`role === "merchant"` with stock).
+ * Mirrors process_game_data’s `map.merchants` rule — not citizens (Angel),
+ * token shops, or empty stubs like armors.
+ */
+export function isGoldMerchantNpc(
+  npc: { role?: string; items?: Array<string | null> } | null | undefined,
+): boolean {
+  if (!npc || npc.role !== "merchant") return false;
+  if (!Array.isArray(npc.items) || !npc.items.length) return false;
+  for (let i = 0; i < npc.items.length; i++) {
+    if (npc.items[i]) return true;
+  }
+  return false;
+}
+
+function pushVendorStation(
+  out: StationCoords[],
+  seen: Record<string, true>,
+  station: StationCoords,
+): void {
+  const key =
+    String(station.map) +
+    "|" +
+    String(station.id || "") +
+    "|" +
+    station.x +
+    "|" +
+    station.y;
+  if (seen[key]) return;
+  seen[key] = true;
+  out.push(station);
+}
+
+/**
+ * All gold-merchant stations from G maps.
+ * Prefers post-processed `map.merchants`, else `map.npcs` with positions,
+ * else `map.ref` / findNpcCoords.
+ */
+export function listVendorSellStations(G?: GLike | null): StationCoords[] {
+  const g = G || getG();
+  if (!g || !g.maps) return [];
+  const out: StationCoords[] = [];
+  const seen: Record<string, true> = {};
+  const mapNames = Object.keys(g.maps);
+
+  for (let i = 0; i < mapNames.length; i++) {
+    const mapName = mapNames[i];
+    const map = g.maps[mapName] as {
+      merchants?: Array<{
+        map?: string;
+        x?: number;
+        y?: number;
+        id?: string;
+      }>;
+      npcs?: Array<{
+        id?: string;
+        position?: [number, number] | number[];
+      }>;
+      ref?: Record<string, { map?: string; x?: number; y?: number; id?: string }>;
+    } | null;
+    if (!map) continue;
+
+    const merchants = map.merchants;
+    if (Array.isArray(merchants) && merchants.length) {
+      for (let j = 0; j < merchants.length; j++) {
+        const c = merchants[j];
+        if (!c) continue;
+        const id = c.id != null ? String(c.id) : "";
+        const npc = id && g.npcs ? g.npcs[id] : null;
+        if (!isGoldMerchantNpc(npc)) continue;
+        const x = Number(c.x);
+        const y = Number(c.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        pushVendorStation(out, seen, {
+          map: String(c.map || mapName),
+          x,
+          y,
+          id: id || undefined,
+        });
+      }
+      continue;
+    }
+
+    const npcs = map.npcs;
+    if (Array.isArray(npcs)) {
+      for (let j = 0; j < npcs.length; j++) {
+        const entry = npcs[j];
+        if (!entry || entry.id == null) continue;
+        const id = String(entry.id);
+        const npc = g.npcs ? g.npcs[id] : null;
+        if (!isGoldMerchantNpc(npc)) continue;
+        const pos = entry.position;
+        if (pos && pos.length >= 2) {
+          const x = Number(pos[0]);
+          const y = Number(pos[1]);
+          if (Number.isFinite(x) && Number.isFinite(y)) {
+            pushVendorStation(out, seen, { map: mapName, x, y, id });
+            continue;
+          }
+        }
+        const fromRef = findNpcCoords(id, g);
+        if (fromRef) pushVendorStation(out, seen, fromRef);
+      }
+    }
+  }
+
+  if (!out.length && g.npcs) {
+    const ids = Object.keys(g.npcs);
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      if (!isGoldMerchantNpc(g.npcs[id])) continue;
+      const coords = findNpcCoords(id, g);
+      if (coords) pushVendorStation(out, seen, coords);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Nearest gold merchant for NPC sell().
+ * Same-map first (observer/character), else nearest world-wide, else
+ * preferred dump id (Gabriel / basics — not Angel / citizen4).
+ */
+export function findVendorSellStation(
+  G?: GLike | null,
+  entity?: EntityLike | null,
+): StationCoords | null {
+  const g = G || getG();
+  const stations = listVendorSellStations(g);
+  if (!stations.length) {
+    for (let i = 0; i < VENDOR_SELL_PREF.length; i++) {
+      const coords = findNpcCoords(VENDOR_SELL_PREF[i], g);
+      if (coords) return coords;
+    }
+    return null;
+  }
+
+  const ent = resolveObservedEntity(entity);
+  const entMap =
+    ent && ent.map != null && String(ent.map) ? String(ent.map) : "";
+  const sameMap = entMap
+    ? stations.filter((s) => s.map === entMap)
+    : [];
+  const pool = sameMap.length ? sameMap : stations;
+
+  if (!ent || !Number.isFinite(Number(ent.x ?? ent.real_x))) {
+    let best: StationCoords | null = null;
+    let bestRank = Infinity;
+    for (let i = 0; i < pool.length; i++) {
+      const s = pool[i];
+      const rank = vendorSellPrefRank(s.id);
+      if (rank < bestRank) {
+        bestRank = rank;
+        best = s;
+      }
+    }
+    return best || pool[0] || null;
+  }
+
+  let best: StationCoords | null = null;
+  let bestDist = Infinity;
+  let bestRank = Infinity;
+  for (let i = 0; i < pool.length; i++) {
+    const s = pool[i];
+    const dist = distToStation(ent, s);
+    const rank = vendorSellPrefRank(s.id);
+    if (
+      !best ||
+      dist < bestDist - 0.5 ||
+      (Math.abs(dist - bestDist) <= 0.5 && rank < bestRank)
+    ) {
+      best = s;
+      bestDist = dist;
+      bestRank = rank;
+    }
+  }
+  return best;
+}
+
 /**
  * First merchant that sells `itemName` (post-process `map.items[name]`),
  * else NPC whose `items` list includes it, else scrolls NPC.
