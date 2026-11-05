@@ -573,6 +573,17 @@ const CSS = `
   margin: 0;
   accent-color: #c9a24a;
 }
+.ecu-upg__batch-count {
+  color: rgba(232, 201, 106, 0.88);
+  font-variant-numeric: tabular-nums;
+}
+.ecu-upg__batch-detail {
+  margin: 4px 0 0;
+  padding: 0 8px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(200, 185, 150, 0.82);
+}
 `;
 
 export function ensureUpgradeCompoundDialogCss(): void {

@@ -379,22 +379,29 @@ export function listOfferingsForShrine(
   return bag.concat(listVendorOfferings(G, have));
 }
 
-/** Other bag copies of the same compound item+level (excluding primary). */
+function titleKey(p: string | null | undefined): string {
+  return p != null && String(p).trim() !== "" ? String(p) : "";
+}
+
+/** Other bag copies of the same compound item+level+title (excluding primary). */
 export function findCompoundPartners(
   items: Array<BagItemLike | null | undefined> | null | undefined,
   primarySlot: number,
   name: string,
   level: number,
+  p?: string | null,
 ): BagSlotRef[] {
   const slots = listBagSlots(items);
   const out: BagSlotRef[] = [];
   const wantLevel = Number(level) || 0;
+  const wantTitle = titleKey(p);
   for (let i = 0; i < slots.length; i++) {
     const s = slots[i];
     if (s.slot === primarySlot) continue;
     if (s.name !== name) continue;
     const lv = s.level != null ? Number(s.level) : 0;
     if (lv !== wantLevel) continue;
+    if (titleKey(s.p) !== wantTitle) continue;
     if (isLocked(s as BagItemLike)) continue;
     out.push(s);
   }
@@ -448,6 +455,7 @@ export function compoundOfferForBagItem(
     slot,
     String(item.name),
     level,
+    item.p != null ? String(item.p) : null,
   );
   const station = compoundStation(G);
   const access = evaluateStationAccess(station, { items: bagItems });
@@ -490,4 +498,194 @@ export function defaultCompoundPartners(
     return a.slot - b.slot;
   });
   return [ranked[0], ranked[1]];
+}
+
+export type ShrineBatchMaterial = {
+  name: string;
+  displayName?: string;
+  q: number;
+  buy?: boolean;
+  buyPrice?: number;
+};
+
+export type ShrineBatchPlan = {
+  /** Attempts after capping by peers and materials. */
+  attempts: number;
+  /** Peer upgrades or compound sets before material caps. */
+  wantAttempts: number;
+  scrollUse: number;
+  scrollHave: number | null;
+  offeringUse: number;
+  offeringHave: number | null;
+  goldNeed: number;
+  goldHave: number;
+  limitedBy: "peers" | "scroll" | "offering" | "gold" | null;
+};
+
+/**
+ * How many batch shrine attempts fit the bag (and optional vendor gold).
+ * One attempt = one upgrade, or one compound of 3 copies.
+ */
+export function planShrineBatch(opts: {
+  mode: "upgrade" | "compound";
+  peerCount: number;
+  scroll?: ShrineBatchMaterial | null;
+  offering?: ShrineBatchMaterial | null;
+  gold?: number;
+}): ShrineBatchPlan {
+  const peers = Math.max(0, opts.peerCount | 0);
+  const want =
+    opts.mode === "compound" ? Math.floor(peers / 3) : peers;
+  let attempts = want;
+  let limitedBy: ShrineBatchPlan["limitedBy"] = want > 0 ? "peers" : null;
+
+  const scroll = opts.scroll || null;
+  const offering = opts.offering || null;
+  const gold =
+    typeof opts.gold === "number" && Number.isFinite(opts.gold)
+      ? Math.max(0, opts.gold)
+      : 0;
+
+  let scrollHave: number | null = null;
+  if (scroll) {
+    if (scroll.buy) {
+      scrollHave = null;
+    } else {
+      scrollHave = Math.max(0, Number(scroll.q) || 0);
+      if (scrollHave < attempts) {
+        attempts = scrollHave;
+        limitedBy = "scroll";
+      }
+    }
+  }
+
+  let offeringHave: number | null = null;
+  if (offering) {
+    if (offering.buy) {
+      offeringHave = null;
+    } else {
+      offeringHave = Math.max(0, Number(offering.q) || 0);
+      if (offeringHave < attempts) {
+        attempts = offeringHave;
+        limitedBy = "offering";
+      }
+    }
+  }
+
+  let costPer = 0;
+  if (scroll && scroll.buy) {
+    costPer += Math.max(0, Number(scroll.buyPrice) || 0);
+  }
+  if (offering && offering.buy) {
+    costPer += Math.max(0, Number(offering.buyPrice) || 0);
+  }
+  if (costPer > 0) {
+    const byGold = Math.floor(gold / costPer);
+    if (byGold < attempts) {
+      attempts = byGold;
+      limitedBy = "gold";
+    }
+  }
+
+  if (attempts <= 0) {
+    attempts = 0;
+    if (want > 0 && limitedBy === "peers") limitedBy = null;
+  } else if (attempts === want) {
+    limitedBy = "peers";
+  }
+
+  return {
+    attempts,
+    wantAttempts: want,
+    scrollUse: scroll ? attempts : 0,
+    scrollHave,
+    offeringUse: offering ? attempts : 0,
+    offeringHave,
+    goldNeed: costPer > 0 ? attempts * costPer : 0,
+    goldHave: gold,
+    limitedBy: attempts > 0 ? limitedBy : want > 0 ? limitedBy || "scroll" : null,
+  };
+}
+
+function formatBatchGold(n: number): string {
+  if (n >= 1_000_000) return Math.floor(n / 1_000_000) + "m";
+  if (n >= 10_000) return Math.floor(n / 1000) + "k";
+  return String(n);
+}
+
+/** Short UI line: copies/sets + scrolls/offerings used vs have. */
+export function formatShrineBatchSummary(
+  plan: ShrineBatchPlan,
+  opts: {
+    mode: "upgrade" | "compound";
+    scroll?: ShrineBatchMaterial | null;
+    offering?: ShrineBatchMaterial | null;
+  },
+): string {
+  if (plan.wantAttempts <= 0) {
+    return opts.mode === "compound" ? " · need 3 copies" : " · no copies";
+  }
+  const unit = opts.mode === "compound" ? "set" : "upgrade";
+  const units = opts.mode === "compound" ? "sets" : "upgrades";
+  const head =
+    plan.attempts === plan.wantAttempts
+      ? " · " +
+        plan.attempts +
+        " " +
+        (plan.attempts === 1 ? unit : units)
+      : " · " +
+        plan.attempts +
+        " of " +
+        plan.wantAttempts +
+        " " +
+        units;
+  const parts: string[] = [head];
+  const scroll = opts.scroll || null;
+  if (scroll && plan.scrollUse > 0) {
+    const label = scroll.displayName || scroll.name;
+    if (scroll.buy) {
+      parts.push(
+        "buy " + plan.scrollUse + "× " + label,
+      );
+    } else {
+      parts.push(
+        "use " +
+          plan.scrollUse +
+          "× " +
+          label +
+          " (have " +
+          (plan.scrollHave != null ? plan.scrollHave : "?") +
+          ")",
+      );
+    }
+  }
+  const offering = opts.offering || null;
+  if (offering && plan.offeringUse > 0) {
+    const label = offering.displayName || offering.name;
+    if (offering.buy) {
+      parts.push(
+        "buy " + plan.offeringUse + "× " + label,
+      );
+    } else {
+      parts.push(
+        "use " +
+          plan.offeringUse +
+          "× " +
+          label +
+          " (have " +
+          (plan.offeringHave != null ? plan.offeringHave : "?") +
+          ")",
+      );
+    }
+  }
+  if (plan.goldNeed > 0) {
+    parts.push(
+      "gold " +
+        formatBatchGold(plan.goldNeed) +
+        " (have " +
+        formatBatchGold(plan.goldHave) +
+        ")",
+    );
+  }
+  return parts.join(" · ");
 }

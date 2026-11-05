@@ -9,10 +9,17 @@
 export type BagItemLike = {
   name?: string;
   level?: number;
+  /** Title / prefix (`shiny`, `glitched`, …) — part of “same item” for batch. */
+  p?: string | null;
 } | null | undefined;
 
 export function isBagPlaceholder(it: BagItemLike): boolean {
   return !!(it && it.name === "placeholder");
+}
+
+/** Empty / missing title keys as the same plain variant. */
+export function itemTitleKey(p: string | null | undefined): string {
+  return p != null && String(p).trim() !== "" ? String(p) : "";
 }
 
 export function countNameLevel(
@@ -20,17 +27,47 @@ export function countNameLevel(
   name: string,
   level: number,
 ): number {
-  if (!items) return 0;
-  let n = 0;
+  return listBagSlotsAtNameLevel(items, name, level).length;
+}
+
+/**
+ * Bag slot indexes matching name + level (skips placeholders / empty).
+ * Does not filter by title — use `listBagSlotsAtNameLevelTitle` for batch peers.
+ */
+export function listBagSlotsAtNameLevel(
+  items: Array<BagItemLike> | null | undefined,
+  name: string,
+  level: number,
+): number[] {
+  return listBagSlotsAtNameLevelTitle(items, name, level, undefined, false);
+}
+
+/**
+ * Same-item peers for batch upgrade/compound: name + level + title (`p`).
+ * Plain items (no `p`) only match other plain copies — not shiny/glitched twins.
+ */
+export function listBagSlotsAtNameLevelTitle(
+  items: Array<BagItemLike> | null | undefined,
+  name: string,
+  level: number,
+  p?: string | null,
+  matchTitle: boolean = true,
+): number[] {
+  if (!items) return [];
+  const out: number[] = [];
   const want = Number(level) || 0;
   const wantName = String(name || "");
+  const wantTitle = matchTitle ? itemTitleKey(p) : null;
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
-    if (!it || it.name !== wantName) continue;
+    if (!it || !it.name || it.name === "placeholder") continue;
+    if (it.name !== wantName) continue;
     const lv = it.level != null ? Number(it.level) : 0;
-    if (lv === want) n += 1;
+    if (lv !== want) continue;
+    if (wantTitle != null && itemTitleKey(it.p) !== wantTitle) continue;
+    out.push(i);
   }
-  return n;
+  return out;
 }
 
 export type ShrineWatchVerdict =

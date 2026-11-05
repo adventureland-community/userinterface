@@ -15,12 +15,15 @@ import {
   compoundOfferForBagItem,
   defaultCompoundPartners,
   findShrinePickById,
+  formatShrineBatchSummary,
+  planShrineBatch,
   shrinePickId,
   upgradeOfferForBagItem,
   type BagSlotRef,
   type CompoundFromBagOffer,
   type OfferingPick,
   type ScrollPick,
+  type ShrineBatchPlan,
   type UpgradeFromBagOffer,
 } from "../../lib/bagUpgradeCompound";
 import { itemInstanceHtml, itemInstanceLabel } from "../../lib/gameIcon";
@@ -31,6 +34,8 @@ import {
 import {
   countNameLevel,
   evaluateShrineBagWatch,
+  itemTitleKey,
+  listBagSlotsAtNameLevelTitle,
 } from "../../lib/shrineOutcomeWatch";
 import { resolveInventorySlotNum } from "./bagItemContextMenu";
 import {
@@ -66,6 +71,14 @@ export type CompoundDialogResult = {
 /** Session defaults for merchant shrine skill checkboxes. */
 let shrineSkillMassproduction = true;
 let shrineSkillMassproductionPp = true;
+/** Session default — batch all same name+level copies one by one. */
+let shrineBatchMode = false;
+
+function bagItemLocked(it: {
+  l?: unknown;
+} | null | undefined): boolean {
+  return !!(it && it.l != null && it.l !== false && it.l !== 0);
+}
 
 export type UpgradeDialogOptions = {
   /** Run the character command and keep the dialog open for another try. */
@@ -280,6 +293,115 @@ function makeMerchantSkillChecks(): MerchantSkillChecks | null {
       massproductionpp: massPp.checked,
     }),
   };
+}
+
+type BatchModeCheck = {
+  root: HTMLDivElement;
+  read: () => boolean;
+  setPlanSummary: (summary: string, detail: string) => void;
+};
+
+/**
+ * Batch = run matching copies one shrine action each, capped by scrolls/offerings.
+ * Inventory highlights every peer copy while batch is on.
+ */
+function makeBatchModeCheck(opts: {
+  mode: "upgrade" | "compound";
+  onChange: () => void;
+}): BatchModeCheck {
+  const root = document.createElement("div");
+  root.className = "ecu-upg__skills ecu-upg__batch";
+  const label = document.createElement("div");
+  label.className = "ecu-upg__section-label";
+  label.textContent = "Batch";
+  root.appendChild(label);
+  const row = document.createElement("div");
+  row.className = "ecu-upg__skills-row";
+  const wrap = document.createElement("label");
+  wrap.className = "ecu-upg__skill";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = shrineBatchMode;
+  input.setAttribute("data-batch", "1");
+  const span = document.createElement("span");
+  const verb = opts.mode === "compound" ? "Compound" : "Upgrade";
+  span.textContent = "Batch " + verb.toLowerCase();
+  wrap.title =
+    opts.mode === "compound"
+      ? "Run every full set of 3 matching copies, one compound at a time, stopping when scrolls or offerings run out. Highlights peers in the bag."
+      : "Upgrade every matching copy one by one, stopping when scrolls or offerings run out. Highlights peers in the bag.";
+  wrap.appendChild(input);
+  wrap.appendChild(span);
+  const count = document.createElement("span");
+  count.className = "ecu-upg__batch-count";
+  wrap.appendChild(count);
+  row.appendChild(wrap);
+  root.appendChild(row);
+  const detail = document.createElement("div");
+  detail.className = "ecu-upg__batch-detail";
+  root.appendChild(detail);
+  input.addEventListener("change", () => {
+    shrineBatchMode = input.checked;
+    opts.onChange();
+  });
+  return {
+    root,
+    read: () => input.checked,
+    setPlanSummary: (summary: string, detailText: string) => {
+      count.textContent = summary;
+      detail.textContent = detailText;
+      detail.style.display = detailText ? "" : "none";
+    },
+  };
+}
+
+function batchMaterialFromPick(
+  pick: ScrollPick | OfferingPick | null,
+): {
+  name: string;
+  displayName: string;
+  q: number;
+  buy?: boolean;
+  buyPrice?: number;
+} | null {
+  if (!pick) return null;
+  const out: {
+    name: string;
+    displayName: string;
+    q: number;
+    buy?: boolean;
+    buyPrice?: number;
+  } = {
+    name: pick.name,
+    displayName: pick.displayName || pick.name,
+    q: pick.q != null ? Number(pick.q) : 1,
+  };
+  if (pick.buy) {
+    out.buy = true;
+    if (pick.buyPrice != null) out.buyPrice = Number(pick.buyPrice);
+  }
+  return out;
+}
+
+function describeBatchLimit(plan: ShrineBatchPlan): string {
+  if (plan.attempts <= 0 && plan.wantAttempts > 0) {
+    if (plan.limitedBy === "scroll") return "Not enough scrolls for a batch.";
+    if (plan.limitedBy === "offering") {
+      return "Not enough offerings for a batch.";
+    }
+    if (plan.limitedBy === "gold") return "Not enough gold to buy materials.";
+    return "Nothing left to batch.";
+  }
+  if (plan.limitedBy === "scroll") {
+    return "Stops early — only " + plan.scrollHave + " scroll(s) in bag.";
+  }
+  if (plan.limitedBy === "offering") {
+    return "Stops early — only " + plan.offeringHave + " offering(s) in bag.";
+  }
+  if (plan.limitedBy === "gold") {
+    return "Stops early — gold only covers " + plan.attempts + " buy(s).";
+  }
+  return "";
 }
 
 function watchLevelBump(opts: {
@@ -1070,11 +1192,52 @@ export function showUpgradeDialog(
       }
     };
 
+    const batchCheck = makeBatchModeCheck({
+      mode: "upgrade",
+      onChange: () => paint(),
+    });
+
     const paint = () => {
       const scroll = findScroll(liveOffer.scrolls, scrollId);
       const offering = findOffering(liveOffer.offerings, offeringId);
+      const bagNow = observingBagItems();
+      const peerSlots = listBagSlotsAtNameLevelTitle(
+        bagNow,
+        liveOffer.item.name,
+        fromLevel,
+        liveOffer.item.p,
+      );
+      const goldNow = observingGold();
+      const batchPlan = planShrineBatch({
+        mode: "upgrade",
+        peerCount: peerSlots.length,
+        scroll: batchMaterialFromPick(scroll),
+        offering: batchMaterialFromPick(offering),
+        gold: goldNow,
+      });
+      if (batchCheck.read()) {
+        batchCheck.setPlanSummary(
+          formatShrineBatchSummary(batchPlan, {
+            mode: "upgrade",
+            scroll: batchMaterialFromPick(scroll),
+            offering: batchMaterialFromPick(offering),
+          }),
+          describeBatchLimit(batchPlan),
+        );
+      } else {
+        batchCheck.setPlanSummary(
+          peerSlots.length > 1
+            ? " · " + peerSlots.length + " copies"
+            : peerSlots.length === 1
+              ? " · 1 copy"
+              : "",
+          "",
+        );
+      }
 
-      const highlight: number[] = [liveOffer.item.slot];
+      const highlight: number[] = batchCheck.read()
+        ? peerSlots.slice()
+        : [liveOffer.item.slot];
       if (scroll && !scroll.buy && scroll.slot >= 0) {
         highlight.push(scroll.slot);
       }
@@ -1139,7 +1302,6 @@ export function showUpgradeDialog(
         });
       }
 
-      const gold = observingGold();
       appendScrollTiles(
         scrollTiles,
         liveOffer.scrolls,
@@ -1151,7 +1313,7 @@ export function showUpgradeDialog(
           paint();
           refreshChanceEstimate();
         },
-        gold,
+        goldNow,
         { allowNone: true },
       );
       appendOfferingTiles(
@@ -1165,18 +1327,29 @@ export function showUpgradeDialog(
           paint();
           refreshChanceEstimate();
         },
-        gold,
+        goldNow,
       );
       const ready = scrollId != null || offeringId != null;
       const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
-      okBtn.disabled = busy || !ready;
+      const batchOn = batchCheck.read();
+      const batchN = batchPlan.attempts;
+      okBtn.disabled =
+        busy || !ready || (batchOn && batchPlan.wantAttempts > 0 && batchN <= 0);
       okBtn.textContent = buying
         ? liveOffer.access.hasComputer
-          ? "Buy & upgrade"
-          : "Buy, travel & upgrade"
-        : liveOffer.access.ok
-          ? "Upgrade"
-          : "Travel & upgrade";
+          ? batchOn && batchN > 1
+            ? "Buy & upgrade all (" + batchN + ")"
+            : "Buy & upgrade"
+          : batchOn && batchN > 1
+            ? "Buy, travel & upgrade all (" + batchN + ")"
+            : "Buy, travel & upgrade"
+        : batchOn && batchN > 1
+          ? liveOffer.access.ok
+            ? "Upgrade all (" + batchN + ")"
+            : "Travel & upgrade all (" + batchN + ")"
+          : liveOffer.access.ok
+            ? "Upgrade"
+            : "Travel & upgrade";
       meta.textContent =
         "Grade " +
         liveOffer.grade +
@@ -1191,6 +1364,20 @@ export function showUpgradeDialog(
             "Pick an offering from the tiles, bag, vendor (or None).";
         } else if (!ready) {
           hint.textContent = "Pick a scroll and/or an offering.";
+        } else if (batchOn && batchPlan.wantAttempts > 1) {
+          hint.textContent =
+            "Batch: " +
+            batchN +
+            " upgrade" +
+            (batchN === 1 ? "" : "s") +
+            " at +" +
+            fromLevel +
+            (batchN < batchPlan.wantAttempts
+              ? " (materials limit " +
+                batchPlan.wantAttempts +
+                " copies)"
+              : "") +
+            ".";
         } else {
           hint.textContent = "";
         }
@@ -1200,10 +1387,115 @@ export function showUpgradeDialog(
       offerSection.classList.toggle("is-focus", pickFocus === "offering");
     };
 
+    const applyOfferPicks = (
+      nextOffer: UpgradeFromBagOffer,
+      keptScrollName: string | null,
+      keptOfferingName: string | null,
+      readyHint: string,
+    ) => {
+      liveOffer = nextOffer;
+      fromLevel =
+        liveOffer.item.level != null &&
+        Number.isFinite(Number(liveOffer.item.level))
+          ? Number(liveOffer.item.level)
+          : fromLevel;
+      const keepScroll = keptScrollName
+        ? liveOffer.scrolls.find((s) => s.name === keptScrollName)
+        : null;
+      scrollId = keepScroll
+        ? shrinePickId(keepScroll)
+        : liveOffer.scrolls[0]
+          ? shrinePickId(liveOffer.scrolls[0])
+          : null;
+      const keepOffering = keptOfferingName
+        ? liveOffer.offerings.find((o) => o.name === keptOfferingName)
+        : null;
+      offeringId = keepOffering ? shrinePickId(keepOffering) : null;
+      pickFocus = scrollId == null ? "scroll" : null;
+      itemName.textContent = levelTransitionLabel(
+        fromLevel,
+        liveOffer.displayName,
+      );
+      meta.textContent =
+        "Grade " + liveOffer.grade + " · " + accessHint(liveOffer.access);
+      paintTrialResult(trial, liveOffer.item, fromLevel + 1);
+      busy = false;
+      hint.textContent = readyHint;
+      paint();
+      refreshChanceEstimate();
+    };
+
+    /** Next unlocked copy still at the batch level (same name + level + title). */
+    const rebindBatchPeer = (
+      keptScrollName: string | null,
+      keptOfferingName: string | null,
+      afterFail: boolean,
+    ) => {
+      const bag = observingBagItems();
+      const G = getG();
+      const wantTitle = itemTitleKey(liveOffer.item.p);
+      let nextSlot = -1;
+      let nextItem: {
+        name?: string;
+        level?: number;
+        p?: string | null;
+        l?: unknown;
+      } | null = null;
+      if (bag) {
+        for (let i = 0; i < bag.length; i++) {
+          const it = bag[i];
+          if (!it || it.name !== liveOffer.item.name) continue;
+          if (bagItemLocked(it)) continue;
+          const lv = it.level != null ? Number(it.level) : 0;
+          if (lv !== fromLevel) continue;
+          if (itemTitleKey(it.p) !== wantTitle) continue;
+          nextSlot = i;
+          nextItem = it;
+          break;
+        }
+      }
+      if (!nextItem || nextSlot < 0 || !G) {
+        hint.textContent = afterFail
+          ? "Batch done — no more +" + fromLevel + " copies."
+          : "Batch done — all +" + fromLevel + " copies upgraded.";
+        busy = false;
+        window.setTimeout(() => closeDialog(null), 1600);
+        return;
+      }
+      const nextOffer = upgradeOfferForBagItem(nextItem, nextSlot, bag, G);
+      if (!nextOffer || nextOffer.locked || nextOffer.maxLevel) {
+        hint.textContent = "Batch stopped — cannot continue.";
+        busy = false;
+        window.setTimeout(() => closeDialog(null), 1600);
+        return;
+      }
+      applyOfferPicks(
+        nextOffer,
+        keptScrollName,
+        keptOfferingName,
+        afterFail
+          ? "Failed — continuing batch…"
+          : "Success — next copy in batch…",
+      );
+      window.setTimeout(() => {
+        if (busy) return;
+        if (okBtn.disabled) {
+          hint.textContent = "Batch stopped — out of scrolls or offerings.";
+          window.setTimeout(() => closeDialog(null), 1600);
+          return;
+        }
+        tryConfirm();
+      }, 280);
+    };
+
     const rebindAfterSuccess = (
       keptScrollName: string | null,
       keptOfferingName: string | null,
     ) => {
+      if (batchCheck.read()) {
+        rebindBatchPeer(keptScrollName, keptOfferingName, false);
+        return;
+      }
       const bag = observingBagItems();
       const G = getG();
       const nextLevel = fromLevel + 1;
@@ -1236,36 +1528,12 @@ export function showUpgradeDialog(
         window.setTimeout(() => closeDialog(null), 1600);
         return;
       }
-      liveOffer = nextOffer;
-      fromLevel =
-        liveOffer.item.level != null &&
-        Number.isFinite(Number(liveOffer.item.level))
-          ? Number(liveOffer.item.level)
-          : nextLevel;
-      const keepScroll = keptScrollName
-        ? liveOffer.scrolls.find((s) => s.name === keptScrollName)
-        : null;
-      scrollId = keepScroll
-        ? shrinePickId(keepScroll)
-        : liveOffer.scrolls[0]
-          ? shrinePickId(liveOffer.scrolls[0])
-          : null;
-      const keepOffering = keptOfferingName
-        ? liveOffer.offerings.find((o) => o.name === keptOfferingName)
-        : null;
-      offeringId = keepOffering ? shrinePickId(keepOffering) : null;
-      pickFocus = scrollId == null ? "scroll" : null;
-      itemName.textContent = levelTransitionLabel(
-        fromLevel,
-        liveOffer.displayName,
+      applyOfferPicks(
+        nextOffer,
+        keptScrollName,
+        keptOfferingName,
+        "Ready for next upgrade.",
       );
-      meta.textContent =
-        "Grade " + liveOffer.grade + " · " + accessHint(liveOffer.access);
-      paintTrialResult(trial, liveOffer.item, fromLevel + 1);
-      busy = false;
-      hint.textContent = "Ready for next upgrade.";
-      paint();
-      refreshChanceEstimate();
     };
 
     const unsubBagClick = installBagPickClick((slot) => {
@@ -1362,6 +1630,15 @@ export function showUpgradeDialog(
         },
         onDestroyed: () => {
           watch = null;
+          if (batchCheck.read()) {
+            hint.textContent = "Failed — continuing batch…";
+            rebindBatchPeer(
+              scroll ? scroll.name : null,
+              offering ? offering.name : null,
+              true,
+            );
+            return;
+          }
           busy = false;
           hint.textContent = "Failed — item gone.";
           window.setTimeout(() => closeDialog(null), 1600);
@@ -1390,6 +1667,7 @@ export function showUpgradeDialog(
     panel.appendChild(trial.root);
     panel.appendChild(scrollSection);
     panel.appendChild(offerSection);
+    panel.appendChild(batchCheck.root);
     if (skillChecks) panel.appendChild(skillChecks.root);
     panel.appendChild(hint);
     panel.appendChild(actions);
@@ -1553,6 +1831,11 @@ export function showCompoundDialog(
       }
     };
 
+    const batchCheck = makeBatchModeCheck({
+      mode: "compound",
+      onChange: () => paint(),
+    });
+
     const paint = () => {
       const partnerList: BagSlotRef[] = [];
       const keys = Array.from(selected.values()).sort((a, b) => a - b);
@@ -1563,10 +1846,52 @@ export function showCompoundDialog(
 
       const scroll = findScroll(liveOffer.scrolls, scrollId);
       const offering = findOffering(liveOffer.offerings, offeringId);
+      const bagNow = observingBagItems();
+      const peerSlots = listBagSlotsAtNameLevelTitle(
+        bagNow,
+        liveOffer.item.name,
+        fromLevel,
+        liveOffer.item.p,
+      );
+      const goldNow = observingGold();
+      const batchPlan = planShrineBatch({
+        mode: "compound",
+        peerCount: peerSlots.length,
+        scroll: batchMaterialFromPick(scroll),
+        offering: batchMaterialFromPick(offering),
+        gold: goldNow,
+      });
+      if (batchCheck.read()) {
+        batchCheck.setPlanSummary(
+          formatShrineBatchSummary(batchPlan, {
+            mode: "compound",
+            scroll: batchMaterialFromPick(scroll),
+            offering: batchMaterialFromPick(offering),
+          }),
+          describeBatchLimit(batchPlan),
+        );
+      } else {
+        const sets = Math.floor(peerSlots.length / 3);
+        batchCheck.setPlanSummary(
+          peerSlots.length > 0
+            ? " · " +
+                peerSlots.length +
+                " copies · " +
+                sets +
+                " set" +
+                (sets === 1 ? "" : "s")
+            : "",
+          "",
+        );
+      }
 
-      const highlight: number[] = [liveOffer.item.slot];
-      for (let i = 0; i < partnerList.length; i++) {
-        highlight.push(partnerList[i].slot);
+      const highlight: number[] = batchCheck.read()
+        ? peerSlots.slice()
+        : [liveOffer.item.slot];
+      if (!batchCheck.read()) {
+        for (let i = 0; i < partnerList.length; i++) {
+          highlight.push(partnerList[i].slot);
+        }
       }
       if (scroll && !scroll.buy && scroll.slot >= 0) {
         highlight.push(scroll.slot);
@@ -1672,7 +1997,6 @@ export function showCompoundDialog(
         paint();
         refreshChanceEstimate();
       });
-      const gold = observingGold();
       appendScrollTiles(
         scrollTiles,
         liveOffer.scrolls,
@@ -1684,7 +2008,7 @@ export function showCompoundDialog(
           paint();
           refreshChanceEstimate();
         },
-        gold,
+        goldNow,
       );
       appendOfferingTiles(
         offerTiles,
@@ -1697,19 +2021,32 @@ export function showCompoundDialog(
           paint();
           refreshChanceEstimate();
         },
-        gold,
+        goldNow,
       );
 
       const ready = selected.size === 2 && scrollId != null;
       const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
-      okBtn.disabled = busy || !ready;
+      const batchOn = batchCheck.read();
+      const batchSets = batchPlan.attempts;
+      okBtn.disabled =
+        busy ||
+        !ready ||
+        (batchOn && batchPlan.wantAttempts > 0 && batchSets <= 0);
       okBtn.textContent = buying
         ? liveOffer.access.hasComputer
-          ? "Buy & compound"
-          : "Buy, travel & compound"
-        : liveOffer.access.ok
-          ? "Compound"
-          : "Travel & compound";
+          ? batchOn && batchSets > 1
+            ? "Buy & compound all (" + batchSets + ")"
+            : "Buy & compound"
+          : batchOn && batchSets > 1
+            ? "Buy, travel & compound all (" + batchSets + ")"
+            : "Buy, travel & compound"
+        : batchOn && batchSets > 1
+          ? liveOffer.access.ok
+            ? "Compound all (" + batchSets + ")"
+            : "Travel & compound all (" + batchSets + ")"
+          : liveOffer.access.ok
+            ? "Compound"
+            : "Travel & compound";
       meta.textContent =
         "Need 3 copies · Grade " +
         liveOffer.grade +
@@ -1724,6 +2061,20 @@ export function showCompoundDialog(
         } else if (pickFocus === "offering") {
           hint.textContent =
             "Pick an offering from the tiles, bag, vendor (or None).";
+        } else if (batchOn && batchPlan.wantAttempts > 1) {
+          hint.textContent =
+            "Batch: " +
+            batchSets +
+            " set" +
+            (batchSets === 1 ? "" : "s") +
+            " at +" +
+            fromLevel +
+            (batchSets < batchPlan.wantAttempts
+              ? " (materials limit " +
+                batchPlan.wantAttempts +
+                " sets)"
+              : "") +
+            ".";
         } else {
           hint.textContent = "";
         }
@@ -1734,10 +2085,134 @@ export function showCompoundDialog(
       offerSection.classList.toggle("is-focus", pickFocus === "offering");
     };
 
+    const applyCompoundOffer = (
+      nextOffer: CompoundFromBagOffer,
+      keptScrollName: string | null,
+      keptOfferingName: string | null,
+      readyHint: string,
+    ) => {
+      liveOffer = nextOffer;
+      fromLevel =
+        liveOffer.item.level != null &&
+        Number.isFinite(Number(liveOffer.item.level))
+          ? Number(liveOffer.item.level)
+          : fromLevel;
+      const nextDefaults = defaultCompoundPartners(
+        liveOffer.partners,
+        liveOffer.item,
+      )!;
+      selected = new Set<number>([
+        nextDefaults[0].slot,
+        nextDefaults[1].slot,
+      ]);
+      const keepScroll = keptScrollName
+        ? liveOffer.scrolls.find((s) => s.name === keptScrollName)
+        : null;
+      scrollId = keepScroll
+        ? shrinePickId(keepScroll)
+        : liveOffer.scrolls[0]
+          ? shrinePickId(liveOffer.scrolls[0])
+          : null;
+      const keepOffering = keptOfferingName
+        ? liveOffer.offerings.find((o) => o.name === keptOfferingName)
+        : null;
+      offeringId = keepOffering ? shrinePickId(keepOffering) : null;
+      pickFocus =
+        selected.size < 2 ? "partner" : scrollId == null ? "scroll" : null;
+      itemName.textContent = levelTransitionLabel(
+        fromLevel,
+        liveOffer.displayName,
+      );
+      meta.textContent =
+        "Grade " +
+        liveOffer.grade +
+        " · 3 → 1 · " +
+        accessHint(liveOffer.access);
+      paintTrialResult(trial, liveOffer.item, fromLevel + 1);
+      busy = false;
+      hint.textContent = readyHint;
+      paint();
+      refreshChanceEstimate();
+    };
+
+    /** Next full set of 3 still at the batch level (same name + level + title). */
+    const rebindBatchPeer = (
+      keptScrollName: string | null,
+      keptOfferingName: string | null,
+      afterFail: boolean,
+    ) => {
+      const bag = observingBagItems();
+      const G = getG();
+      const wantTitle = itemTitleKey(liveOffer.item.p);
+      let nextSlot = -1;
+      let nextItem: {
+        name?: string;
+        level?: number;
+        p?: string | null;
+        l?: unknown;
+      } | null = null;
+      if (bag) {
+        for (let i = 0; i < bag.length; i++) {
+          const it = bag[i];
+          if (!it || it.name !== liveOffer.item.name) continue;
+          if (bagItemLocked(it)) continue;
+          const lv = it.level != null ? Number(it.level) : 0;
+          if (lv !== fromLevel) continue;
+          if (itemTitleKey(it.p) !== wantTitle) continue;
+          const probe = compoundOfferForBagItem(it, i, bag, G);
+          if (!probe || probe.partners.length < 2) continue;
+          nextSlot = i;
+          nextItem = it;
+          break;
+        }
+      }
+      if (!nextItem || nextSlot < 0 || !G) {
+        hint.textContent = afterFail
+          ? "Batch done — no full set left at +" + fromLevel + "."
+          : "Batch done — all +" + fromLevel + " sets compounded.";
+        busy = false;
+        window.setTimeout(() => closeDialog(null), 1600);
+        return;
+      }
+      const nextOffer = compoundOfferForBagItem(nextItem, nextSlot, bag, G);
+      if (
+        !nextOffer ||
+        nextOffer.locked ||
+        nextOffer.maxLevel ||
+        nextOffer.partners.length < 2
+      ) {
+        hint.textContent = "Batch stopped — need 3 matching copies.";
+        busy = false;
+        window.setTimeout(() => closeDialog(null), 1600);
+        return;
+      }
+      applyCompoundOffer(
+        nextOffer,
+        keptScrollName,
+        keptOfferingName,
+        afterFail
+          ? "Failed — continuing batch…"
+          : "Success — next set in batch…",
+      );
+      window.setTimeout(() => {
+        if (busy) return;
+        if (okBtn.disabled) {
+          hint.textContent = "Batch stopped — out of scrolls or offerings.";
+          window.setTimeout(() => closeDialog(null), 1600);
+          return;
+        }
+        tryConfirm();
+      }, 280);
+    };
+
     const rebindAfterSuccess = (
       keptScrollName: string | null,
       keptOfferingName: string | null,
     ) => {
+      if (batchCheck.read()) {
+        rebindBatchPeer(keptScrollName, keptOfferingName, false);
+        return;
+      }
       const bag = observingBagItems();
       const G = getG();
       const nextLevel = fromLevel + 1;
@@ -1776,48 +2251,12 @@ export function showCompoundDialog(
         window.setTimeout(() => closeDialog(null), 1800);
         return;
       }
-      liveOffer = nextOffer;
-      fromLevel =
-        liveOffer.item.level != null &&
-        Number.isFinite(Number(liveOffer.item.level))
-          ? Number(liveOffer.item.level)
-          : nextLevel;
-      const nextDefaults = defaultCompoundPartners(
-        liveOffer.partners,
-        liveOffer.item,
-      )!;
-      selected = new Set<number>([
-        nextDefaults[0].slot,
-        nextDefaults[1].slot,
-      ]);
-      const keepScroll = keptScrollName
-        ? liveOffer.scrolls.find((s) => s.name === keptScrollName)
-        : null;
-      scrollId = keepScroll
-        ? shrinePickId(keepScroll)
-        : liveOffer.scrolls[0]
-          ? shrinePickId(liveOffer.scrolls[0])
-          : null;
-      const keepOffering = keptOfferingName
-        ? liveOffer.offerings.find((o) => o.name === keptOfferingName)
-        : null;
-      offeringId = keepOffering ? shrinePickId(keepOffering) : null;
-      pickFocus =
-        selected.size < 2 ? "partner" : scrollId == null ? "scroll" : null;
-      itemName.textContent = levelTransitionLabel(
-        fromLevel,
-        liveOffer.displayName,
+      applyCompoundOffer(
+        nextOffer,
+        keptScrollName,
+        keptOfferingName,
+        "Ready for next compound.",
       );
-      meta.textContent =
-        "Grade " +
-        liveOffer.grade +
-        " · 3 → 1 · " +
-        accessHint(liveOffer.access);
-      paintTrialResult(trial, liveOffer.item, fromLevel + 1);
-      busy = false;
-      hint.textContent = "Ready for next compound.";
-      paint();
-      refreshChanceEstimate();
     };
 
     const unsubBagClick = installBagPickClick((slot) => {
@@ -1950,6 +2389,15 @@ export function showCompoundDialog(
         },
         onDestroyed: () => {
           watch = null;
+          if (batchCheck.read()) {
+            hint.textContent = "Failed — continuing batch…";
+            rebindBatchPeer(
+              scroll.name,
+              offering ? offering.name : null,
+              true,
+            );
+            return;
+          }
           busy = false;
           hint.textContent = "Failed — copies gone.";
           window.setTimeout(() => closeDialog(null), 1600);
@@ -1979,6 +2427,7 @@ export function showCompoundDialog(
     panel.appendChild(partnerSection);
     panel.appendChild(scrollSection);
     panel.appendChild(offerSection);
+    panel.appendChild(batchCheck.root);
     if (skillChecks) panel.appendChild(skillChecks.root);
     panel.appendChild(hint);
     panel.appendChild(actions);

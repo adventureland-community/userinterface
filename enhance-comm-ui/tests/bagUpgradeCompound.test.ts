@@ -5,9 +5,11 @@ import {
   compoundOfferForBagItem,
   defaultCompoundPartners,
   findCompoundPartners,
+  formatShrineBatchSummary,
   listCompatibleScrollsInBag,
   listOfferingsInBag,
   listScrollsForShrine,
+  planShrineBatch,
   upgradeOfferForBagItem,
 } from "../src/lib/bagUpgradeCompound";
 import type { GLike } from "../src/host/globals";
@@ -217,6 +219,24 @@ describe("upgrade / compound offers", () => {
       partners.map((p) => p.slot),
       [1, 2],
     );
+    const mixedTitleBag = [
+      { name: "ringsj", level: 1 },
+      { name: "ringsj", level: 1, p: "shiny" },
+      { name: "ringsj", level: 1, p: "shiny" },
+      { name: "ringsj", level: 1 },
+    ];
+    assert.deepEqual(
+      findCompoundPartners(mixedTitleBag, 1, "ringsj", 1, "shiny").map(
+        (p) => p.slot,
+      ),
+      [2],
+    );
+    assert.deepEqual(
+      findCompoundPartners(mixedTitleBag, 0, "ringsj", 1, null).map(
+        (p) => p.slot,
+      ),
+      [3],
+    );
     const pair = defaultCompoundPartners(partners);
     assert.ok(pair);
     assert.equal(pair![0].slot, 1);
@@ -241,6 +261,100 @@ describe("upgrade / compound offers", () => {
     assert.ok(offer);
     assert.equal(offer!.partners.length, 2);
     assert.equal(offer!.scrolls[0].name, "cscroll0");
+  });
+});
+
+describe("planShrineBatch", () => {
+  it("caps upgrade attempts by bag scroll qty", () => {
+    const plan = planShrineBatch({
+      mode: "upgrade",
+      peerCount: 5,
+      scroll: { name: "scroll0", displayName: "Upgrade Scroll", q: 2 },
+      gold: 0,
+    });
+    assert.equal(plan.wantAttempts, 5);
+    assert.equal(plan.attempts, 2);
+    assert.equal(plan.scrollUse, 2);
+    assert.equal(plan.scrollHave, 2);
+    assert.equal(plan.limitedBy, "scroll");
+    assert.match(
+      formatShrineBatchSummary(plan, {
+        mode: "upgrade",
+        scroll: { name: "scroll0", displayName: "Upgrade Scroll", q: 2 },
+      }),
+      /2 of 5 upgrades/,
+    );
+    assert.match(
+      formatShrineBatchSummary(plan, {
+        mode: "upgrade",
+        scroll: { name: "scroll0", displayName: "Upgrade Scroll", q: 2 },
+      }),
+      /use 2× Upgrade Scroll \(have 2\)/,
+    );
+  });
+
+  it("caps compound sets by peers then offerings", () => {
+    const byPeers = planShrineBatch({
+      mode: "compound",
+      peerCount: 8,
+      scroll: { name: "cscroll0", q: 10 },
+    });
+    assert.equal(byPeers.wantAttempts, 2);
+    assert.equal(byPeers.attempts, 2);
+    assert.equal(byPeers.limitedBy, "peers");
+
+    const byOffer = planShrineBatch({
+      mode: "compound",
+      peerCount: 9,
+      scroll: { name: "cscroll0", q: 10 },
+      offering: { name: "offering", displayName: "Offering", q: 1 },
+    });
+    assert.equal(byOffer.wantAttempts, 3);
+    assert.equal(byOffer.attempts, 1);
+    assert.equal(byOffer.offeringUse, 1);
+    assert.equal(byOffer.limitedBy, "offering");
+  });
+
+  it("caps buy materials by gold", () => {
+    const plan = planShrineBatch({
+      mode: "upgrade",
+      peerCount: 4,
+      scroll: {
+        name: "scroll0",
+        displayName: "Upgrade Scroll",
+        q: 0,
+        buy: true,
+        buyPrice: 1000,
+      },
+      gold: 2500,
+    });
+    assert.equal(plan.attempts, 2);
+    assert.equal(plan.goldNeed, 2000);
+    assert.equal(plan.limitedBy, "gold");
+    assert.match(
+      formatShrineBatchSummary(plan, {
+        mode: "upgrade",
+        scroll: {
+          name: "scroll0",
+          displayName: "Upgrade Scroll",
+          q: 0,
+          buy: true,
+          buyPrice: 1000,
+        },
+      }),
+      /buy 2× Upgrade Scroll/,
+    );
+  });
+
+  it("returns zero attempts when materials are empty", () => {
+    const plan = planShrineBatch({
+      mode: "upgrade",
+      peerCount: 3,
+      scroll: { name: "scroll0", q: 0 },
+    });
+    assert.equal(plan.attempts, 0);
+    assert.equal(plan.wantAttempts, 3);
+    assert.equal(plan.limitedBy, "scroll");
   });
 });
 

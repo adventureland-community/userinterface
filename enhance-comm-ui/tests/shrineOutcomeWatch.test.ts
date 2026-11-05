@@ -4,6 +4,9 @@ import {
   countNameLevel,
   evaluateShrineBagWatch,
   isBagPlaceholder,
+  itemTitleKey,
+  listBagSlotsAtNameLevel,
+  listBagSlotsAtNameLevelTitle,
 } from "../src/lib/shrineOutcomeWatch";
 
 describe("shrineOutcomeWatch", () => {
@@ -22,6 +25,32 @@ describe("shrineOutcomeWatch", () => {
     ];
     assert.equal(countNameLevel(bag, "shield", 5), 2);
     assert.equal(countNameLevel(bag, "shield", 6), 1);
+    assert.deepEqual(listBagSlotsAtNameLevel(bag, "shield", 5), [0, 3]);
+    assert.deepEqual(listBagSlotsAtNameLevel(bag, "shield", 6), [2]);
+  });
+
+  it("batch peers match name + level + title (p)", () => {
+    assert.equal(itemTitleKey(null), "");
+    assert.equal(itemTitleKey("shiny"), "shiny");
+    const bag = [
+      { name: "carrot", level: 6 },
+      { name: "carrot", level: 6, p: "shiny" },
+      { name: "carrot", level: 6, p: "shiny" },
+      { name: "carrot", level: 6, p: "glitched" },
+      { name: "carrot", level: 7, p: "shiny" },
+    ];
+    assert.deepEqual(
+      listBagSlotsAtNameLevelTitle(bag, "carrot", 6, null),
+      [0],
+    );
+    assert.deepEqual(
+      listBagSlotsAtNameLevelTitle(bag, "carrot", 6, "shiny"),
+      [1, 2],
+    );
+    assert.deepEqual(
+      listBagSlotsAtNameLevelTitle(bag, "carrot", 6, "glitched"),
+      [3],
+    );
   });
 
   it("treats placeholder as in-progress, not failure", () => {
