@@ -50,15 +50,19 @@ describe("nameplateScreenScale", () => {
 
   it("softens desktop zoom-out so plates shrink with the map", () => {
     // Full f×0.88 at FOV 5 was 4.4 (constant on-screen giants). Softer curve.
-    near(nameplateScreenScale(2, "desktop"), Math.pow(2, 0.45) * 0.88);
-    near(nameplateScreenScale(5, "desktop"), Math.pow(5, 0.45) * 0.88);
+    near(nameplateScreenScale(2, "desktop"), Math.pow(2, 0.68) * 0.88);
+    near(nameplateScreenScale(5, "desktop"), Math.pow(5, 0.68) * 0.88);
     assert.ok(
-      nameplateScreenScale(5, "desktop") < 2.2,
-      "desktop FOV 5 must stay well under full counter-scale 4.4",
+      nameplateScreenScale(5, "desktop") < 3.2,
+      "desktop FOV 5 must stay under full counter-scale 4.4",
     );
     assert.ok(
       nameplateScreenScale(5, "desktop") > nameplateScreenScale(1, "desktop"),
       "still a bit larger than FOV 1 so labels remain readable",
+    );
+    // Keep more screen size than the old 0.45 curve (desert zoom-out).
+    assert.ok(
+      nameplateScreenScale(3, "desktop") > Math.pow(3, 0.45) * 0.88,
     );
   });
 
@@ -159,8 +163,8 @@ describe("sharpenNameTagTextures", () => {
     assert.equal(textNode.resolution, 2);
     assert.equal(textNode.roundPixels, false);
     assert.equal(textNode.texture.baseTexture.scaleMode, 0);
-    // Desktop soft zoom-out: 2^0.45 × 0.88 (not full 1.76 counter-scale).
-    const expect = Math.pow(2, 0.45) * 0.88;
+    // Desktop soft zoom-out: 2^0.68 × 0.88 (not full 1.76 counter-scale).
+    const expect = Math.pow(2, 0.68) * 0.88;
     assert.ok(Math.abs(root.scale.x - expect) < 1e-9);
     assert.ok(Math.abs(root.scale.y - expect) < 1e-9);
     assert.equal(root.pivot.y, -40);

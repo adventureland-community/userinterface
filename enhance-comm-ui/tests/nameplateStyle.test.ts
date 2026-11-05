@@ -37,8 +37,8 @@ describe("softPlateFill", () => {
     assert.ok(border);
     assert.ok(fill);
     assert.equal(border!.color, rim.color);
-    assert.ok(border!.alpha >= 0.3 && border!.alpha < 0.55);
-    assert.ok(fill!.alpha >= 0.3 && fill!.alpha <= 0.45);
+    assert.ok(border!.alpha >= 0.45 && border!.alpha <= 0.7);
+    assert.ok(fill!.alpha >= 0.45 && fill!.alpha <= 0.6);
     assert.ok(
       hexLuminance("#" + border!.color.toString(16).padStart(6, "0")) <
         hexLuminance("#" + fill!.color.toString(16).padStart(6, "0")),
@@ -55,10 +55,10 @@ describe("ghostPlateForClassColor", () => {
     const merchant = ghostPlateForClassColor(classColors.merchant);
     const paladin = ghostPlateForClassColor(classColors.paladin);
     const npc = ghostPlateForClassColor("#ffffff");
-    assert.ok(mage.alpha >= 0.3 && mage.alpha <= 0.45);
-    assert.ok(ranger.alpha >= 0.3 && ranger.alpha <= 0.45);
-    assert.ok(merchant.alpha >= 0.3 && merchant.alpha <= 0.45);
-    assert.equal(npc.color, 0x0a0c12);
+    assert.ok(mage.alpha >= 0.45 && mage.alpha <= 0.6);
+    assert.ok(ranger.alpha >= 0.45 && ranger.alpha <= 0.6);
+    assert.ok(merchant.alpha >= 0.45 && merchant.alpha <= 0.6);
+    assert.equal(npc.color, 0x080a10);
     // Paladin plate must be darker than raw so white text reads.
     assert.ok(
       hexLuminance(
@@ -85,7 +85,8 @@ describe("hexLuminance", () => {
 describe("nameplate luminance bands", () => {
   it("maps luminance to dark/mid/bright and alphas", () => {
     assert.equal(luminanceToNameplateBand(0.1), "dark");
-    assert.equal(luminanceToNameplateBand(0.4), "mid");
+    assert.equal(luminanceToNameplateBand(0.3), "mid");
+    assert.equal(luminanceToNameplateBand(0.45), "bright");
     assert.equal(luminanceToNameplateBand(0.7), "bright");
     assert.ok(
       ghostAlphaForLuminanceBand("bright") >
@@ -99,6 +100,7 @@ describe("nameplate luminance bands", () => {
       ghostAlphaForLuminanceBand("mid"),
       NAMEPLATE_GHOST_ALPHA_BASE,
     );
+    assert.ok(ghostAlphaForLuminanceBand("bright") >= 0.7);
     assert.ok(srgbLuminance(255, 255, 255) > srgbLuminance(40, 120, 40));
   });
 
@@ -187,7 +189,8 @@ describe("applySoftTextStyle", () => {
     assert.equal(style.fontFamily, face);
     assert.equal(style.fill, "#ffffff");
     assert.equal(style.stroke, "#000000");
-    assert.equal(style.strokeThickness, 4);
+    assert.equal(style.strokeThickness, 7);
+    assert.equal(style.dropShadow, true);
     assert.equal(applySoftTextStyle(node, "#ffffff"), false);
 
     // Re-assert if somehow still on pixel after a soft pass.

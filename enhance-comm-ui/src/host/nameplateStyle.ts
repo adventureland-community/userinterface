@@ -81,16 +81,20 @@ export function mixHexTowardBlack(hex: string, t: number): string {
   return "#" + h;
 }
 
-/** Base ghost-plate opacity — readable on bright plaza tiles without looking solid. */
-export const NAMEPLATE_GHOST_ALPHA_BASE = 0.36;
+/**
+ * Base ghost-plate opacity — dense enough for desert sand / light stone while
+ * still reading as a soft wash over map art.
+ */
+export const NAMEPLATE_GHOST_ALPHA_BASE = 0.52;
 
 export type NameplateLuminanceBand = "dark" | "mid" | "bright";
 
 /** Map relative luminance 0–1 to a coarse contrast band. */
 export function luminanceToNameplateBand(L: number): NameplateLuminanceBand {
   if (!(typeof L === "number") || !Number.isFinite(L)) return "mid";
-  if (L >= 0.55) return "bright";
-  if (L <= 0.22) return "dark";
+  // Catch sand / light paths earlier — desert tiles sit ~0.45–0.7.
+  if (L >= 0.42) return "bright";
+  if (L <= 0.2) return "dark";
   return "mid";
 }
 
@@ -101,10 +105,10 @@ export function ghostAlphaForLuminanceBand(
 ): number {
   const b =
     typeof base === "number" && Number.isFinite(base)
-      ? Math.max(0.15, Math.min(0.6, base))
+      ? Math.max(0.28, Math.min(0.75, base))
       : NAMEPLATE_GHOST_ALPHA_BASE;
-  if (band === "bright") return Math.min(0.55, b + 0.12);
-  if (band === "dark") return Math.max(0.22, b - 0.06);
+  if (band === "bright") return Math.min(0.78, b + 0.2);
+  if (band === "dark") return Math.max(0.34, b - 0.1);
   return b;
 }
 
@@ -119,36 +123,36 @@ export function srgbLuminance(r: number, g: number, b: number): number {
 
 /**
  * Class-tinted ghost plate for white name text.
- * Light wash so town art stays primary; class hue is a hint only.
- * Light hues darken a touch for white-text contrast. NPC / unknown → charcoal.
+ * Darker wash so bright sand/stone cannot wash out glyphs; class hue is a hint.
+ * NPC / unknown → charcoal.
  */
 export function ghostPlateForClassColor(classHex?: string): SoftFill {
   const raw = String(classHex || "").trim() || "#ffffff";
   const key = raw.charAt(0) === "#" ? raw : "#" + raw;
   if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
-    return { color: 0x0a0c12, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
+    return { color: 0x080a10, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
   }
   const L = hexLuminance(key);
-  // Shade just enough for white text; keep class hue under a light ghost.
-  const darken = L > 0.4 ? 0.42 : L > 0.3 ? 0.16 : L > 0.2 ? 0.08 : 0.04;
+  // Darken hard enough for white text on desert; keep a class tint.
+  const darken = L > 0.4 ? 0.58 : L > 0.3 ? 0.4 : L > 0.2 ? 0.28 : 0.18;
   const mixed = mixHexTowardBlack(key, darken);
   const n = parseInt(mixed.slice(1), 16);
   return { color: n >>> 0, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
 }
 
 /**
- * Thin darker-class rim — very soft so plates don't read as solid UI.
+ * Darker-class rim — denser than the fill so plates silhouette on bright ground.
  * NPC / unknown → charcoal rim.
  */
 export function ghostPlateRimForClassColor(classHex?: string): SoftFill {
   const raw = String(classHex || "").trim() || "#ffffff";
   const key = raw.charAt(0) === "#" ? raw : "#" + raw;
   if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
-    return { color: 0x020304, alpha: 0.35 };
+    return { color: 0x020304, alpha: 0.55 };
   }
-  const mixed = mixHexTowardBlack(key, 0.62);
+  const mixed = mixHexTowardBlack(key, 0.72);
   const n = parseInt(mixed.slice(1), 16);
-  return { color: n >>> 0, alpha: 0.4 };
+  return { color: n >>> 0, alpha: 0.58 };
 }
 
 /** @deprecated Prefer {@link ghostPlateForClassColor}. */
@@ -233,15 +237,20 @@ export function nameplatePlateClassColor(ctype?: string | null): string {
 
 /**
  * Stroke for stock 64px Text (scaled ~0.125). System mono face, white fill,
- * black edge for crowded overlaps. No drop-shadow.
+ * heavy black edge so glyphs hold on bright sand when the plate is soft.
  */
 export function softTextStylePatch(fillColor?: string): TextStyleLike {
   return {
     fontFamily: resolveNameplateFontFamily(),
     fill: fillColor || "#ffffff",
     stroke: "#000000",
-    strokeThickness: 4,
-    dropShadow: false,
+    strokeThickness: 7,
+    dropShadow: true,
+    dropShadowColor: "#000000",
+    dropShadowDistance: 1,
+    dropShadowBlur: 0,
+    dropShadowAlpha: 0.55,
+    dropShadowAngle: Math.PI / 4,
   };
 }
 
@@ -292,6 +301,14 @@ function bumpGraphicsDirty(gfx: GraphicsLike): void {
   }
 }
 
+function readFillAlpha(d: GraphicsDataLike): number | null {
+  if (typeof d.fillAlpha === "number") return d.fillAlpha;
+  if (d.fill && typeof d.fill === "object" && typeof d.fill.alpha === "number") {
+    return d.fill.alpha;
+  }
+  return null;
+}
+
 /**
  * Update name-band fill alpha only (keeps class tint). Used by background
  * luminance contrast after plates are softened.
@@ -299,7 +316,7 @@ function bumpGraphicsDirty(gfx: GraphicsLike): void {
 export function setNameBandFillAlpha(gfx: GraphicsLike, alpha: number): number {
   const data = getGraphicsData(gfx);
   if (!data) return 0;
-  const a = Math.max(0.12, Math.min(0.65, alpha));
+  const a = Math.max(0.2, Math.min(0.82, alpha));
   let changed = 0;
   for (let i = 0; i < data.length; i++) {
     const d = data[i];
@@ -309,13 +326,36 @@ export function setNameBandFillAlpha(gfx: GraphicsLike, alpha: number): number {
     const h = typeof shape.height === "number" ? shape.height : 0;
     if (!isNameBandShape(y, h)) continue;
     if (readFillColor(d) == null) continue;
-    const prev =
-      typeof d.fillAlpha === "number"
-        ? d.fillAlpha
-        : d.fill && typeof d.fill === "object" && typeof d.fill.alpha === "number"
-          ? d.fill.alpha
-          : null;
+    const prev = readFillAlpha(d);
     if (prev != null && Math.abs(prev - a) < 0.01) continue;
+    if (typeof d.fillAlpha === "number") d.fillAlpha = a;
+    const f = d.fill;
+    if (f && typeof f === "object") f.alpha = a;
+    changed++;
+  }
+  if (changed) bumpGraphicsDirty(gfx);
+  return changed;
+}
+
+/** Raise name-band alpha up to `floor` without lowering a brighter band. */
+export function ensureNameBandAlphaFloor(
+  gfx: GraphicsLike,
+  floor: number = NAMEPLATE_GHOST_ALPHA_BASE,
+): number {
+  const data = getGraphicsData(gfx);
+  if (!data) return 0;
+  const a = Math.max(0.2, Math.min(0.82, floor));
+  let changed = 0;
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i];
+    const shape = d.shape;
+    if (!shape) continue;
+    const y = typeof shape.y === "number" ? shape.y : 0;
+    const h = typeof shape.height === "number" ? shape.height : 0;
+    if (!isNameBandShape(y, h)) continue;
+    if (readFillColor(d) == null) continue;
+    const prev = readFillAlpha(d);
+    if (prev != null && prev >= a - 0.01) continue;
     if (typeof d.fillAlpha === "number") d.fillAlpha = a;
     const f = d.fill;
     if (f && typeof f === "object") f.alpha = a;
@@ -364,9 +404,10 @@ export function applySoftTextStyle(
     curFont === wantFont ||
     (Array.isArray(curFont) && curFont[0] === wantFont);
   const already = !!(style as { __ecuSoft?: boolean }).__ecuSoft;
-  // Always (re)assert the concrete face — early tags may have been soft-styled
-  // while still on stock `pixel` / a failed comma stack.
-  if (already && fontOk) return false;
+  const strokeOk = style.strokeThickness === patch.strokeThickness;
+  const shadowOk = style.dropShadow === !!patch.dropShadow;
+  // Re-assert face / stroke when an older soft style is still thin on bright sand.
+  if (already && fontOk && strokeOk && shadowOk) return false;
   style.fontFamily = wantFont;
   style.fill = patch.fill;
   style.stroke = patch.stroke;
@@ -602,8 +643,9 @@ export function beautifyNameTag(
 
   const visit = (node: TextNodeLike | null | undefined) => {
     if (!node) return;
-    if (!plateDone && looksLikeGraphics(node)) {
-      softenNameBandGraphics(node, plateClass);
+    if (looksLikeGraphics(node)) {
+      if (!plateDone) softenNameBandGraphics(node, plateClass);
+      else ensureNameBandAlphaFloor(node as GraphicsLike);
     }
     if (looksLikeText(node)) applySoftTextStyle(node, textFill);
     if (looksLikeGraphics(node)) {

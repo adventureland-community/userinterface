@@ -201,9 +201,9 @@ function setNodePivot(node: SpriteLike, px: number, py: number): void {
 /**
  * How hard desktop counter-scales on FOV zoom-out (f&gt;1).
  * 1 = full cancel (constant screen size — giants over tiny sprites at 5×).
- * ~0.45 keeps labels readable while they shrink with the map.
+ * ~0.68 keeps labels readable on desert zoom-out without HUD-huge plates at 5×.
  */
-export const NAMEPLATE_DESKTOP_ZOOM_OUT_EXP = 0.45;
+export const NAMEPLATE_DESKTOP_ZOOM_OUT_EXP = 0.68;
 
 /**
  * Screen-compensated FOV for nameplate size.
