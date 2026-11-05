@@ -3,10 +3,16 @@
 export type EntityLike = {
   id: string;
   name?: string;
+  /**
+   * Live entity kind: `character` | `monster` | `npc`.
+   * Not player class — that is {@link EntityLike.ctype}.
+   * (Roster `X.characters[].type` is class; different object shape.)
+   */
   type?: string;
   player?: boolean;
   /** Local self from `add_character(data, 1)` — not set on soft-synced others. */
   me?: boolean;
+  /** Player class on character entities (`warrior` / `mage` / …). */
   ctype?: string;
   level?: number;
   hp?: number;
@@ -17,6 +23,7 @@ export type EntityLike = {
   xp?: number;
   /** XP to next level. Full sync only; otherwise use `G.levels[level]`. */
   max_xp?: number;
+  /** Monster template id — not a player class. */
   mtype?: string;
   cooperative?: boolean;
   /** Player combat target id (monster id / player id); may be number from server. */

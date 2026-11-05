@@ -17,7 +17,29 @@ import {
   onWorldFovApplied,
   readAppliedWorldFov,
 } from "../lib/worldFov";
-import { beautifyNameTag } from "./nameplateStyle";
+import { isPlayerClass } from "../lib/colors";
+import { detectViewportProfile, type ViewportProfile } from "../lib/viewport";
+import { resolvePlayerCtype } from "./al";
+import type { EntityLike } from "./globals";
+import {
+  beautifyNameTag,
+  resolveNameplateFontFamily,
+} from "./nameplateStyle";
+
+/**
+ * Profile size multiplier on top of FOV counter-scale.
+ * Phone/tablet still need a boost — stock tags are sized for desktop canvas
+ * distance — but ghost plates stay a bit smaller than the old soft-plate
+ * ×2.25 wall. Desktop shrinks slightly so town crowds feel less busy.
+ */
+export function nameplatePhoneBoost(profile?: ViewportProfile): number {
+  const p =
+    profile ||
+    (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+  if (p === "phone") return 1.85;
+  if (p === "tablet") return 1.25;
+  return 0.88;
+}
 
 type PixiLike = {
   SCALE_MODES?: { NEAREST?: number; LINEAR?: number };
@@ -25,10 +47,24 @@ type PixiLike = {
 };
 
 type SpriteLike = {
+  id?: string | number;
+  name?: string;
   x?: number;
   y?: number;
   width?: number;
   height?: number;
+  /**
+   * Player class on character entities (`warrior` / `mage` / …).
+   * Not the same as `type` (entity kind: `character` | `monster` | `npc`).
+   */
+  ctype?: string;
+  /**
+   * Entity kind on live sprites (`character` / `monster` / `npc`).
+   * Never use this as class — roster `X.characters[].type` is class, entities are not.
+   */
+  type?: string;
+  /** Monster template id — not a player class. */
+  mtype?: string;
   scale?:
     | { x?: number; y?: number; set?: (x: number, y: number) => void }
     | { x: number; y: number };
@@ -57,7 +93,48 @@ type SpriteLike = {
   __ecuNameplateStockY?: number;
   /** Soft plate / text stroke already applied for this tag instance. */
   __ecuNameplateStyled?: boolean;
+  /** Class tint applied with the soft plate pass. */
+  __ecuNameplateCtype?: string;
 };
+
+/**
+ * Player class for nameplate tint.
+ *
+ * Live entity fields (Adventure Land):
+ * - `ctype` — player class (`warrior` / `mage` / …)
+ * - `type` — entity kind (`character` | `monster` | `npc`) — never class
+ * - `mtype` — monster template id — never class
+ *
+ * Roster `X.characters[].type` is class (different object shape); that is only
+ * reached via {@link resolvePlayerCtype}, not by reading entity.type.
+ */
+export function resolveNameplateCtype(
+  ent: SpriteLike | null | undefined,
+): string | undefined {
+  if (!ent) return undefined;
+  const kind = ent.type != null ? String(ent.type).toLowerCase() : "";
+  if (kind === "monster" || kind === "npc") return undefined;
+  if (ent.mtype != null && String(ent.mtype) && kind !== "character") {
+    if (!isPlayerClass(ent.ctype)) return undefined;
+  }
+
+  const id =
+    ent.id != null && String(ent.id)
+      ? String(ent.id)
+      : ent.name != null && String(ent.name)
+        ? String(ent.name)
+        : undefined;
+
+  if (id) {
+    const probe: EntityLike = { id, ctype: ent.ctype };
+    const resolved = resolvePlayerCtype(id, probe);
+    if (resolved) return resolved;
+  }
+
+  return isPlayerClass(ent.ctype)
+    ? String(ent.ctype).trim().toLowerCase()
+    : undefined;
+}
 
 function scaleModes(): { nearest: number | null; linear: number | null } {
   const PIXI = (window as Window & { PIXI?: PixiLike }).PIXI;
@@ -121,17 +198,21 @@ function setNodePivot(node: SpriteLike, px: number, py: number): void {
 }
 
 /**
- * Screen-compensated FOV for nameplate size. At fov=1 leave stock.
- * Zoom-out (f>1): scale up to cancel CSS shrink (cap 3×).
- * Zoom-in (f<1): scale down to cancel CSS enlarge (floor 1/3) so plates do
- * not become huge soft blobs under CSS upscale.
+ * Screen-compensated FOV for nameplate size.
+ * Target: on-screen size ≈ boost × stock at every FOV (CSS fit shrinks/grows
+ * the canvas by 1/f, so PIXI scale S = f × boost cancels that).
+ * Phone/tablet boost applies on zoom-in too — FOV&lt;1 used to drop to stock
+ * while FOV=1 was boosted, leaving Edge labels illegible when zoomed in.
+ * Floor 1/3 · cap 8 (phone FOV=4 → ~1.85× stock on screen before cap).
  */
-export function nameplateScreenScale(fov?: number): number {
+export function nameplateScreenScale(
+  fov?: number,
+  profile?: ViewportProfile,
+): number {
   const f =
     typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-  if (f === 1) return 1;
-  if (f > 1) return Math.min(3, f);
-  return Math.max(1 / 3, f);
+  const boost = nameplatePhoneBoost(profile);
+  return Math.max(1 / 3, Math.min(8, f * boost));
 }
 
 /**
@@ -278,6 +359,7 @@ function applyNameplateScreenScale(root: SpriteLike, screen: number): boolean {
 export function sharpenNameTagTextures(
   root: SpriteLike | null | undefined,
   fov?: number,
+  ctype?: string | null,
 ): void {
   if (!root) return;
   const appliedFov =
@@ -285,6 +367,9 @@ export function sharpenNameTagTextures(
   const screen = nameplateScreenScale(appliedFov);
   const modes = scaleModes();
   const res = nameplateTextResolution(appliedFov);
+  if (ctype != null && String(ctype).trim()) {
+    root.__ecuNameplateCtype = String(ctype);
+  }
 
   // Counter-scale + bottom-pivot (zoom-out up / zoom-in down). Re-apply when
   // FOV wants scale≠1 so a first pass that lacked bounds can recover.
@@ -339,7 +424,7 @@ export function sharpenNameTagTextures(
   };
   visit(root);
   // Soft plate after FOV Text.resolution so stroke rasterizes at the final DPI.
-  beautifyNameTag(root);
+  beautifyNameTag(root, { ctype: root.__ecuNameplateCtype || ctype });
 }
 
 /** Force name tags to rebuild on next draw (after FOV / scale changes). */
@@ -362,6 +447,15 @@ export function bustNameTagCaches(): void {
       ent.name_tag.__ecuNameplateStockX = undefined;
       ent.name_tag.__ecuNameplateStockY = undefined;
       ent.name_tag.__ecuNameplateStyled = undefined;
+      ent.name_tag.__ecuNameplateCtype = undefined;
+      // Clear pad flags on plate children so fitNameTextInGhostBand can re-run.
+      const kids = ent.name_tag.children;
+      if (kids) {
+        for (let i = 0; i < kids.length; i++) {
+          const k = kids[i] as { __ecuNamepad?: boolean; children?: unknown[] };
+          if (k) k.__ecuNamepad = undefined;
+        }
+      }
     }
   };
   const w = window as Window & {
@@ -388,7 +482,7 @@ export function resyncNameplateScales(fov?: number): void {
     typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov();
   const touch = (ent: SpriteLike | null | undefined) => {
     if (!ent || !ent.name_tag) return;
-    sharpenNameTagTextures(ent.name_tag, f);
+    sharpenNameTagTextures(ent.name_tag, f, resolveNameplateCtype(ent));
   };
   const w = window as Window & {
     character?: SpriteLike | null;
@@ -409,13 +503,29 @@ function wrapAddNameTag(): boolean {
   const w = window as Window & {
     add_name_tag?: (element: SpriteLike) => void;
     __ecuAddNameTag?: (element: SpriteLike) => void;
+    SZ?: { font?: string };
   };
   if (typeof w.__ecuAddNameTag === "function") return true;
   if (typeof w.add_name_tag !== "function") return false;
   const orig = w.add_name_tag;
   const wrapped = function (this: unknown, element: SpriteLike) {
-    orig.call(this, element);
-    if (element && element.name_tag) sharpenNameTagTextures(element.name_tag);
+    // Stock sizes the plate to PIXI.Text metrics — one concrete face only
+    // (comma stacks make PIXI keep stock `pixel` / m5x7).
+    const sz = w.SZ;
+    const prevFont = sz && sz.font;
+    if (sz) sz.font = resolveNameplateFontFamily();
+    try {
+      orig.call(this, element);
+    } finally {
+      if (sz) sz.font = prevFont;
+    }
+    if (element && element.name_tag) {
+      sharpenNameTagTextures(
+        element.name_tag,
+        undefined,
+        resolveNameplateCtype(element),
+      );
+    }
   };
   w.__ecuAddNameTag = wrapped;
   w.add_name_tag = wrapped;
@@ -434,10 +544,17 @@ export function installNameplateSharpness(): void {
     bustNameTagCaches();
     resyncNameplateScales(fov);
   });
-  if (wrapAddNameTag()) return;
+  const kick = () => {
+    if (!wrapAddNameTag()) return false;
+    // Rebuild with system mono + phone scale on existing tags.
+    bustNameTagCaches();
+    resyncNameplateScales();
+    return true;
+  };
+  if (kick()) return;
   const started = Date.now();
   const id = window.setInterval(() => {
-    if (wrapAddNameTag() || Date.now() - started > 30000) {
+    if (kick() || Date.now() - started > 30000) {
       window.clearInterval(id);
     }
   }, 250);

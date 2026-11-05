@@ -3,6 +3,7 @@
  * Bind only to the HP/MP strip so buff icons stay free of native `title` noise.
  */
 import type { EntityLike } from "../../host/globals";
+import { isPlayerClass } from "../../lib/colors";
 import type { ControlState } from "../../lib/controlState";
 import {
   cooltipHandlers,
@@ -33,7 +34,8 @@ export function unitCooltipHtml(args: UnitCooltipArgs): string {
       `<div class="line"><span>Level</span><b>${escapeCooltipHtml(String(ent.level))}</b></div>`,
     );
   }
-  if (ent.ctype) {
+  // Live `ctype` is player class; NPC kinds like `fullstatic` are not classes.
+  if (isPlayerClass(ent.ctype)) {
     lines.push(
       `<div class="line"><span>Class</span><b>${escapeCooltipHtml(String(ent.ctype))}</b></div>`,
     );

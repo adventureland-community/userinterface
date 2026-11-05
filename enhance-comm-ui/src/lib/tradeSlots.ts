@@ -54,15 +54,16 @@ export type TradeSlotOptions = {
 const PERSONAL_TRADE_SLOTS = ["trade1", "trade2", "trade3", "trade4"];
 
 /**
- * Client entities use `ctype` for class; server `get_trade_slots` uses `type`.
- * Live packets often omit ctype — resolve via observing / roster when needed.
+ * Live entities: class is `ctype` only (`type` is kind: character/monster/npc).
+ * Roster `X.characters[].type` is class — reached via {@link resolvePlayerCtype}.
  */
 function isMerchantClass(entity: EntityLike): boolean {
   const id = entity.id != null ? String(entity.id) : undefined;
-  const resolved = resolvePlayerCtype(id, entity);
-  if (resolved === "merchant") return true;
-  const cls = String(entity.ctype || entity.type || "").toLowerCase();
-  return cls === "merchant";
+  if (id && resolvePlayerCtype(id, entity) === "merchant") return true;
+  // No id / soft packet: trust live `ctype` only — never entity.type (kind).
+  return String(entity.ctype || "")
+    .trim()
+    .toLowerCase() === "merchant";
 }
 
 /** Highest tradeN index present as a key on slots (stock render_slots probe). */

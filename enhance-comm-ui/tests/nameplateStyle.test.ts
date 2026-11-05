@@ -1,9 +1,23 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { classColors } from "../src/lib/colors";
 import {
   applySoftTextStyle,
   beautifyNameTag,
+  fitNameTextInGhostBand,
+  ghostPlateForClassColor,
+  ghostPlateRimForClassColor,
+  hexLuminance,
   isNameBandShape,
+  mixHexTowardBlack,
+  nameBandGrowUp,
+  nameBandTextY,
+  NAMEPLATE_BAND_PAD,
+  NAMEPLATE_FONT_FAMILIES,
+  NAMEPLATE_FONT_FAMILY,
+  resolveNameplateFontFamily,
+  nameplateFillForClass,
+  nameplatePlateClassColor,
   softenNameBandGraphics,
   softPlateFill,
   STOCK_NAME_BORDER,
@@ -11,15 +25,65 @@ import {
 } from "../src/host/nameplateStyle";
 
 describe("softPlateFill", () => {
-  it("softens stock border and fill only", () => {
-    const border = softPlateFill(STOCK_NAME_BORDER);
-    const fill = softPlateFill(STOCK_NAME_FILL);
+  it("uses a thin darker-class rim and a denser class fill", () => {
+    const border = softPlateFill(STOCK_NAME_BORDER, classColors.mage);
+    const fill = softPlateFill(STOCK_NAME_FILL, classColors.mage);
+    const rim = ghostPlateRimForClassColor(classColors.mage);
     assert.ok(border);
     assert.ok(fill);
-    assert.ok(border!.alpha < 1);
-    assert.ok(fill!.alpha < 1);
+    assert.equal(border!.color, rim.color);
+    assert.ok(border!.alpha >= 0.3 && border!.alpha < 0.55);
+    assert.ok(fill!.alpha >= 0.22 && fill!.alpha <= 0.35);
+    assert.ok(
+      hexLuminance("#" + border!.color.toString(16).padStart(6, "0")) <
+        hexLuminance("#" + fill!.color.toString(16).padStart(6, "0")),
+    );
     assert.equal(softPlateFill(0xb12727), null);
     assert.equal(softPlateFill(0x6ec344), null);
+  });
+});
+
+describe("ghostPlateForClassColor", () => {
+  it("tints the plate from class color and darkens light hues", () => {
+    const mage = ghostPlateForClassColor(classColors.mage);
+    const ranger = ghostPlateForClassColor(classColors.ranger);
+    const merchant = ghostPlateForClassColor(classColors.merchant);
+    const paladin = ghostPlateForClassColor(classColors.paladin);
+    const npc = ghostPlateForClassColor("#ffffff");
+    assert.ok(mage.alpha >= 0.22 && mage.alpha <= 0.35);
+    assert.ok(ranger.alpha >= 0.22 && ranger.alpha <= 0.35);
+    assert.ok(merchant.alpha >= 0.22 && merchant.alpha <= 0.35);
+    assert.equal(npc.color, 0x0a0c12);
+    // Paladin plate must be darker than raw so white text reads.
+    assert.ok(
+      hexLuminance(
+        "#" + paladin.color.toString(16).padStart(6, "0"),
+      ) < hexLuminance(classColors.paladin),
+    );
+  });
+});
+
+describe("mixHexTowardBlack", () => {
+  it("shades toward black", () => {
+    assert.equal(mixHexTowardBlack("#ffffff", 1), "#000000");
+    assert.equal(mixHexTowardBlack("#808080", 0), "#808080");
+  });
+});
+
+describe("hexLuminance", () => {
+  it("ranks white above merchant gray", () => {
+    assert.ok(hexLuminance("#ffffff") > hexLuminance(classColors.merchant));
+    assert.ok(hexLuminance(classColors.priest) > hexLuminance(classColors.ranger));
+  });
+});
+
+describe("nameplateFillForClass", () => {
+  it("keeps name text white; class goes on the plate", () => {
+    assert.equal(nameplateFillForClass("mage"), "#ffffff");
+    assert.equal(nameplateFillForClass("ranger"), "#ffffff");
+    assert.equal(nameplateFillForClass(null), "#ffffff");
+    assert.equal(nameplatePlateClassColor("mage"), classColors.mage);
+    assert.equal(nameplatePlateClassColor("fullstatic"), "#ffffff");
   });
 });
 
@@ -34,7 +98,7 @@ describe("isNameBandShape", () => {
 });
 
 describe("softenNameBandGraphics", () => {
-  it("mutates name-band fills and leaves HP chrome alone", () => {
+  it("paints a class-tinted plate for mage", () => {
     const gfx = {
       dirty: 0,
       graphicsData: [
@@ -53,36 +117,98 @@ describe("softenNameBandGraphics", () => {
           fillAlpha: 1,
           shape: { x: 4, y: -5, width: 32, height: 6 },
         },
-        {
-          fillColor: STOCK_NAME_FILL,
-          fillAlpha: 1,
-          shape: { x: 5, y: -4, width: 30, height: 4 },
-        },
       ],
     };
-    const n = softenNameBandGraphics(gfx);
+    const expected = ghostPlateForClassColor(classColors.mage);
+    const n = softenNameBandGraphics(gfx, classColors.mage);
     assert.equal(n, 2);
-    assert.ok(gfx.graphicsData[0].fillAlpha! < 1);
-    assert.ok(gfx.graphicsData[1].fillAlpha! < 1);
+    assert.ok(gfx.graphicsData[0].fillAlpha! >= 0.3);
+    assert.equal(gfx.graphicsData[1].fillColor, expected.color);
+    assert.equal(gfx.graphicsData[1].fillAlpha, expected.alpha);
     assert.equal(gfx.graphicsData[2].fillAlpha, 1);
-    assert.equal(gfx.graphicsData[3].fillColor, STOCK_NAME_FILL);
     assert.ok(gfx.dirty > 0);
   });
 });
 
 describe("applySoftTextStyle", () => {
-  it("adds stroke once", () => {
-    const style: Record<string, unknown> = { fill: "white" };
+  it("forces Consolas (or first installed mono) over stock pixel", () => {
+    assert.equal(NAMEPLATE_FONT_FAMILIES[0], "Consolas");
+    assert.equal(NAMEPLATE_FONT_FAMILY, "Consolas");
+    const face = resolveNameplateFontFamily();
+    assert.ok(NAMEPLATE_FONT_FAMILIES.indexOf(face) >= 0);
+
+    const style: Record<string, unknown> = { fill: "red", fontFamily: "pixel" };
     const node = { style, text: "Hero", updateText() {} };
-    assert.equal(applySoftTextStyle(node), true);
+    assert.equal(applySoftTextStyle(node, "#ffffff"), true);
+    assert.equal(style.fontFamily, face);
+    assert.equal(style.fill, "#ffffff");
     assert.equal(style.stroke, "#000000");
-    assert.ok((style.strokeThickness as number) > 0);
-    assert.equal(applySoftTextStyle(node), false);
+    assert.equal(style.strokeThickness, 4);
+    assert.equal(applySoftTextStyle(node, "#ffffff"), false);
+
+    // Re-assert if somehow still on pixel after a soft pass.
+    style.fontFamily = "pixel";
+    assert.equal(applySoftTextStyle(node, "#ffffff"), true);
+    assert.equal(style.fontFamily, face);
+  });
+});
+
+describe("nameBand padding", () => {
+  it("scales local text bounds and never towers the plate", () => {
+    assert.equal(nameBandGrowUp(7, 7), Math.ceil(2 * NAMEPLATE_BAND_PAD));
+    assert.equal(nameBandGrowUp(10, 7), 0);
+    // Unscaled 64px glyph box must not trigger a giant grow.
+    assert.equal(nameBandGrowUp(7, 64), 0);
+    assert.equal(nameBandTextY(1, 9, 7), 2);
+
+    const name = {
+      text: "Ahnaki",
+      style: { fill: "#fff" },
+      y: 1.5,
+      // Unscaled local bounds (what PIXI getLocalBounds returns for 64px Text)
+      // with stock 0.125 scale → visual 8px.
+      scale: { x: 0.125, y: 0.125 },
+      getLocalBounds() {
+        return { height: 64 };
+      },
+      updateText() {},
+    };
+    const plate = {
+      dirty: 0,
+      graphicsData: [
+        {
+          fillColor: STOCK_NAME_BORDER,
+          fillAlpha: 1,
+          shape: { x: 0, y: 0, width: 40, height: 9 },
+        },
+        {
+          fillColor: STOCK_NAME_FILL,
+          fillAlpha: 1,
+          shape: { x: 1, y: 1, width: 38, height: 7 },
+        },
+      ],
+      children: [name],
+    };
+    const grow = nameBandGrowUp(7, 8);
+    assert.equal(grow, 4);
+    assert.equal(fitNameTextInGhostBand(plate), true);
+    assert.ok(plate.graphicsData[0].shape.height <= 9 + 4);
+    assert.equal(plate.graphicsData[0].shape.y, -grow);
+    assert.equal(plate.graphicsData[1].shape.height, 7 + grow);
+    assert.equal(
+      name.y,
+      nameBandTextY(
+        plate.graphicsData[1].shape.y,
+        plate.graphicsData[1].shape.height,
+        8,
+      ),
+    );
+    assert.equal(fitNameTextInGhostBand(plate), false);
   });
 });
 
 describe("beautifyNameTag", () => {
-  it("is idempotent on the root flag", () => {
+  it("is idempotent: white text + class-tinted plate + rim", () => {
     const style: Record<string, unknown> = { fill: "#fff" };
     const root = {
       children: [
@@ -93,15 +219,27 @@ describe("beautifyNameTag", () => {
               fillAlpha: 1,
               shape: { x: 0, y: 0, width: 20, height: 9 },
             },
+            {
+              fillColor: STOCK_NAME_FILL,
+              fillAlpha: 1,
+              shape: { x: 1, y: 1, width: 18, height: 7 },
+            },
           ],
           children: [{ text: "A", style, updateText() {} }],
         },
       ],
     };
-    beautifyNameTag(root);
+    const expected = ghostPlateForClassColor(classColors.ranger);
+    beautifyNameTag(root, { ctype: "ranger" });
     assert.equal(root.__ecuNameplateStyled, true);
-    const alpha = root.children[0].graphicsData[0].fillAlpha;
-    beautifyNameTag(root);
-    assert.equal(root.children[0].graphicsData[0].fillAlpha, alpha);
+    assert.equal(style.fill, "#ffffff");
+    assert.equal(style.stroke, "#000000");
+    assert.ok(root.children[0].graphicsData[0].fillAlpha! >= 0.3);
+    assert.equal(root.children[0].graphicsData[1].fillColor, expected.color);
+    assert.equal(root.children[0].graphicsData[1].fillAlpha, expected.alpha);
+    const alpha = root.children[0].graphicsData[1].fillAlpha;
+    beautifyNameTag(root, { ctype: "mage" });
+    assert.equal(root.children[0].graphicsData[1].fillAlpha, alpha);
+    assert.equal(style.fill, "#ffffff");
   });
 });

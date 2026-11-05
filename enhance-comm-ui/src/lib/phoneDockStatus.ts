@@ -13,6 +13,7 @@ import {
   readPingSamples,
   type PingSparkBar,
 } from "../host/commChrome/pingHud";
+import { isPlayerClass } from "./colors";
 
 export type PhoneDockStatus = {
   observingName: string;
@@ -55,19 +56,16 @@ function readObservingExtras(name: string): {
     };
   }
   const obs = window.observing as
-    | { level?: number; ctype?: string; type?: string; rip?: boolean }
+    | { level?: number; ctype?: string; rip?: boolean }
     | null
     | undefined;
   if (!obs) return { level: "", type: "", rip: false };
-  const type =
-    obs.ctype != null
-      ? String(obs.ctype)
-      : obs.type != null
-        ? String(obs.type)
-        : "";
+  // Live observe snap: class is `ctype`. Do not use entity `type` (kind).
+  const ctype =
+    obs.ctype != null && isPlayerClass(obs.ctype) ? String(obs.ctype) : "";
   return {
     level: obs.level != null ? String(obs.level) : "",
-    type,
+    type: ctype,
     rip: !!obs.rip,
   };
 }

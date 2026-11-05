@@ -51,4 +51,17 @@ describe("unitCooltipHtml", () => {
     });
     assert.match(html, /a&lt;b&gt;/);
   });
+
+  it("does not label NPC ctype as Class", () => {
+    const html = unitCooltipHtml({
+      entity: {
+        id: "kane",
+        name: "Kane",
+        type: "npc",
+        ctype: "fullstatic",
+      } as EntityLike,
+    });
+    assert.doesNotMatch(html, />Class<\/span>/);
+    assert.doesNotMatch(html, /fullstatic/);
+  });
 });

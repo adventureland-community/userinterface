@@ -6,7 +6,7 @@
 import { getReact, e } from "../../host/react";
 import { getG } from "../../host/al";
 import { setXTarget } from "../../host/icons";
-import { classColors } from "../../lib/colors";
+import { isPlayerClass, resolveClassColor } from "../../lib/colors";
 import { formatCompactNumber, getPercent } from "../../lib/format";
 import { findEntity } from "../../queries/entities";
 import { GearGrid } from "../chrome/GearGrid";
@@ -84,9 +84,11 @@ export function EntityInfo(props: EntityInfoProps): any {
     return e(PaperdollDummy);
   }
 
-  const accent =
-    classColors[entity.ctype || ""] ||
-    (entity.type === "monster" ? "#c44" : "#888");
+  const accent = isPlayerClass(entity.ctype)
+    ? resolveClassColor(entity.ctype)
+    : entity.type === "monster"
+      ? "#c44"
+      : "#888";
   const isPlayer = !!(entity.player || entity.type === "character");
   const title =
     `${entity.name || entity.id}` +
@@ -211,7 +213,7 @@ export function EntityInfo(props: EntityInfoProps): any {
             ...PIXEL_TEXT,
           },
         },
-        entity.ctype
+        isPlayerClass(entity.ctype)
           ? e("span", { style: { color: accent } }, entity.ctype)
           : null,
         entity.party ? e("span", {}, `party ${entity.party}`) : null,

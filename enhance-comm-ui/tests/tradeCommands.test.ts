@@ -187,11 +187,11 @@ describe("trade slot helpers", () => {
   it("stand slot count mirrors server tiers", () => {
     assert.equal(standTradeSlotCount({ stand: "x" }), 16);
     assert.equal(
-      standTradeSlotCount({ stand: "cstand", type: "merchant", level: 65 }),
+      standTradeSlotCount({ stand: "cstand", ctype: "merchant", level: 65 }),
       24,
     );
     assert.equal(
-      standTradeSlotCount({ stand: "x", type: "merchant", level: 80 }),
+      standTradeSlotCount({ stand: "x", ctype: "merchant", level: 80 }),
       30,
     );
     assert.equal(
@@ -249,17 +249,17 @@ describe("trade slot helpers", () => {
   });
 
   it("merchant stand capacity does not require stand open", () => {
-    assert.equal(merchantStandCapacity({ type: "merchant", level: 50 }), 16);
-    assert.equal(merchantStandCapacity({ type: "priest", level: 80 }), 0);
+    assert.equal(merchantStandCapacity({ ctype: "merchant", level: 50 }), 16);
+    assert.equal(merchantStandCapacity({ ctype: "priest", level: 80 }), 0);
     assert.equal(
       merchantStandCapacity(
-        { type: "priest", level: 80 },
+        { ctype: "priest", level: 80 },
         { trade5: { name: "scroll0" } },
       ),
       5,
     );
     assert.equal(
-      merchantStandCapacity({ type: "merchant", level: 80 }),
+      merchantStandCapacity({ ctype: "merchant", level: 80 }),
       30,
     );
     assert.equal(
@@ -330,7 +330,7 @@ describe("trade slot helpers", () => {
 
   it("merchant stand slots render when stand is closed", () => {
     const slots = { trade1: { name: "hpot0", price: 100 } };
-    const entity = { type: "merchant", level: 50 };
+    const entity = { ctype: "merchant", type: "character", level: 50 };
     assert.deepEqual(
       merchantStandSlotNames(slots, entity, true, true),
       ["trade5"],
@@ -353,7 +353,17 @@ describe("trade slot helpers", () => {
       ],
     );
     assert.deepEqual(
-      merchantStandSlotNames(slots, { type: "priest", level: 80 }, true, true),
+      merchantStandSlotNames(slots, { ctype: "priest", level: 80 }, true, true),
+      [],
+    );
+    // Live entity.type is kind — must not unlock merchant stand slots.
+    assert.deepEqual(
+      merchantStandSlotNames(
+        slots,
+        { type: "merchant", level: 50 },
+        true,
+        true,
+      ),
       [],
     );
   });

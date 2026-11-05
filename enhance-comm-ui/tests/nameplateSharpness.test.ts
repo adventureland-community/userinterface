@@ -34,17 +34,35 @@ describe("nameplateTextResolution", () => {
     (globalThis as { window?: Record<string, unknown> }).window = {
       devicePixelRatio: 3,
     };
-    assert.equal(nameplateTextResolution(6), 4);
-    assert.equal(nameplateTextResolution(0.5), 4);
+    assert.equal(nameplateTextResolution(6), 6);
+    assert.equal(nameplateTextResolution(0.5), 6);
   });
 });
 
 describe("nameplateScreenScale", () => {
-  it("counter-scales FOV≠1 so CSS fit does not shrink or balloon labels", () => {
-    assert.equal(nameplateScreenScale(1), 1);
-    assert.equal(nameplateScreenScale(0.5), 0.5);
-    assert.equal(nameplateScreenScale(2), 2);
-    assert.equal(nameplateScreenScale(4), 3);
+  it("counter-scales FOV with a slight desktop shrink for ghost plates", () => {
+    assert.equal(nameplateScreenScale(1, "desktop"), 0.88);
+    assert.equal(nameplateScreenScale(0.5, "desktop"), 0.44);
+    assert.equal(nameplateScreenScale(2, "desktop"), 1.76);
+    assert.equal(nameplateScreenScale(4, "desktop"), 3.52);
+  });
+
+  it("boosts phone plates at every FOV including zoom-in and wide zoom-out", () => {
+    const near = (a: number, b: number) =>
+      assert.ok(Math.abs(a - b) < 1e-9, `${a} ≈ ${b}`);
+    near(nameplateScreenScale(1, "phone"), 1.85);
+    near(nameplateScreenScale(2, "phone"), 3.7);
+    // Zoom-in: 0.5×1.85 — CSS ×2 → same screen size as FOV=1.
+    near(nameplateScreenScale(0.5, "phone"), 0.925);
+    near(nameplateScreenScale(0.75, "phone"), 1.3875);
+    // Cap 8 at extreme FOV×boost.
+    near(nameplateScreenScale(3, "phone"), 5.55);
+    near(nameplateScreenScale(4, "phone"), 7.4);
+    assert.equal(nameplateScreenScale(5, "phone"), 8);
+  });
+
+  it("boosts tablet plates modestly at FOV=1", () => {
+    assert.equal(nameplateScreenScale(1, "tablet"), 1.25);
   });
 });
 
@@ -128,8 +146,9 @@ describe("sharpenNameTagTextures", () => {
     assert.equal(textNode.resolution, 2);
     assert.equal(textNode.roundPixels, false);
     assert.equal(textNode.texture.baseTexture.scaleMode, 0);
-    assert.equal(root.scale.x, 2);
-    assert.equal(root.scale.y, 2);
+    // Desktop ghost-plate boost 0.88 × FOV 2.
+    assert.equal(root.scale.x, 1.76);
+    assert.equal(root.scale.y, 1.76);
     assert.equal(root.pivot.y, -40);
     assert.equal(root.y, -40);
     // FOV resolution bump + soft-plate stroke both re-rasterize Text.
