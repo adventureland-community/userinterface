@@ -577,6 +577,9 @@ const CSS = `
   color: rgba(232, 201, 106, 0.88);
   font-variant-numeric: tabular-nums;
 }
+.ecu-upg__batch-buy {
+  margin-top: 2px;
+}
 .ecu-upg__batch-detail {
   margin: 4px 0 0;
   padding: 0 8px;

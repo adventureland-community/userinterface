@@ -356,6 +356,56 @@ describe("planShrineBatch", () => {
     assert.equal(plan.wantAttempts, 3);
     assert.equal(plan.limitedBy, "scroll");
   });
+
+  it("buyExtras tops up bag scrolls until peers or gold run out", () => {
+    const plan = planShrineBatch({
+      mode: "upgrade",
+      peerCount: 5,
+      scroll: {
+        name: "scroll0",
+        displayName: "Upgrade Scroll",
+        q: 2,
+        canBuy: true,
+        buyPrice: 1000,
+      },
+      gold: 3500,
+      buyExtras: true,
+    });
+    assert.equal(plan.wantAttempts, 5);
+    assert.equal(plan.attempts, 5);
+    assert.equal(plan.scrollBuy, 3);
+    assert.equal(plan.goldNeed, 3000);
+    assert.equal(plan.limitedBy, "peers");
+    assert.match(
+      formatShrineBatchSummary(plan, {
+        mode: "upgrade",
+        scroll: {
+          name: "scroll0",
+          displayName: "Upgrade Scroll",
+          q: 2,
+          canBuy: true,
+          buyPrice: 1000,
+        },
+      }),
+      /use 2 \+ buy 3× Upgrade Scroll/,
+    );
+
+    const goldLimited = planShrineBatch({
+      mode: "upgrade",
+      peerCount: 5,
+      scroll: {
+        name: "scroll0",
+        q: 1,
+        canBuy: true,
+        buyPrice: 1000,
+      },
+      gold: 2500,
+      buyExtras: true,
+    });
+    assert.equal(goldLimited.attempts, 3);
+    assert.equal(goldLimited.scrollBuy, 2);
+    assert.equal(goldLimited.limitedBy, "gold");
+  });
 });
 
 describe("upgrade / compound scripts", () => {

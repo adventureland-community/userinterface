@@ -504,8 +504,12 @@ export type ShrineBatchMaterial = {
   name: string;
   displayName?: string;
   q: number;
+  /** Selected pick is a vendor buy (not a bag stack). */
   buy?: boolean;
+  /** NPC gold price — set for vendor picks, or bag picks that can be topped up. */
   buyPrice?: number;
+  /** Bag pick that is also sold by an NPC (batch "buy extras"). */
+  canBuy?: boolean;
 };
 
 export type ShrineBatchPlan = {
@@ -515,16 +519,68 @@ export type ShrineBatchPlan = {
   wantAttempts: number;
   scrollUse: number;
   scrollHave: number | null;
+  /** How many of scrollUse are bought from NPC. */
+  scrollBuy: number;
   offeringUse: number;
   offeringHave: number | null;
+  offeringBuy: number;
   goldNeed: number;
   goldHave: number;
   limitedBy: "peers" | "scroll" | "offering" | "gold" | null;
 };
 
+/** NPC gold shop price for `name`, or null when not buyable. */
+export function npcBuyPriceForItem(
+  name: string,
+  G: GLike | null | undefined,
+): number | null {
+  if (!name || !G || !G.items) return null;
+  const def = G.items[name] as BuyableDef | undefined;
+  if (!isNpcGoldBuyable(def)) return null;
+  return vendorBuyPrice(def);
+}
+
+function materialBuyPrice(m: ShrineBatchMaterial | null): number {
+  if (!m) return 0;
+  return Math.max(0, Number(m.buyPrice) || 0);
+}
+
+function materialCanBuyExtra(
+  m: ShrineBatchMaterial | null,
+  buyExtras: boolean,
+): boolean {
+  if (!m) return false;
+  if (m.buy) return materialBuyPrice(m) > 0;
+  return !!(buyExtras && m.canBuy && materialBuyPrice(m) > 0);
+}
+
+function goldNeedForAttempts(
+  attempts: number,
+  scroll: ShrineBatchMaterial | null,
+  offering: ShrineBatchMaterial | null,
+  buyExtras: boolean,
+  scrollHave: number,
+  offeringHave: number,
+): number {
+  let need = 0;
+  if (scroll && materialCanBuyExtra(scroll, buyExtras)) {
+    const price = materialBuyPrice(scroll);
+    if (scroll.buy) need += attempts * price;
+    else need += Math.max(0, attempts - scrollHave) * price;
+  }
+  if (offering && materialCanBuyExtra(offering, buyExtras)) {
+    const price = materialBuyPrice(offering);
+    if (offering.buy) need += attempts * price;
+    else need += Math.max(0, attempts - offeringHave) * price;
+  }
+  return need;
+}
+
 /**
  * How many batch shrine attempts fit the bag (and optional vendor gold).
  * One attempt = one upgrade, or one compound of 3 copies.
+ * With `buyExtras`, bag stock is used first; further attempts buy from NPC
+ * until peers or gold run out.
  */
 export function planShrineBatch(opts: {
   mode: "upgrade" | "compound";
@@ -532,12 +588,15 @@ export function planShrineBatch(opts: {
   scroll?: ShrineBatchMaterial | null;
   offering?: ShrineBatchMaterial | null;
   gold?: number;
+  /** Top up selected bag scrolls/offerings from NPC when stacks run short. */
+  buyExtras?: boolean;
 }): ShrineBatchPlan {
   const peers = Math.max(0, opts.peerCount | 0);
   const want =
     opts.mode === "compound" ? Math.floor(peers / 3) : peers;
   let attempts = want;
   let limitedBy: ShrineBatchPlan["limitedBy"] = want > 0 ? "peers" : null;
+  const buyExtras = !!opts.buyExtras;
 
   const scroll = opts.scroll || null;
   const offering = opts.offering || null;
@@ -546,45 +605,49 @@ export function planShrineBatch(opts: {
       ? Math.max(0, opts.gold)
       : 0;
 
-  let scrollHave: number | null = null;
+  const scrollHave =
+    scroll && !scroll.buy ? Math.max(0, Number(scroll.q) || 0) : 0;
+  const offeringHave =
+    offering && !offering.buy ? Math.max(0, Number(offering.q) || 0) : 0;
+
   if (scroll) {
-    if (scroll.buy) {
-      scrollHave = null;
-    } else {
-      scrollHave = Math.max(0, Number(scroll.q) || 0);
-      if (scrollHave < attempts) {
+    if (!materialCanBuyExtra(scroll, buyExtras)) {
+      if (scroll.buy) {
+        // Vendor pick without a price — cannot run.
+        attempts = 0;
+        limitedBy = "scroll";
+      } else if (scrollHave < attempts) {
         attempts = scrollHave;
         limitedBy = "scroll";
       }
     }
   }
 
-  let offeringHave: number | null = null;
-  if (offering) {
-    if (offering.buy) {
-      offeringHave = null;
-    } else {
-      offeringHave = Math.max(0, Number(offering.q) || 0);
-      if (offeringHave < attempts) {
+  if (offering && attempts > 0) {
+    if (!materialCanBuyExtra(offering, buyExtras)) {
+      if (offering.buy) {
+        attempts = 0;
+        limitedBy = "offering";
+      } else if (offeringHave < attempts) {
         attempts = offeringHave;
         limitedBy = "offering";
       }
     }
   }
 
-  let costPer = 0;
-  if (scroll && scroll.buy) {
-    costPer += Math.max(0, Number(scroll.buyPrice) || 0);
-  }
-  if (offering && offering.buy) {
-    costPer += Math.max(0, Number(offering.buyPrice) || 0);
-  }
-  if (costPer > 0) {
-    const byGold = Math.floor(gold / costPer);
-    if (byGold < attempts) {
-      attempts = byGold;
-      limitedBy = "gold";
-    }
+  while (
+    attempts > 0 &&
+    goldNeedForAttempts(
+      attempts,
+      scroll,
+      offering,
+      buyExtras,
+      scrollHave,
+      offeringHave,
+    ) > gold
+  ) {
+    attempts--;
+    limitedBy = "gold";
   }
 
   if (attempts <= 0) {
@@ -594,14 +657,36 @@ export function planShrineBatch(opts: {
     limitedBy = "peers";
   }
 
+  let scrollBuy = 0;
+  if (scroll && attempts > 0 && materialCanBuyExtra(scroll, buyExtras)) {
+    scrollBuy = scroll.buy
+      ? attempts
+      : Math.max(0, attempts - scrollHave);
+  }
+  let offeringBuy = 0;
+  if (offering && attempts > 0 && materialCanBuyExtra(offering, buyExtras)) {
+    offeringBuy = offering.buy
+      ? attempts
+      : Math.max(0, attempts - offeringHave);
+  }
+
   return {
     attempts,
     wantAttempts: want,
     scrollUse: scroll ? attempts : 0,
-    scrollHave,
+    scrollHave: scroll ? (scroll.buy ? null : scrollHave) : null,
+    scrollBuy,
     offeringUse: offering ? attempts : 0,
-    offeringHave,
-    goldNeed: costPer > 0 ? attempts * costPer : 0,
+    offeringHave: offering ? (offering.buy ? null : offeringHave) : null,
+    offeringBuy,
+    goldNeed: goldNeedForAttempts(
+      attempts,
+      scroll,
+      offering,
+      buyExtras,
+      scrollHave,
+      offeringHave,
+    ),
     goldHave: gold,
     limitedBy: attempts > 0 ? limitedBy : want > 0 ? limitedBy || "scroll" : null,
   };
@@ -640,43 +725,51 @@ export function formatShrineBatchSummary(
         " " +
         units;
   const parts: string[] = [head];
-  const scroll = opts.scroll || null;
-  if (scroll && plan.scrollUse > 0) {
-    const label = scroll.displayName || scroll.name;
-    if (scroll.buy) {
-      parts.push(
-        "buy " + plan.scrollUse + "× " + label,
-      );
-    } else {
+  const formatMat = (
+    mat: ShrineBatchMaterial,
+    use: number,
+    have: number | null,
+    buy: number,
+  ) => {
+    const label = mat.displayName || mat.name;
+    if (buy > 0 && have != null && use > buy) {
       parts.push(
         "use " +
-          plan.scrollUse +
+          (use - buy) +
+          " + buy " +
+          buy +
           "× " +
           label +
           " (have " +
-          (plan.scrollHave != null ? plan.scrollHave : "?") +
+          have +
+          ")",
+      );
+    } else if (buy > 0 && (mat.buy || use === buy)) {
+      parts.push("buy " + buy + "× " + label);
+    } else {
+      parts.push(
+        "use " +
+          use +
+          "× " +
+          label +
+          " (have " +
+          (have != null ? have : "?") +
           ")",
       );
     }
+  };
+  const scroll = opts.scroll || null;
+  if (scroll && plan.scrollUse > 0) {
+    formatMat(scroll, plan.scrollUse, plan.scrollHave, plan.scrollBuy);
   }
   const offering = opts.offering || null;
   if (offering && plan.offeringUse > 0) {
-    const label = offering.displayName || offering.name;
-    if (offering.buy) {
-      parts.push(
-        "buy " + plan.offeringUse + "× " + label,
-      );
-    } else {
-      parts.push(
-        "use " +
-          plan.offeringUse +
-          "× " +
-          label +
-          " (have " +
-          (plan.offeringHave != null ? plan.offeringHave : "?") +
-          ")",
-      );
-    }
+    formatMat(
+      offering,
+      plan.offeringUse,
+      plan.offeringHave,
+      plan.offeringBuy,
+    );
   }
   if (plan.goldNeed > 0) {
     parts.push(

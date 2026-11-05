@@ -16,6 +16,7 @@ import {
   defaultCompoundPartners,
   findShrinePickById,
   formatShrineBatchSummary,
+  npcBuyPriceForItem,
   planShrineBatch,
   shrinePickId,
   upgradeOfferForBagItem,
@@ -73,6 +74,8 @@ let shrineSkillMassproduction = true;
 let shrineSkillMassproductionPp = true;
 /** Session default — batch all same name+level copies one by one. */
 let shrineBatchMode = false;
+/** When batch is on: buy more of the selected scroll/offering from NPC after bag stock. */
+let shrineBatchBuyExtras = false;
 
 function bagItemLocked(it: {
   l?: unknown;
@@ -298,7 +301,13 @@ function makeMerchantSkillChecks(): MerchantSkillChecks | null {
 type BatchModeCheck = {
   root: HTMLDivElement;
   read: () => boolean;
+  readBuyExtras: () => boolean;
   setPlanSummary: (summary: string, detail: string) => void;
+  /** Show/enable the buy-extras row when batch is on and picks are NPC-buyable. */
+  syncBuyExtras: (opts: {
+    batchOn: boolean;
+    canBuyExtras: boolean;
+  }) => void;
 };
 
 /**
@@ -328,8 +337,8 @@ function makeBatchModeCheck(opts: {
   span.textContent = "Batch " + verb.toLowerCase();
   wrap.title =
     opts.mode === "compound"
-      ? "Run every full set of 3 matching copies, one compound at a time, stopping when scrolls or offerings run out. Highlights peers in the bag."
-      : "Upgrade every matching copy one by one, stopping when scrolls or offerings run out. Highlights peers in the bag.";
+      ? "Run every full set of 3 matching copies, one compound at a time. Highlights peers in the bag."
+      : "Upgrade every matching copy one by one. Highlights peers in the bag.";
   wrap.appendChild(input);
   wrap.appendChild(span);
   const count = document.createElement("span");
@@ -337,6 +346,25 @@ function makeBatchModeCheck(opts: {
   wrap.appendChild(count);
   row.appendChild(wrap);
   root.appendChild(row);
+
+  const buyRow = document.createElement("div");
+  buyRow.className = "ecu-upg__skills-row ecu-upg__batch-buy";
+  const buyWrap = document.createElement("label");
+  buyWrap.className = "ecu-upg__skill";
+  const buyInput = document.createElement("input");
+  buyInput.type = "checkbox";
+  buyInput.checked = shrineBatchBuyExtras;
+  buyInput.setAttribute("data-batch-buy", "1");
+  const buySpan = document.createElement("span");
+  buySpan.textContent = "Buy more scrolls / offerings";
+  buyWrap.title =
+    "After bag stock runs out, buy the same selected scroll and offering from an NPC until copies or gold run out.";
+  buyWrap.appendChild(buyInput);
+  buyWrap.appendChild(buySpan);
+  buyRow.appendChild(buyWrap);
+  buyRow.style.display = "none";
+  root.appendChild(buyRow);
+
   const detail = document.createElement("div");
   detail.className = "ecu-upg__batch-detail";
   root.appendChild(detail);
@@ -344,13 +372,25 @@ function makeBatchModeCheck(opts: {
     shrineBatchMode = input.checked;
     opts.onChange();
   });
+  buyInput.addEventListener("change", () => {
+    shrineBatchBuyExtras = buyInput.checked;
+    opts.onChange();
+  });
   return {
     root,
     read: () => input.checked,
+    readBuyExtras: () => input.checked && buyInput.checked,
     setPlanSummary: (summary: string, detailText: string) => {
       count.textContent = summary;
       detail.textContent = detailText;
       detail.style.display = detailText ? "" : "none";
+    },
+    syncBuyExtras: (state) => {
+      const show = state.batchOn && state.canBuyExtras;
+      buyRow.style.display = show ? "" : "none";
+      buyInput.disabled = !show;
+      // Keep shrineBatchBuyExtras preference while the row is hidden.
+      buyInput.checked = show && shrineBatchBuyExtras;
     },
   };
 }
@@ -363,6 +403,7 @@ function batchMaterialFromPick(
   q: number;
   buy?: boolean;
   buyPrice?: number;
+  canBuy?: boolean;
 } | null {
   if (!pick) return null;
   const out: {
@@ -371,6 +412,7 @@ function batchMaterialFromPick(
     q: number;
     buy?: boolean;
     buyPrice?: number;
+    canBuy?: boolean;
   } = {
     name: pick.name,
     displayName: pick.displayName || pick.name,
@@ -379,6 +421,12 @@ function batchMaterialFromPick(
   if (pick.buy) {
     out.buy = true;
     if (pick.buyPrice != null) out.buyPrice = Number(pick.buyPrice);
+    return out;
+  }
+  const npcPrice = npcBuyPriceForItem(pick.name, getG());
+  if (npcPrice != null && npcPrice > 0) {
+    out.canBuy = true;
+    out.buyPrice = npcPrice;
   }
   return out;
 }
@@ -399,7 +447,10 @@ function describeBatchLimit(plan: ShrineBatchPlan): string {
     return "Stops early — only " + plan.offeringHave + " offering(s) in bag.";
   }
   if (plan.limitedBy === "gold") {
-    return "Stops early — gold only covers " + plan.attempts + " buy(s).";
+    return "Stops early — gold only covers " + plan.attempts + " of the batch.";
+  }
+  if (plan.scrollBuy > 0 || plan.offeringBuy > 0) {
+    return "Uses bag stock first, then buys the rest from NPC.";
   }
   return "";
 }
@@ -1208,19 +1259,29 @@ export function showUpgradeDialog(
         liveOffer.item.p,
       );
       const goldNow = observingGold();
+      const scrollMat = batchMaterialFromPick(scroll);
+      const offeringMat = batchMaterialFromPick(offering);
+      const batchOn = batchCheck.read();
+      const canBuyExtras = !!(
+        (scrollMat && (scrollMat.buy || scrollMat.canBuy)) ||
+        (offeringMat && (offeringMat.buy || offeringMat.canBuy))
+      );
+      batchCheck.syncBuyExtras({ batchOn, canBuyExtras });
+      const buyExtras = batchCheck.readBuyExtras();
       const batchPlan = planShrineBatch({
         mode: "upgrade",
         peerCount: peerSlots.length,
-        scroll: batchMaterialFromPick(scroll),
-        offering: batchMaterialFromPick(offering),
+        scroll: scrollMat,
+        offering: offeringMat,
         gold: goldNow,
+        buyExtras,
       });
-      if (batchCheck.read()) {
+      if (batchOn) {
         batchCheck.setPlanSummary(
           formatShrineBatchSummary(batchPlan, {
             mode: "upgrade",
-            scroll: batchMaterialFromPick(scroll),
-            offering: batchMaterialFromPick(offering),
+            scroll: scrollMat,
+            offering: offeringMat,
           }),
           describeBatchLimit(batchPlan),
         );
@@ -1235,7 +1296,7 @@ export function showUpgradeDialog(
         );
       }
 
-      const highlight: number[] = batchCheck.read()
+      const highlight: number[] = batchOn
         ? peerSlots.slice()
         : [liveOffer.item.slot];
       if (scroll && !scroll.buy && scroll.slot >= 0) {
@@ -1330,8 +1391,11 @@ export function showUpgradeDialog(
         goldNow,
       );
       const ready = scrollId != null || offeringId != null;
-      const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
-      const batchOn = batchCheck.read();
+      const buying =
+        !!(scroll && scroll.buy) ||
+        !!(offering && offering.buy) ||
+        batchPlan.scrollBuy > 0 ||
+        batchPlan.offeringBuy > 0;
       const batchN = batchPlan.attempts;
       okBtn.disabled =
         busy || !ready || (batchOn && batchPlan.wantAttempts > 0 && batchN <= 0);
@@ -1854,19 +1918,29 @@ export function showCompoundDialog(
         liveOffer.item.p,
       );
       const goldNow = observingGold();
+      const scrollMat = batchMaterialFromPick(scroll);
+      const offeringMat = batchMaterialFromPick(offering);
+      const batchOn = batchCheck.read();
+      const canBuyExtras = !!(
+        (scrollMat && (scrollMat.buy || scrollMat.canBuy)) ||
+        (offeringMat && (offeringMat.buy || offeringMat.canBuy))
+      );
+      batchCheck.syncBuyExtras({ batchOn, canBuyExtras });
+      const buyExtras = batchCheck.readBuyExtras();
       const batchPlan = planShrineBatch({
         mode: "compound",
         peerCount: peerSlots.length,
-        scroll: batchMaterialFromPick(scroll),
-        offering: batchMaterialFromPick(offering),
+        scroll: scrollMat,
+        offering: offeringMat,
         gold: goldNow,
+        buyExtras,
       });
-      if (batchCheck.read()) {
+      if (batchOn) {
         batchCheck.setPlanSummary(
           formatShrineBatchSummary(batchPlan, {
             mode: "compound",
-            scroll: batchMaterialFromPick(scroll),
-            offering: batchMaterialFromPick(offering),
+            scroll: scrollMat,
+            offering: offeringMat,
           }),
           describeBatchLimit(batchPlan),
         );
@@ -1885,10 +1959,10 @@ export function showCompoundDialog(
         );
       }
 
-      const highlight: number[] = batchCheck.read()
+      const highlight: number[] = batchOn
         ? peerSlots.slice()
         : [liveOffer.item.slot];
-      if (!batchCheck.read()) {
+      if (!batchOn) {
         for (let i = 0; i < partnerList.length; i++) {
           highlight.push(partnerList[i].slot);
         }
@@ -2025,8 +2099,11 @@ export function showCompoundDialog(
       );
 
       const ready = selected.size === 2 && scrollId != null;
-      const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
-      const batchOn = batchCheck.read();
+      const buying =
+        !!(scroll && scroll.buy) ||
+        !!(offering && offering.buy) ||
+        batchPlan.scrollBuy > 0 ||
+        batchPlan.offeringBuy > 0;
       const batchSets = batchPlan.attempts;
       okBtn.disabled =
         busy ||
