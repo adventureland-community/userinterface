@@ -1,0 +1,81 @@
+{
+  "url": "http://127.0.0.1:3927/overlay",
+  "viewport": {
+    "VW": 390,
+    "VH": 844
+  },
+  "realEcu": true,
+  "steps": [
+    {
+      "name": "real #comm-ui mounted",
+      "pass": true,
+      "detail": "count=1"
+    },
+    {
+      "name": "phone dock mounts",
+      "pass": true,
+      "detail": "count=1"
+    },
+    {
+      "name": "open apps",
+      "pass": true
+    },
+    {
+      "name": "open chat",
+      "pass": true
+    },
+    {
+      "name": "chat panel visible",
+      "pass": true
+    },
+    {
+      "name": "open command",
+      "pass": true
+    },
+    {
+      "name": "command panel visible",
+      "pass": true
+    },
+    {
+      "name": "open settings",
+      "pass": true
+    },
+    {
+      "name": "settings panel visible",
+      "pass": true
+    },
+    {
+      "name": "open Bank",
+      "pass": true
+    },
+    {
+      "name": "Bank panel visible",
+      "pass": true
+    },
+    {
+      "name": "open Market",
+      "pass": true
+    },
+    {
+      "name": "Market panel visible",
+      "pass": true
+    },
+    {
+      "name": "open Mail",
+      "pass": true
+    },
+    {
+      "name": "Mail panel visible",
+      "pass": true
+    },
+    {
+      "name": "open Bag",
+      "pass": true
+    },
+    {
+      "name": "Bag panel visible",
+      "pass": true
+    }
+  ],
+  "fails": []
+}

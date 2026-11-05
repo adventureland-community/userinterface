@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Nameplate look — pick A or B</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    color: #e8eaed;
+    background: #0f1115;
+    padding: 16px;
+  }
+  .wrap { display: flex; flex-direction: column; gap: 12px; max-width: 720px; }
+  h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  .sub { margin: 0; font-size: 12px; color: #9aa0a6; line-height: 1.35; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .card {
+    background: #1a1d24;
+    border: 1px solid #2a2f3a;
+    border-radius: 10px;
+    padding: 12px;
+  }
+  .label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 8px;
+    color: #9aa0a6;
+  }
+  .label strong { color: #e8eaed; font-weight: 700; }
+  .stage {
+    position: relative;
+    height: 168px;
+    border-radius: 8px;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(40,70,40,0.35), transparent 40%),
+      radial-gradient(circle at 30% 70%, #3d6b3a 0%, #2a4a28 40%, #1a2e1c 100%);
+    border: 1px solid #2a2f3a;
+  }
+  .stage.bright {
+    background:
+      linear-gradient(180deg, rgba(210,190,140,0.55), transparent 45%),
+      radial-gradient(circle at 60% 40%, #d7c48a 0%, #c4a86a 45%, #9a7d45 100%);
+  }
+  .sprite {
+    position: absolute;
+    width: 18px;
+    height: 28px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #6ec4ff, #3a6ea5);
+    box-shadow: 0 2px 0 rgba(0,0,0,0.35);
+  }
+  .s1 { left: 22%; top: 58%; }
+  .s2 { left: 48%; top: 62%; background: linear-gradient(180deg, #f0c070, #a06a30); }
+  .s3 { left: 72%; top: 54%; background: linear-gradient(180deg, #e08090, #803040); }
+  .plate {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 4px);
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    pointer-events: none;
+  }
+  .today .plate {
+    padding: 3px 6px;
+    background: rgba(7, 8, 10, 0.72);
+    box-shadow: 0 0 0 1px rgba(22, 24, 28, 0.42);
+    -webkit-text-stroke: 0.6px #000;
+  }
+  .ghost .plate {
+    padding: 2px 5px;
+    background: rgba(8, 10, 14, 0.34);
+    box-shadow: 0 0 0 1px rgba(20, 22, 28, 0.18);
+    -webkit-text-stroke: 1px #000;
+    paint-order: stroke fill;
+  }
+  .outline .plate {
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-text-stroke: 1.35px #000;
+    paint-order: stroke fill;
+    filter: drop-shadow(0 1px 0 rgba(0,0,0,0.55));
+  }
+  .note {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #9aa0a6;
+  }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pair .stage { height: 120px; }
+  .tiny { font-size: 10px; margin: 0 0 4px; color: #9aa0a6; }
+  .full .pair { grid-template-columns: 1fr; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <h1>Nameplate look — pick A or B</h1>
+      <p class="sub">Same three characters on grass + bright sand. Today is what your town shot still feels like.</p>
+    </div>
+
+    <div class="card">
+      <p class="label">Today · current soft (~72% fill)</p>
+      <div class="pair">
+        <div>
+          <p class="tiny">Busy grass / town</p>
+          <div class="stage today">
+            <div class="sprite s1"><span class="plate">Gabriel</span></div>
+            <div class="sprite s2"><span class="plate">Ernis</span></div>
+            <div class="sprite s3"><span class="plate">thmsn</span></div>
+          </div>
+        </div>
+        <div>
+          <p class="tiny">Bright sand / snow stress</p>
+          <div class="stage bright today">
+            <div class="sprite s1"><span class="plate">Gabriel</span></div>
+            <div class="sprite s2"><span class="plate">Ernis</span></div>
+            <div class="sprite s3"><span class="plate">thmsn</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <p class="label"><strong>A · Ghost plate</strong></p>
+        <div class="pair full">
+          <div class="stage ghost">
+            <div class="sprite s1"><span class="plate">Gabriel</span></div>
+            <div class="sprite s2"><span class="plate">Ernis</span></div>
+            <div class="sprite s3"><span class="plate">thmsn</span></div>
+          </div>
+          <div class="stage bright ghost">
+            <div class="sprite s1"><span class="plate">Gabriel</span></div>
+            <div class="sprite s2"><span class="plate">Ernis</span></div>
+            <div class="sprite s3"><span class="plate">thmsn</span></div>
+          </div>
+        </div>
+        <p class="note">Thin translucent band + light stroke. Less map-blocking; still a hint of plate on bright ground.</p>
+      </div>
+
+      <div class="card">
+        <p class="label"><strong>B · Outline only</strong></p>
+        <div class="pair full">
+          <div class="stage outline">
+            <div class="sprite s1"><span class="plate">Gabriel</span></div>
+            <div class="sprite s2"><span class="plate">Ernis</span></div>
+            <div class="sprite s3"><span class="plate">thmsn</span></div>
+          </div>
+          <div class="stage bright outline">
+            <div class="sprite s1"><span class="plate">Gabriel</span></div>
+            <div class="sprite s2"><span class="plate">Ernis</span></div>
+            <div class="sprite s3"><span class="plate">thmsn</span></div>
+          </div>
+        </div>
+        <p class="note">No fill — white text + dark stroke only. Least intrusive; can wash out on sand/snow.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

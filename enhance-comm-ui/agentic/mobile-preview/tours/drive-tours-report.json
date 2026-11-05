@@ -1,0 +1,514 @@
+{
+  "url": "http://127.0.0.1:3927/overlay",
+  "viewport": {
+    "VW": 390,
+    "VH": 844
+  },
+  "steps": [
+    {
+      "name": "tour API ready",
+      "pass": true
+    },
+    {
+      "name": "intro/1-Player_target_frames card compact",
+      "pass": true,
+      "detail": "h=197 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\1-Player_target_frames.png"
+    },
+    {
+      "name": "intro/1-Player_target_frames missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "intro/2-Server_picker card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\2-Server_picker.png"
+    },
+    {
+      "name": "intro/2-Server_picker card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.19 overlap=61488"
+    },
+    {
+      "name": "intro/3-Apps_actions card compact",
+      "pass": true,
+      "detail": "h=188 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\3-Apps_actions.png"
+    },
+    {
+      "name": "intro/3-Apps_actions card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "intro/4-Bag card compact",
+      "pass": true,
+      "detail": "h=227 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\4-Bag.png"
+    },
+    {
+      "name": "intro/4-Bag card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.26 overlap=83082"
+    },
+    {
+      "name": "intro/5-Bag_panel card compact",
+      "pass": true,
+      "detail": "h=197 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\5-Bag_panel.png"
+    },
+    {
+      "name": "intro/5-Bag_panel missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "intro/6-Command card compact",
+      "pass": true,
+      "detail": "h=227 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\6-Command.png"
+    },
+    {
+      "name": "intro/6-Command card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.26 overlap=83082"
+    },
+    {
+      "name": "intro/7-Command_panel card compact",
+      "pass": true,
+      "detail": "h=197 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\7-Command_panel.png"
+    },
+    {
+      "name": "intro/7-Command_panel missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "intro/8-Apps_controls card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\8-Apps_controls.png"
+    },
+    {
+      "name": "intro/8-Apps_controls card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "intro/9-Layout_mode card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\9-Layout_mode.png"
+    },
+    {
+      "name": "intro/9-Layout_mode card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "intro/10-Party_roster card compact",
+      "pass": true,
+      "detail": "h=188 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\10-Party_roster.png"
+    },
+    {
+      "name": "intro/10-Party_roster missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "intro/11-Map_events card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\11-Map_events.png"
+    },
+    {
+      "name": "intro/11-Map_events missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "intro/12-Combat_meters card compact",
+      "pass": true,
+      "detail": "h=176 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\12-Combat_meters.png"
+    },
+    {
+      "name": "intro/12-Combat_meters missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "intro/13-Add_a_meter card compact",
+      "pass": true,
+      "detail": "h=188 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\13-Add_a_meter.png"
+    },
+    {
+      "name": "intro/13-Add_a_meter card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.22 overlap=68808"
+    },
+    {
+      "name": "intro/14-PDPS card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\14-PDPS.png"
+    },
+    {
+      "name": "intro/14-PDPS card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "intro/15-Kill_counter card compact",
+      "pass": true,
+      "detail": "h=148 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\15-Kill_counter.png"
+    },
+    {
+      "name": "intro/15-Kill_counter missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "intro/16-You_re_set card compact",
+      "pass": true,
+      "detail": "h=188 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\intro\\16-You_re_set.png"
+    },
+    {
+      "name": "intro/16-You_re_set card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "layout/0-Layout_mode card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\layout\\0-Layout_mode.png"
+    },
+    {
+      "name": "layout/0-Layout_mode card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "layout/1-Anchor_pad card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\layout\\1-Anchor_pad.png"
+    },
+    {
+      "name": "layout/1-Anchor_pad card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "layout/2-Opacity_hide card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\layout\\2-Opacity_hide.png"
+    },
+    {
+      "name": "layout/2-Opacity_hide card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.07 overlap=18300"
+    },
+    {
+      "name": "meters/0-Meter_window card compact",
+      "pass": true,
+      "detail": "h=217 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\meters\\0-Meter_window.png"
+    },
+    {
+      "name": "meters/0-Meter_window missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "meters/1-Bar_rows card compact",
+      "pass": true,
+      "detail": "h=197 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\meters\\1-Bar_rows.png"
+    },
+    {
+      "name": "meters/1-Bar_rows missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "meters/2-Toolbar_overview card compact",
+      "pass": true,
+      "detail": "h=197 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\meters\\2-Toolbar_overview.png"
+    },
+    {
+      "name": "meters/2-Toolbar_overview missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "meters/3-Status_bar card compact",
+      "pass": true,
+      "detail": "h=176 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\meters\\3-Status_bar.png"
+    },
+    {
+      "name": "meters/3-Status_bar missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "meter-toolbar/0-Mode card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\meter-toolbar\\0-Mode.png"
+    },
+    {
+      "name": "meter-toolbar/0-Mode missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "meter-toolbar/1-Segment card compact",
+      "pass": true,
+      "detail": "h=148 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\meter-toolbar\\1-Segment.png"
+    },
+    {
+      "name": "meter-toolbar/1-Segment missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "meter-toolbar/2-Attribute card compact",
+      "pass": true,
+      "detail": "h=197 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\meter-toolbar\\2-Attribute.png"
+    },
+    {
+      "name": "meter-toolbar/2-Attribute missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "meter-toolbar/3-Report card compact",
+      "pass": true,
+      "detail": "h=176 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\meter-toolbar\\3-Report.png"
+    },
+    {
+      "name": "meter-toolbar/3-Report missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "meter-toolbar/4-Resize card compact",
+      "pass": true,
+      "detail": "h=217 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\meter-toolbar\\4-Resize.png"
+    },
+    {
+      "name": "meter-toolbar/4-Resize missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "coop/0-s_coop_meter card compact",
+      "pass": true,
+      "detail": "h=237 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\coop\\0-s_coop_meter.png"
+    },
+    {
+      "name": "coop/0-s_coop_meter missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "combat/0-Enemies card compact",
+      "pass": true,
+      "detail": "h=197 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\combat\\0-Enemies.png"
+    },
+    {
+      "name": "combat/0-Enemies missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "combat/1-Threat_table card compact",
+      "pass": true,
+      "detail": "h=176 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\combat\\1-Threat_table.png"
+    },
+    {
+      "name": "combat/1-Threat_table missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "combat/2-Boss_bar card compact",
+      "pass": true,
+      "detail": "h=176 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\combat\\2-Boss_bar.png"
+    },
+    {
+      "name": "combat/2-Boss_bar missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "paperdoll-v2/0-Paperdoll card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\paperdoll-v2\\0-Paperdoll.png"
+    },
+    {
+      "name": "paperdoll-v2/0-Paperdoll card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "paperdoll-v2/1-Gear card compact",
+      "pass": true,
+      "detail": "h=227 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\paperdoll-v2\\1-Gear.png"
+    },
+    {
+      "name": "paperdoll-v2/1-Gear missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "paperdoll-v2/2-Item_info card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\paperdoll-v2\\2-Item_info.png"
+    },
+    {
+      "name": "paperdoll-v2/2-Item_info card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "market/0-Market_hub card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\market\\0-Market_hub.png"
+    },
+    {
+      "name": "market/0-Market_hub card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "market/2-You_bag_stand card compact",
+      "pass": true,
+      "detail": "h=217 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\market\\2-You_bag_stand.png"
+    },
+    {
+      "name": "market/2-You_bag_stand missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "market/3-Search_filters card compact",
+      "pass": true,
+      "detail": "h=197 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\market\\3-Search_filters.png"
+    },
+    {
+      "name": "market/3-Search_filters missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "market/4-Pick_an_item card compact",
+      "pass": true,
+      "detail": "h=240 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\market\\4-Pick_an_item.png"
+    },
+    {
+      "name": "market/4-Pick_an_item missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "market/5-Focus_offers card compact",
+      "pass": true,
+      "detail": "h=217 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\market\\5-Focus_offers.png"
+    },
+    {
+      "name": "market/5-Focus_offers missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "bank/0-Account_Bank card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\bank\\0-Account_Bank.png"
+    },
+    {
+      "name": "bank/0-Account_Bank card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.11 overlap=21960"
+    },
+    {
+      "name": "bank/2-Refresh card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\bank\\2-Refresh.png"
+    },
+    {
+      "name": "bank/2-Refresh card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.19 overlap=61488"
+    },
+    {
+      "name": "bank/3-Search card compact",
+      "pass": true,
+      "detail": "h=188 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\bank\\3-Search.png"
+    },
+    {
+      "name": "bank/3-Search card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "bank/4-Views card compact",
+      "pass": true,
+      "detail": "h=217 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\bank\\4-Views.png"
+    },
+    {
+      "name": "bank/4-Views missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    },
+    {
+      "name": "bank/5-Packs card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\bank\\5-Packs.png"
+    },
+    {
+      "name": "bank/5-Packs card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.04 overlap=9150"
+    },
+    {
+      "name": "bank/6-Ready card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\bank\\6-Ready.png"
+    },
+    {
+      "name": "bank/6-Ready card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.04 overlap=9150"
+    },
+    {
+      "name": "bank/7-Sort card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\bank\\7-Sort.png"
+    },
+    {
+      "name": "bank/7-Sort card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "bank/8-Browse_withdraw card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\bank\\8-Browse_withdraw.png"
+    },
+    {
+      "name": "bank/8-Browse_withdraw card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "buff-info/0-Buff_info card compact",
+      "pass": true,
+      "detail": "h=168 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\buff-info\\0-Buff_info.png"
+    },
+    {
+      "name": "buff-info/0-Buff_info card clears spotlight",
+      "pass": true,
+      "detail": "overlapRatio=0.00 overlap=0"
+    },
+    {
+      "name": "buff-info/1-Where_to_click card compact",
+      "pass": true,
+      "detail": "h=216 shot=C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\tours\\buff-info\\1-Where_to_click.png"
+    },
+    {
+      "name": "buff-info/1-Where_to_click missing target (hint ok)",
+      "pass": true,
+      "detail": "no spotlight — missingHint path"
+    }
+  ],
+  "fails": []
+}

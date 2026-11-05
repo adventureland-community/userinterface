@@ -1,0 +1,225 @@
+{
+  "url": "http://127.0.0.1:3927/overlay",
+  "viewport": {
+    "VW": 390,
+    "VH": 844
+  },
+  "steps": [
+    {
+      "name": "phone dock mounts",
+      "pass": true,
+      "detail": "count=1"
+    },
+    {
+      "name": "shot:00-home",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-00-home.png"
+    },
+    {
+      "name": "dock sits at bottom",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":774,\"w\":390,\"h\":70,\"bottom\":844,\"cssVar\":\"70px\",\"bodyClass\":true}"
+    },
+    {
+      "name": "dock chrome class applied",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":774,\"w\":390,\"h\":70,\"bottom\":844,\"cssVar\":\"70px\",\"bodyClass\":true}"
+    },
+    {
+      "name": "home has HUD bottom inset",
+      "pass": true,
+      "detail": "{\"dockTop\":774,\"chromeTop\":607,\"inset\":\"237px\",\"visibleMeterCount\":1,\"meterBottoms\":[607],\"worstMeterBottom\":607}"
+    },
+    {
+      "name": "meters clear character chrome",
+      "pass": true,
+      "detail": "{\"dockTop\":774,\"chromeTop\":607,\"inset\":\"237px\",\"visibleMeterCount\":1,\"meterBottoms\":[607],\"worstMeterBottom\":607}"
+    },
+    {
+      "name": "dock fully exposed (home)",
+      "pass": true,
+      "detail": "{\"dockTop\":774,\"chromeTop\":607,\"inset\":\"237px\",\"visibleMeterCount\":1,\"meterBottoms\":[607],\"worstMeterBottom\":607}"
+    },
+    {
+      "name": "phone ctrl+wheel zooms world",
+      "pass": true,
+      "detail": "{\"before\":2,\"hasView\":true,\"profile\":\"phone\",\"after\":1}"
+    },
+    {
+      "name": "edge swipe left opens chat",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "shot:10-edge-chat",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-10-edge-chat.png"
+    },
+    {
+      "name": "edge swipe left toggles chat closed",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "edge swipe right opens cmd",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "edge swipe bottom opens menu",
+      "pass": true,
+      "detail": "bandY=591"
+    },
+    {
+      "name": "edge swipe top dismisses menu",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "shot:01-chat-open",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-01-chat-open.png"
+    },
+    {
+      "name": "chat panel open",
+      "pass": true,
+      "detail": "{\"classes\":\"ecu-chat is-narrow is-expanded\",\"narrow\":true,\"sidebarOpen\":false,\"sidebar\":{\"w\":301,\"h\":718,\"bottom\":766,\"top\":48},\"main\":{\"w\":370,\"h\":718,\"bottom\":766,\"top\":48},\"log\":{\"w\":370,\"h\":582,\"bottom\":683,\"top\":101},\"shell\":{\"w\":370,\"h\":756,\"bottom\":766,\"top\":10},\"dockTop\":774,\"toggle\":true,\"viewportW\":390}"
+    },
+    {
+      "name": "chat is-narrow",
+      "pass": true,
+      "detail": "{\"classes\":\"ecu-chat is-narrow is-expanded\",\"narrow\":true,\"sidebarOpen\":false,\"sidebar\":{\"w\":301,\"h\":718,\"bottom\":766,\"top\":48},\"main\":{\"w\":370,\"h\":718,\"bottom\":766,\"top\":48},\"log\":{\"w\":370,\"h\":582,\"bottom\":683,\"top\":101},\"shell\":{\"w\":370,\"h\":756,\"bottom\":766,\"top\":10},\"dockTop\":774,\"toggle\":true,\"viewportW\":390}"
+    },
+    {
+      "name": "chat single-pane (main wide)",
+      "pass": true,
+      "detail": "main.w=370"
+    },
+    {
+      "name": "chat Chats toggle present",
+      "pass": true,
+      "detail": "sidebar drawer control"
+    },
+    {
+      "name": "chat clears dock",
+      "pass": true,
+      "detail": "shell.bottom=766 dockTop=774"
+    },
+    {
+      "name": "chat log readable width",
+      "pass": true,
+      "detail": "log.w=370"
+    },
+    {
+      "name": "chat toggles closed",
+      "pass": true,
+      "detail": "closed=true"
+    },
+    {
+      "name": "shot:02-chat-closed",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-02-chat-closed.png"
+    },
+    {
+      "name": "shot:03-cmd-open",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-03-cmd-open.png"
+    },
+    {
+      "name": "cmd opens",
+      "pass": true,
+      "detail": "{\"open\":true,\"w\":359,\"h\":421,\"bottom\":586,\"dockTop\":774,\"narrow\":true}"
+    },
+    {
+      "name": "cmd clears dock",
+      "pass": true,
+      "detail": "cmd.bottom=586 dockTop=774"
+    },
+    {
+      "name": "cmd toggles closed",
+      "pass": true,
+      "detail": "closed=true"
+    },
+    {
+      "name": "shot:04-cmd-closed",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-04-cmd-closed.png"
+    },
+    {
+      "name": "shot:05-settings-open",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-05-settings-open.png"
+    },
+    {
+      "name": "settings phone sheet",
+      "pass": true,
+      "detail": "{\"phoneBackdrop\":true,\"phoneModal\":true,\"backdrop\":{\"w\":390,\"h\":774,\"bottom\":774,\"top\":0},\"modal\":{\"w\":390,\"h\":775,\"bottom\":775,\"top\":0},\"pane\":{\"w\":390,\"h\":640,\"bottom\":775,\"top\":135},\"desc\":{\"w\":358,\"h\":44,\"bottom\":226,\"top\":183},\"dockTop\":774,\"dockVisible\":true,\"dockZ\":\"240\",\"backdropZ\":\"500\",\"done\":true,\"chipsRow\":true,\"vw\":390,\"vh\":844}"
+    },
+    {
+      "name": "settings Done button",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "settings stacked (column)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "settings clears dock (no overlap)",
+      "pass": true,
+      "detail": "backdrop.bottom=774 dockTop=774"
+    },
+    {
+      "name": "settings text not crushed",
+      "pass": true,
+      "detail": "pane.w=390 desc.w=358 maxText=undefined"
+    },
+    {
+      "name": "settings toggles closed via dock",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "shot:06-settings-closed",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-06-settings-closed.png"
+    },
+    {
+      "name": "settings Done closes",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "shot:07-menu-open",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-07-menu-open.png"
+    },
+    {
+      "name": "menu sheet open",
+      "pass": true,
+      "detail": "{\"sheet\":{\"bottom\":774,\"top\":134,\"h\":640},\"scrim\":{\"bottom\":774,\"top\":0,\"h\":774},\"dockTop\":774}"
+    },
+    {
+      "name": "menu sheet clears dock",
+      "pass": true,
+      "detail": "sheet.bottom=774 dockTop=774"
+    },
+    {
+      "name": "settings dismisses menu sheet",
+      "pass": true,
+      "detail": "{\"sheet\":false,\"settings\":true}"
+    },
+    {
+      "name": "shot:08-settings-after-menu",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-08-settings-after-menu.png"
+    },
+    {
+      "name": "shot:09-end",
+      "pass": true,
+      "detail": "C:\\Projects\\AdventureLand\\userinterface\\enhance-comm-ui\\agentic\\mobile-preview\\drive-09-end.png"
+    }
+  ],
+  "fails": []
+}

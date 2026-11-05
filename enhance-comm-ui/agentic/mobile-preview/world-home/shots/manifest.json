@@ -1,0 +1,32 @@
+[
+  {
+    "id": "01-home-idle",
+    "label": "Home page · not observing",
+    "path": "C:/Projects/AdventureLand/userinterface/enhance-comm-ui/agentic/mobile-preview/world-home/shots/01-home-idle.png"
+  },
+  {
+    "id": "02-players-nameplates-bad",
+    "label": "Players · current tiny/blurry nameplates",
+    "path": "C:/Projects/AdventureLand/userinterface/enhance-comm-ui/agentic/mobile-preview/world-home/shots/02-players-nameplates-bad.png"
+  },
+  {
+    "id": "03-players-nameplates-good",
+    "label": "Players · phone-boosted soft nameplates",
+    "path": "C:/Projects/AdventureLand/userinterface/enhance-comm-ui/agentic/mobile-preview/world-home/shots/03-players-nameplates-good.png"
+  },
+  {
+    "id": "04-coop-page",
+    "label": "Coop page · labeled pager",
+    "path": "C:/Projects/AdventureLand/userinterface/enhance-comm-ui/agentic/mobile-preview/world-home/shots/04-coop-page.png"
+  },
+  {
+    "id": "05-fov-zoom-out",
+    "label": "World FOV zoom-out · plates stay large",
+    "path": "C:/Projects/AdventureLand/userinterface/enhance-comm-ui/agentic/mobile-preview/world-home/shots/05-fov-zoom-out.png"
+  },
+  {
+    "id": "06-fov-zoom-in",
+    "label": "World FOV zoom-in · phone boost kept",
+    "path": "C:/Projects/AdventureLand/userinterface/enhance-comm-ui/agentic/mobile-preview/world-home/shots/06-fov-zoom-in.png"
+  }
+]
