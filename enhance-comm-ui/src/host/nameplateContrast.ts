@@ -98,7 +98,10 @@ function applyBandToPlate(root: PlateRoot, band: NameplateLuminanceBand): void {
   const visit = (node: TextNodeLike | null | undefined) => {
     if (!node) return;
     if (looksLikeGraphics(node)) {
-      touched += setNameBandFillAlpha(node as GraphicsLike, alpha);
+      touched += setNameBandFillAlpha(
+        node as unknown as GraphicsLike,
+        alpha,
+      );
     }
     const kids = node.children;
     if (!kids || !kids.length) return;
