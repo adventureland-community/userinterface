@@ -5,21 +5,26 @@ import {
   applySoftTextStyle,
   beautifyNameTag,
   fitNameTextInGhostBand,
+  ghostAlphaForLuminanceBand,
   ghostPlateForClassColor,
   ghostPlateRimForClassColor,
   hexLuminance,
   isNameBandShape,
+  luminanceToNameplateBand,
   mixHexTowardBlack,
   nameBandGrowUp,
   nameBandTextY,
   NAMEPLATE_BAND_PAD,
   NAMEPLATE_FONT_FAMILIES,
   NAMEPLATE_FONT_FAMILY,
+  NAMEPLATE_GHOST_ALPHA_BASE,
   resolveNameplateFontFamily,
   nameplateFillForClass,
   nameplatePlateClassColor,
+  setNameBandFillAlpha,
   softenNameBandGraphics,
   softPlateFill,
+  srgbLuminance,
   STOCK_NAME_BORDER,
   STOCK_NAME_FILL,
 } from "../src/host/nameplateStyle";
@@ -33,7 +38,7 @@ describe("softPlateFill", () => {
     assert.ok(fill);
     assert.equal(border!.color, rim.color);
     assert.ok(border!.alpha >= 0.3 && border!.alpha < 0.55);
-    assert.ok(fill!.alpha >= 0.22 && fill!.alpha <= 0.35);
+    assert.ok(fill!.alpha >= 0.3 && fill!.alpha <= 0.45);
     assert.ok(
       hexLuminance("#" + border!.color.toString(16).padStart(6, "0")) <
         hexLuminance("#" + fill!.color.toString(16).padStart(6, "0")),
@@ -50,9 +55,9 @@ describe("ghostPlateForClassColor", () => {
     const merchant = ghostPlateForClassColor(classColors.merchant);
     const paladin = ghostPlateForClassColor(classColors.paladin);
     const npc = ghostPlateForClassColor("#ffffff");
-    assert.ok(mage.alpha >= 0.22 && mage.alpha <= 0.35);
-    assert.ok(ranger.alpha >= 0.22 && ranger.alpha <= 0.35);
-    assert.ok(merchant.alpha >= 0.22 && merchant.alpha <= 0.35);
+    assert.ok(mage.alpha >= 0.3 && mage.alpha <= 0.45);
+    assert.ok(ranger.alpha >= 0.3 && ranger.alpha <= 0.45);
+    assert.ok(merchant.alpha >= 0.3 && merchant.alpha <= 0.45);
     assert.equal(npc.color, 0x0a0c12);
     // Paladin plate must be darker than raw so white text reads.
     assert.ok(
@@ -74,6 +79,45 @@ describe("hexLuminance", () => {
   it("ranks white above merchant gray", () => {
     assert.ok(hexLuminance("#ffffff") > hexLuminance(classColors.merchant));
     assert.ok(hexLuminance(classColors.priest) > hexLuminance(classColors.ranger));
+  });
+});
+
+describe("nameplate luminance bands", () => {
+  it("maps luminance to dark/mid/bright and alphas", () => {
+    assert.equal(luminanceToNameplateBand(0.1), "dark");
+    assert.equal(luminanceToNameplateBand(0.4), "mid");
+    assert.equal(luminanceToNameplateBand(0.7), "bright");
+    assert.ok(
+      ghostAlphaForLuminanceBand("bright") >
+        ghostAlphaForLuminanceBand("mid"),
+    );
+    assert.ok(
+      ghostAlphaForLuminanceBand("mid") >
+        ghostAlphaForLuminanceBand("dark"),
+    );
+    assert.equal(
+      ghostAlphaForLuminanceBand("mid"),
+      NAMEPLATE_GHOST_ALPHA_BASE,
+    );
+    assert.ok(srgbLuminance(255, 255, 255) > srgbLuminance(40, 120, 40));
+  });
+
+  it("setNameBandFillAlpha only dirties when alpha changes", () => {
+    const gfx = {
+      dirty: 0,
+      graphicsData: [
+        {
+          fillColor: STOCK_NAME_FILL,
+          fillAlpha: NAMEPLATE_GHOST_ALPHA_BASE,
+          shape: { x: 0, y: 0, width: 40, height: 9 },
+        },
+      ],
+    };
+    assert.equal(setNameBandFillAlpha(gfx, NAMEPLATE_GHOST_ALPHA_BASE), 0);
+    assert.equal(gfx.dirty, 0);
+    assert.equal(setNameBandFillAlpha(gfx, 0.48), 1);
+    assert.equal(gfx.graphicsData[0].fillAlpha, 0.48);
+    assert.ok(gfx.dirty > 0);
   });
 });
 

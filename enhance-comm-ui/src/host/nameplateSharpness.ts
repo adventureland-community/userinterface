@@ -25,6 +25,7 @@ import {
   beautifyNameTag,
   resolveNameplateFontFamily,
 } from "./nameplateStyle";
+import { installNameplateContrast } from "./nameplateContrast";
 
 /**
  * Profile size multiplier on top of FOV counter-scale.
@@ -558,6 +559,7 @@ export function installNameplateSharpness(): void {
     bustNameTagCaches();
     resyncNameplateScales(fov);
   });
+  installNameplateContrast();
   const kick = () => {
     if (!wrapAddNameTag()) return false;
     // Rebuild with system mono + phone scale on existing tags.

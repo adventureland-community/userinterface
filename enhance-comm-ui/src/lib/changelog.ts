@@ -145,7 +145,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "Ghost nameplates",
         detail:
-          "One soft class-tinted band under white Consolas text, quiet enough that town art stays primary. Names stay sharp on phone and when you zoom the camera in or out. On desktop, zoomed-out plates shrink with the map instead of staying HUD-huge at 5×. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
+          "One soft class-tinted band under white Consolas text, quiet enough that town art stays primary. On bright ground the plate densifies a little (cheap background sample, not every frame). Names stay sharp on phone and when you zoom the camera in or out. On desktop, zoomed-out plates shrink with the map instead of staying HUD-huge at 5×. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
         kind: "ui",
       },
       {

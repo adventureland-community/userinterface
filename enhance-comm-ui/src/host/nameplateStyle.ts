@@ -81,23 +81,59 @@ export function mixHexTowardBlack(hex: string, t: number): string {
   return "#" + h;
 }
 
+/** Base ghost-plate opacity — readable on bright plaza tiles without looking solid. */
+export const NAMEPLATE_GHOST_ALPHA_BASE = 0.36;
+
+export type NameplateLuminanceBand = "dark" | "mid" | "bright";
+
+/** Map relative luminance 0–1 to a coarse contrast band. */
+export function luminanceToNameplateBand(L: number): NameplateLuminanceBand {
+  if (!(typeof L === "number") || !Number.isFinite(L)) return "mid";
+  if (L >= 0.55) return "bright";
+  if (L <= 0.22) return "dark";
+  return "mid";
+}
+
+/** Ghost fill alpha for a background luminance band (clamped). */
+export function ghostAlphaForLuminanceBand(
+  band: NameplateLuminanceBand,
+  base: number = NAMEPLATE_GHOST_ALPHA_BASE,
+): number {
+  const b =
+    typeof base === "number" && Number.isFinite(base)
+      ? Math.max(0.15, Math.min(0.6, base))
+      : NAMEPLATE_GHOST_ALPHA_BASE;
+  if (band === "bright") return Math.min(0.55, b + 0.12);
+  if (band === "dark") return Math.max(0.22, b - 0.06);
+  return b;
+}
+
+/** Relative luminance 0–1 from 8-bit sRGB channels. */
+export function srgbLuminance(r: number, g: number, b: number): number {
+  const toLin = (c: number) => {
+    const s = Math.max(0, Math.min(255, c)) / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b);
+}
+
 /**
  * Class-tinted ghost plate for white name text.
- * Light wash (~28%) so town art stays primary; class hue is a hint only.
+ * Light wash so town art stays primary; class hue is a hint only.
  * Light hues darken a touch for white-text contrast. NPC / unknown → charcoal.
  */
 export function ghostPlateForClassColor(classHex?: string): SoftFill {
   const raw = String(classHex || "").trim() || "#ffffff";
   const key = raw.charAt(0) === "#" ? raw : "#" + raw;
   if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
-    return { color: 0x0a0c12, alpha: 0.28 };
+    return { color: 0x0a0c12, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
   }
   const L = hexLuminance(key);
   // Shade just enough for white text; keep class hue under a light ghost.
   const darken = L > 0.4 ? 0.42 : L > 0.3 ? 0.16 : L > 0.2 ? 0.08 : 0.04;
   const mixed = mixHexTowardBlack(key, darken);
   const n = parseInt(mixed.slice(1), 16);
-  return { color: n >>> 0, alpha: 0.28 };
+  return { color: n >>> 0, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
 }
 
 /**
@@ -244,6 +280,51 @@ function writeFill(d: GraphicsDataLike, soft: SoftFill): void {
   if (typeof d.lineAlpha === "number") d.lineAlpha = 0;
 }
 
+function bumpGraphicsDirty(gfx: GraphicsLike): void {
+  if (typeof gfx.dirty === "number") gfx.dirty++;
+  if (typeof gfx.clearDirty === "number") gfx.clearDirty++;
+  if (typeof gfx._invalidate === "function") {
+    try {
+      gfx._invalidate();
+    } catch {
+      /* older PIXI */
+    }
+  }
+}
+
+/**
+ * Update name-band fill alpha only (keeps class tint). Used by background
+ * luminance contrast after plates are softened.
+ */
+export function setNameBandFillAlpha(gfx: GraphicsLike, alpha: number): number {
+  const data = getGraphicsData(gfx);
+  if (!data) return 0;
+  const a = Math.max(0.12, Math.min(0.65, alpha));
+  let changed = 0;
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i];
+    const shape = d.shape;
+    if (!shape) continue;
+    const y = typeof shape.y === "number" ? shape.y : 0;
+    const h = typeof shape.height === "number" ? shape.height : 0;
+    if (!isNameBandShape(y, h)) continue;
+    if (readFillColor(d) == null) continue;
+    const prev =
+      typeof d.fillAlpha === "number"
+        ? d.fillAlpha
+        : d.fill && typeof d.fill === "object" && typeof d.fill.alpha === "number"
+          ? d.fill.alpha
+          : null;
+    if (prev != null && Math.abs(prev - a) < 0.01) continue;
+    if (typeof d.fillAlpha === "number") d.fillAlpha = a;
+    const f = d.fill;
+    if (f && typeof f === "object") f.alpha = a;
+    changed++;
+  }
+  if (changed) bumpGraphicsDirty(gfx);
+  return changed;
+}
+
 /** Ghost name-band fills in-place (border cleared). Returns count changed. */
 export function softenNameBandGraphics(
   gfx: GraphicsLike,
@@ -266,17 +347,7 @@ export function softenNameBandGraphics(
     writeFill(d, soft);
     changed++;
   }
-  if (changed) {
-    if (typeof gfx.dirty === "number") gfx.dirty++;
-    if (typeof gfx.clearDirty === "number") gfx.clearDirty++;
-    if (typeof gfx._invalidate === "function") {
-      try {
-        gfx._invalidate();
-      } catch {
-        /* older PIXI */
-      }
-    }
-  }
+  if (changed) bumpGraphicsDirty(gfx);
   return changed;
 }
 
