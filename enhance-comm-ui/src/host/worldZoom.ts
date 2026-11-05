@@ -182,36 +182,63 @@ function rendererView(): Element | null {
   return best;
 }
 
+type ClosestHost = { closest: (selector: string) => Element | null };
+
+function asClosestHost(target: EventTarget | null): ClosestHost | null {
+  const maybe = target as unknown as ClosestHost | null;
+  if (!maybe || typeof maybe.closest !== "function") return null;
+  return maybe;
+}
+
 /** Panels / dock / modals — never steal wheel or pinch from these. */
-function isInteractiveChromeTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
+export function isInteractiveChromeTarget(
+  target: EventTarget | null,
+): boolean {
+  const el = asClosestHost(target);
+  if (!el) return false;
   return !!(
-    target.closest("[data-ecu-phone-dock]") ||
-    target.closest(".ecu-phone-sheet") ||
-    target.closest(".ecu-phone-shade") ||
-    target.closest(".ecu-phone-sheet-scrim") ||
-    target.closest(".ecu-phone-shade-scrim") ||
-    target.closest("[data-panel]") ||
-    target.closest(".ecu-meter-shell") ||
-    target.closest(".ecu-chrome-stack") ||
-    target.closest(".ecu-cam-stick, .ecu-cam-chrome") ||
-    target.closest(".modal") ||
-    target.closest(".imodal") ||
-    target.closest("#bottomleftcorner") ||
-    target.closest("#bottomrightcorner") ||
-    target.closest("input, textarea, select, [contenteditable='true']") ||
-    target.closest(".CodeMirror")
+    el.closest("[data-ecu-phone-dock]") ||
+    el.closest(".ecu-phone-sheet") ||
+    el.closest(".ecu-phone-shade") ||
+    el.closest(".ecu-phone-sheet-scrim") ||
+    el.closest(".ecu-phone-shade-scrim") ||
+    el.closest("[data-panel]") ||
+    el.closest("[data-ecu-comm-modal-portal]") ||
+    el.closest(".ecu-comm-wiz-backdrop") ||
+    el.closest(".ecu-meter-shell") ||
+    el.closest(".ecu-chrome-stack") ||
+    el.closest(".ecu-cam-stick, .ecu-cam-chrome") ||
+    el.closest(".ecu-trade-prompt-backdrop") ||
+    el.closest(".modal") ||
+    el.closest(".imodal") ||
+    el.closest("#bottomleftcorner") ||
+    el.closest("#bottomrightcorner") ||
+    el.closest("input, textarea, select, [contenteditable='true']") ||
+    el.closest(".CodeMirror")
   );
 }
 
-function isUiChromeTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
+export function isUiChromeTarget(target: EventTarget | null): boolean {
+  const el = asClosestHost(target);
+  if (!el) return false;
   if (isInteractiveChromeTarget(target)) return true;
   return !!(
-    target.closest("#comm-ui") ||
-    target.closest("#topleftcorner") ||
-    target.closest("#toprightcorner")
+    el.closest("#comm-ui") ||
+    el.closest("#topleftcorner") ||
+    el.closest("#toprightcorner")
   );
+}
+
+/**
+ * Desktop wheel FOV zoom — only when the wheel target is the world canvas.
+ * Portaled modals / lists sit over the canvas rect; never treat that as map zoom.
+ */
+export function allowsDesktopWorldWheelZoom(opts: {
+  target: EventTarget | null;
+  targetOnCanvas: boolean;
+}): boolean {
+  if (isUiChromeTarget(opts.target)) return false;
+  return opts.targetOnCanvas;
 }
 
 function pointOverCanvas(clientX: number, clientY: number): boolean {
@@ -245,11 +272,13 @@ function onWorldWheel(ev: WheelEvent): void {
   if (isInteractiveChromeTarget(ev.target)) return;
   if (pinchSim) {
     if (!pointOverCanvas(ev.clientX, ev.clientY)) return;
-  } else {
-    if (isUiChromeTarget(ev.target)) return;
-    if (!targetOnCanvas(ev.target) && !pointOverCanvas(ev.clientX, ev.clientY)) {
-      return;
-    }
+  } else if (
+    !allowsDesktopWorldWheelZoom({
+      target: ev.target,
+      targetOnCanvas: targetOnCanvas(ev.target),
+    })
+  ) {
+    return;
   }
 
   const now = Date.now();

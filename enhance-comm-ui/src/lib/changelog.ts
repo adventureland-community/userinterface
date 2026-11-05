@@ -179,6 +179,12 @@ export const CHANGELOG: ChangelogEntry[] = [
         kind: "feature",
       },
       {
+        label: "Wheel zoom stays on the world",
+        detail:
+          "Desktop mouse-wheel FOV zoom only when the cursor is on the game canvas — scrolling Attach caps, Mail, and other portaled lists no longer zooms the map behind them.",
+        kind: "fix",
+      },
+      {
         label: "Settings categories",
         detail:
           "Dropped the catch-all Performance pane. HUD density + hide meters → Comm HUD; world overlay master → Drawings; Tampermonkey mobile FAQ → Comm UI.",
