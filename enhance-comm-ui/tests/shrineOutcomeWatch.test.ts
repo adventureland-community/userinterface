@@ -1,0 +1,107 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  countNameLevel,
+  evaluateShrineBagWatch,
+  isBagPlaceholder,
+} from "../src/lib/shrineOutcomeWatch";
+
+describe("shrineOutcomeWatch", () => {
+  it("detects placeholders", () => {
+    assert.equal(isBagPlaceholder({ name: "placeholder" }), true);
+    assert.equal(isBagPlaceholder({ name: "shield", level: 5 }), false);
+    assert.equal(isBagPlaceholder(null), false);
+  });
+
+  it("counts name+level stacks", () => {
+    const bag = [
+      { name: "shield", level: 5 },
+      { name: "placeholder" },
+      { name: "shield", level: 6 },
+      { name: "shield", level: 5 },
+    ];
+    assert.equal(countNameLevel(bag, "shield", 5), 2);
+    assert.equal(countNameLevel(bag, "shield", 6), 1);
+  });
+
+  it("treats placeholder as in-progress, not failure", () => {
+    const bag = [
+      { name: "placeholder" },
+      { name: "scroll0", q: 40 },
+    ];
+    assert.equal(
+      evaluateShrineBagWatch({
+        items: bag,
+        name: "shield",
+        fromLevel: 5,
+        beforeNext: 0,
+        watchedSlots: [0],
+        elapsedMs: 5000,
+      }),
+      "progress",
+    );
+  });
+
+  it("succeeds when next level appears", () => {
+    const bag = [
+      { name: "shield", level: 6 },
+      { name: "scroll0", q: 39 },
+    ];
+    assert.equal(
+      evaluateShrineBagWatch({
+        items: bag,
+        name: "shield",
+        fromLevel: 5,
+        beforeNext: 0,
+        watchedSlots: [0],
+        elapsedMs: 2000,
+      }),
+      "success",
+    );
+  });
+
+  it("fails only when watched slot is empty after debounce", () => {
+    const bag = [null, { name: "scroll0", q: 39 }];
+    assert.equal(
+      evaluateShrineBagWatch({
+        items: bag,
+        name: "shield",
+        fromLevel: 5,
+        beforeNext: 0,
+        watchedSlots: [0],
+        elapsedMs: 800,
+      }),
+      "pending",
+    );
+    assert.equal(
+      evaluateShrineBagWatch({
+        items: bag,
+        name: "shield",
+        fromLevel: 5,
+        beforeNext: 0,
+        watchedSlots: [0],
+        elapsedMs: 3000,
+      }),
+      "failure",
+    );
+  });
+
+  it("does not fail while count dropped if placeholder still held", () => {
+    // Old bug: atLevel drop after 1.6s → "item gone" during roll.
+    const bag = [
+      { name: "placeholder" },
+      { name: "helmet", level: 3 },
+    ];
+    assert.equal(
+      evaluateShrineBagWatch({
+        items: bag,
+        name: "helmet",
+        fromLevel: 3,
+        beforeNext: 0,
+        watchedSlots: [0],
+        elapsedMs: 4000,
+      }),
+      "progress",
+    );
+  });
+});

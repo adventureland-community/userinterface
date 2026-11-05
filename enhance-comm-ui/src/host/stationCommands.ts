@@ -254,7 +254,28 @@ export type ShrineBuyOpts = {
   /** Buy this scroll name before resolving the bag slot. */
   buyScroll?: string | null;
   buyOffering?: string | null;
+  /** Merchant: cast massproduction before the shrine action if buff missing. */
+  massproduction?: boolean;
+  /** Merchant: cast massproductionpp before the shrine action if buff missing. */
+  massproductionpp?: boolean;
 };
+
+/** Prefix use_skill for checked merchant shrine buffs (no-op if already up). */
+export function buildShrineSkillPrefixJs(opts?: ShrineBuyOpts | null): string {
+  if (!opts) return "";
+  const parts: string[] = [];
+  if (opts.massproduction) {
+    parts.push(
+      `try{if(!(character.s&&character.s.massproduction)){await use_skill("massproduction");game_log(${lit(commLogText("skill · massproduction"))});}}catch(__e){}`,
+    );
+  }
+  if (opts.massproductionpp) {
+    parts.push(
+      `try{if(!(character.s&&character.s.massproductionpp)){await use_skill("massproductionpp");game_log(${lit(commLogText("skill · massproductionpp"))});}}catch(__e){}`,
+    );
+  }
+  return parts.join("");
+}
 
 function vendorForBuy(name: string | null | undefined): StationCoords | null {
   if (!name) return null;
@@ -285,6 +306,7 @@ export function buildUpgradeScript(
     parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
   }
   parts.push(buildEnsureStationJs(station));
+  parts.push(buildShrineSkillPrefixJs(buyOpts));
   parts.push(resolveInvSlotNamedJs(item, "__uItem"));
   if (scroll) {
     if (buyScroll) {
@@ -351,6 +373,7 @@ export function buildCompoundScript(
     parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
   }
   parts.push(buildEnsureStationJs(station));
+  parts.push(buildShrineSkillPrefixJs(buyOpts));
   parts.push(resolveInvSlotNamedJs(items[0], "__c0"));
   parts.push(resolveInvSlotNamedJs(items[1], "__c1"));
   parts.push(resolveInvSlotNamedJs(items[2], "__c2"));

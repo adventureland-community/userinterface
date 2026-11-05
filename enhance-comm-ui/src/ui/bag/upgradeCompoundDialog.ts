@@ -4,6 +4,7 @@
  */
 
 import type { ItemFingerprint } from "../../host/mail/types";
+import { getObserving, resolvePlayerCtype } from "../../host/al";
 import { refreshObservedInventory } from "../../host/inventory";
 import {
   getG,
@@ -27,12 +28,21 @@ import {
   estimateShrineChance,
   formatApproxChancePct,
 } from "../../lib/shrineChanceEstimate";
+import {
+  countNameLevel,
+  evaluateShrineBagWatch,
+} from "../../lib/shrineOutcomeWatch";
 import { resolveInventorySlotNum } from "./bagItemContextMenu";
 import {
   clearShrineBagHighlights,
   setShrineBagHighlights,
 } from "./shrineBagHighlight";
 import { ensureUpgradeCompoundDialogCss } from "./upgradeCompoundDialogCss";
+
+export type ShrineSkillPicks = {
+  massproduction?: boolean;
+  massproductionpp?: boolean;
+};
 
 export type UpgradeDialogResult = {
   item: ItemFingerprint;
@@ -41,6 +51,7 @@ export type UpgradeDialogResult = {
   /** Vendor-buy scroll name — Confirm runs buy() first. */
   buyScroll?: string | null;
   buyOffering?: string | null;
+  skills?: ShrineSkillPicks;
 };
 
 export type CompoundDialogResult = {
@@ -49,7 +60,12 @@ export type CompoundDialogResult = {
   offering: ItemFingerprint | null;
   buyScroll?: string | null;
   buyOffering?: string | null;
+  skills?: ShrineSkillPicks;
 };
+
+/** Session defaults for merchant shrine skill checkboxes. */
+let shrineSkillMassproduction = true;
+let shrineSkillMassproductionPp = true;
 
 export type UpgradeDialogOptions = {
   /** Run the character command and keep the dialog open for another try. */
@@ -193,37 +209,93 @@ type TrialCard = {
 const CHANCE_TITLE =
   "Rough ~estimate from local tables — not live calculate(). Exact odds only on the character client.";
 
-function countNameLevel(
-  items: Array<{ name?: string; level?: number } | null | undefined> | null,
-  name: string,
-  level: number,
-): number {
-  if (!items) return 0;
-  let n = 0;
-  const want = Number(level) || 0;
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    if (!it || it.name !== name) continue;
-    const lv = it.level != null ? Number(it.level) : 0;
-    if (lv === want) n += 1;
+type BagWatchHandle = { cancel: () => void };
+
+function observingIsMerchant(): boolean {
+  try {
+    const obs = getObserving() || window.observing;
+    if (!obs) return false;
+    const id =
+      obs.id != null
+        ? String(obs.id)
+        : obs.name != null
+          ? String(obs.name)
+          : undefined;
+    // Live entities: class is `ctype`. `type` is entity kind ("character"), not class.
+    const ctype = resolvePlayerCtype(id, obs);
+    return ctype === "merchant";
+  } catch {
+    return false;
   }
-  return n;
 }
 
-type BagWatchHandle = { cancel: () => void };
+type MerchantSkillChecks = {
+  root: HTMLDivElement;
+  read: () => ShrineSkillPicks;
+};
+
+function makeMerchantSkillChecks(): MerchantSkillChecks | null {
+  if (!observingIsMerchant()) return null;
+  const root = document.createElement("div");
+  root.className = "ecu-upg__skills";
+  const label = document.createElement("div");
+  label.className = "ecu-upg__section-label";
+  label.textContent = "Merchant skills";
+  root.appendChild(label);
+  const row = document.createElement("div");
+  row.className = "ecu-upg__skills-row";
+
+  const mk = (id: string, text: string, initial: boolean) => {
+    const wrap = document.createElement("label");
+    wrap.className = "ecu-upg__skill";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = initial;
+    input.setAttribute("data-skill", id);
+    const span = document.createElement("span");
+    span.textContent = text;
+    wrap.appendChild(input);
+    wrap.appendChild(span);
+    wrap.title = "Cast before upgrade/compound if the buff is not already up";
+    row.appendChild(wrap);
+    return input;
+  };
+  const mass = mk("massproduction", "Mass Production", shrineSkillMassproduction);
+  const massPp = mk(
+    "massproductionpp",
+    "Mass Production PP",
+    shrineSkillMassproductionPp,
+  );
+  mass.addEventListener("change", () => {
+    shrineSkillMassproduction = mass.checked;
+  });
+  massPp.addEventListener("change", () => {
+    shrineSkillMassproductionPp = massPp.checked;
+  });
+  root.appendChild(row);
+  return {
+    root,
+    read: () => ({
+      massproduction: mass.checked,
+      massproductionpp: massPp.checked,
+    }),
+  };
+}
 
 function watchLevelBump(opts: {
   name: string;
   fromLevel: number;
-  beforeAtLevel: number;
   beforeNext: number;
+  watchedSlots: number[];
   onSuccess: () => void;
   onDestroyed: () => void;
   onTimeout: () => void;
+  onProgress?: () => void;
 }): BagWatchHandle {
   let done = false;
   const started = Date.now();
   const timers: number[] = [];
+  let sawProgress = false;
   const finish = (fn: () => void) => {
     if (done) return;
     done = true;
@@ -238,29 +310,72 @@ function watchLevelBump(opts: {
       /* best-effort */
     }
     const items = observingBagItems();
-    const atLevel = countNameLevel(items, opts.name, opts.fromLevel);
-    const atNext = countNameLevel(items, opts.name, opts.fromLevel + 1);
-    if (atNext > opts.beforeNext) {
+    const verdict = evaluateShrineBagWatch({
+      items,
+      name: opts.name,
+      fromLevel: opts.fromLevel,
+      beforeNext: opts.beforeNext,
+      watchedSlots: opts.watchedSlots,
+      elapsedMs: Date.now() - started,
+    });
+    if (verdict === "success") {
       finish(() => opts.onSuccess());
       return;
     }
-    if (
-      atLevel < opts.beforeAtLevel &&
-      atNext <= opts.beforeNext &&
-      Date.now() - started > 1600
-    ) {
+    if (verdict === "failure") {
       finish(() => opts.onDestroyed());
       return;
     }
+    if (verdict === "progress") {
+      sawProgress = true;
+      if (opts.onProgress) opts.onProgress();
+    }
   };
-  const kicks = [700, 1400, 2800, 5200, 9000];
+  const kicks = [500, 1000, 1800, 2800, 4200, 6500, 9000, 12000, 16000];
   for (let i = 0; i < kicks.length; i++) {
     timers.push(window.setTimeout(poll, kicks[i]));
   }
   timers.push(
     window.setTimeout(() => {
+      if (done) return;
+      // Still rolling (placeholder) — give more time instead of timing out.
+      if (sawProgress) {
+        try {
+          refreshObservedInventory();
+        } catch {
+          /* best-effort */
+        }
+        const items = observingBagItems();
+        const verdict = evaluateShrineBagWatch({
+          items,
+          name: opts.name,
+          fromLevel: opts.fromLevel,
+          beforeNext: opts.beforeNext,
+          watchedSlots: opts.watchedSlots,
+          elapsedMs: Date.now() - started,
+          failureDebounceMs: 4000,
+        });
+        if (verdict === "success") {
+          finish(() => opts.onSuccess());
+          return;
+        }
+        if (verdict === "failure") {
+          finish(() => opts.onDestroyed());
+          return;
+        }
+        if (verdict === "progress") {
+          timers.push(
+            window.setTimeout(() => {
+              if (done) return;
+              poll();
+              if (!done) finish(() => opts.onTimeout());
+            }, 8000),
+          );
+          return;
+        }
+      }
       finish(() => opts.onTimeout());
-    }, 12000),
+    }, 18000),
   );
   return {
     cancel: () => finish(() => {}),
@@ -1196,27 +1311,26 @@ export function showUpgradeDialog(
       unsubBagClick();
     };
 
+    const skillChecks = makeMerchantSkillChecks();
+
     const tryConfirm = () => {
       if (okBtn.disabled || busy) return;
       const scroll = findScroll(liveOffer.scrolls, scrollId);
       const offering = findOffering(liveOffer.offerings, offeringId);
+      const skills = skillChecks ? skillChecks.read() : undefined;
       const picked: UpgradeDialogResult = {
         item: fpFromPick(liveOffer.item),
         scroll: scroll ? fpFromShrinePick(scroll) : null,
         offering: offering ? fpFromShrinePick(offering) : null,
         buyScroll: scroll && scroll.buy ? scroll.name : null,
         buyOffering: offering && offering.buy ? offering.name : null,
+        skills,
       };
       if (!options || !options.execute) {
         closeDialog(picked);
         return;
       }
       const bag = observingBagItems();
-      const beforeAtLevel = countNameLevel(
-        bag,
-        liveOffer.item.name,
-        fromLevel,
-      );
       const beforeNext = countNameLevel(
         bag,
         liveOffer.item.name,
@@ -1236,8 +1350,8 @@ export function showUpgradeDialog(
       watch = watchLevelBump({
         name: liveOffer.item.name,
         fromLevel,
-        beforeAtLevel,
         beforeNext,
+        watchedSlots: [liveOffer.item.slot],
         onSuccess: () => {
           watch = null;
           hint.textContent = "Success — preparing next…";
@@ -1251,6 +1365,9 @@ export function showUpgradeDialog(
           busy = false;
           hint.textContent = "Failed — item gone.";
           window.setTimeout(() => closeDialog(null), 1600);
+        },
+        onProgress: () => {
+          hint.textContent = "Rolling…";
         },
         onTimeout: () => {
           watch = null;
@@ -1273,6 +1390,7 @@ export function showUpgradeDialog(
     panel.appendChild(trial.root);
     panel.appendChild(scrollSection);
     panel.appendChild(offerSection);
+    if (skillChecks) panel.appendChild(skillChecks.root);
     panel.appendChild(hint);
     panel.appendChild(actions);
     paint();
@@ -1776,6 +1894,8 @@ export function showCompoundDialog(
       unsubBagClick();
     };
 
+    const skillChecks = makeMerchantSkillChecks();
+
     const tryConfirm = () => {
       if (okBtn.disabled || busy) return;
       const scroll = findScroll(liveOffer.scrolls, scrollId);
@@ -1785,23 +1905,20 @@ export function showCompoundDialog(
       const p1 = liveOffer.partners.find((p) => p.slot === partnerSlots[1]);
       if (!p0 || !p1) return;
       const offering = findOffering(liveOffer.offerings, offeringId);
+      const skills = skillChecks ? skillChecks.read() : undefined;
       const picked: CompoundDialogResult = {
         items: [fpFromPick(liveOffer.item), fpFromPick(p0), fpFromPick(p1)],
         scroll: fpFromShrinePick(scroll),
         offering: offering ? fpFromShrinePick(offering) : null,
         buyScroll: scroll.buy ? scroll.name : null,
         buyOffering: offering && offering.buy ? offering.name : null,
+        skills,
       };
       if (!options || !options.execute) {
         closeDialog(picked);
         return;
       }
       const bag = observingBagItems();
-      const beforeAtLevel = countNameLevel(
-        bag,
-        liveOffer.item.name,
-        fromLevel,
-      );
       const beforeNext = countNameLevel(
         bag,
         liveOffer.item.name,
@@ -1821,8 +1938,8 @@ export function showCompoundDialog(
       watch = watchLevelBump({
         name: liveOffer.item.name,
         fromLevel,
-        beforeAtLevel,
         beforeNext,
+        watchedSlots: [liveOffer.item.slot, p0.slot, p1.slot],
         onSuccess: () => {
           watch = null;
           hint.textContent = "Success — preparing next…";
@@ -1836,6 +1953,9 @@ export function showCompoundDialog(
           busy = false;
           hint.textContent = "Failed — copies gone.";
           window.setTimeout(() => closeDialog(null), 1600);
+        },
+        onProgress: () => {
+          hint.textContent = "Rolling…";
         },
         onTimeout: () => {
           watch = null;
@@ -1859,6 +1979,7 @@ export function showCompoundDialog(
     panel.appendChild(partnerSection);
     panel.appendChild(scrollSection);
     panel.appendChild(offerSection);
+    if (skillChecks) panel.appendChild(skillChecks.root);
     panel.appendChild(hint);
     panel.appendChild(actions);
     paint();

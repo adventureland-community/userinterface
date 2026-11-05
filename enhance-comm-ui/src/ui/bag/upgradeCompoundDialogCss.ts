@@ -548,6 +548,31 @@ const CSS = `
   opacity: 0.42;
   cursor: not-allowed;
 }
+.ecu-upg__skills {
+  margin: 0 0 10px;
+}
+.ecu-upg__skills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.22);
+}
+.ecu-upg__skill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  color: rgba(220, 210, 185, 0.92);
+  cursor: pointer;
+  user-select: none;
+}
+.ecu-upg__skill input {
+  margin: 0;
+  accent-color: #c9a24a;
+}
 `;
 
 export function ensureUpgradeCompoundDialogCss(): void {

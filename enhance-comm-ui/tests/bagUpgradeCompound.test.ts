@@ -272,6 +272,19 @@ describe("upgrade / compound scripts", () => {
     assert.match(script, /await upgrade\(__uItem,__uScroll,__uOffering\)/);
   });
 
+  it("casts checked merchant skills before upgrade", () => {
+    const script = buildUpgradeScript(
+      { slot: 0, name: "helmet", level: 2 },
+      { slot: 3, name: "scroll0", q: 4 },
+      null,
+      null,
+      { massproduction: true, massproductionpp: true },
+    );
+    assert.match(script, /use_skill\(\"massproduction\"\)/);
+    assert.match(script, /use_skill\(\"massproductionpp\"\)/);
+    assert.doesNotMatch(script, /smart_move/);
+  });
+
   it("emits compound with three items", () => {
     const script = buildCompoundScript(
       [

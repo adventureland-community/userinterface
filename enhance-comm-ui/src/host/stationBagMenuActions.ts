@@ -230,6 +230,12 @@ function buildStationBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
               {
                 buyScroll: picked.buyScroll,
                 buyOffering: picked.buyOffering,
+                massproduction: !!(
+                  picked.skills && picked.skills.massproduction
+                ),
+                massproductionpp: !!(
+                  picked.skills && picked.skills.massproductionpp
+                ),
               },
             ),
         });
@@ -285,6 +291,12 @@ function buildStationBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
               {
                 buyScroll: picked.buyScroll,
                 buyOffering: picked.buyOffering,
+                massproduction: !!(
+                  picked.skills && picked.skills.massproduction
+                ),
+                massproductionpp: !!(
+                  picked.skills && picked.skills.massproductionpp
+                ),
               },
             ),
         });
