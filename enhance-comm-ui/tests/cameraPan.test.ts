@@ -11,9 +11,12 @@ import {
   stepCameraPan,
 } from "../src/lib/cameraPan";
 import {
+  centerOnObservedCamera,
+  isFollowCamera,
   isFreeCamera,
   lockCamera,
   panFrameDtSec,
+  setFollowCamera,
   stockMapScreenWouldChange,
   syncFreeCameraAfterRealmChange,
   unlockCamera,
@@ -114,6 +117,74 @@ describe("cameraPan realm hop clears free-cam", () => {
         (globalThis as { window: unknown }).window = prev;
       }
     }
+  });
+});
+
+describe("cameraPan Center vs Follow", () => {
+  function withObserveMap(run: () => void): void {
+    const prev = (globalThis as { window?: unknown }).window;
+    (globalThis as { window: any }).window = {
+      observing: { id: "Hero", name: "Hero", real_x: 10, real_y: 20 },
+      entities: {
+        Hero: {
+          id: "Hero",
+          name: "Hero",
+          real_x: 300,
+          real_y: 400,
+          type: "character",
+          player: true,
+        },
+      },
+      map: { real_x: 50, real_y: 60 },
+      socket: { emit() {} },
+      requestAnimationFrame: () => 1,
+      cancelAnimationFrame: () => {},
+      setTimeout: (fn: () => void) => {
+        fn();
+        return 1;
+      },
+    };
+    try {
+      run();
+    } finally {
+      lockCamera();
+      setFollowCamera(true);
+      if (prev === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        (globalThis as { window: unknown }).window = prev;
+      }
+    }
+  }
+
+  it("Center snaps once and keeps free-cam", () => {
+    withObserveMap(() => {
+      unlockCamera();
+      (window as any).map.real_x = 50;
+      (window as any).map.real_y = 60;
+      assert.equal(isFreeCamera(), true);
+      assert.equal(isFollowCamera(), false);
+      centerOnObservedCamera();
+      assert.equal(isFreeCamera(), true);
+      assert.equal(isFollowCamera(), false);
+      assert.equal((window as any).map.real_x, 300);
+      assert.equal((window as any).map.real_y, 400);
+    });
+  });
+
+  it("Follow locks continuous track; pan clears Follow", () => {
+    withObserveMap(() => {
+      unlockCamera();
+      assert.equal(isFollowCamera(), false);
+      setFollowCamera(true);
+      assert.equal(isFreeCamera(), false);
+      assert.equal(isFollowCamera(), true);
+      assert.equal((window as any).map.real_x, 300);
+      assert.equal((window as any).map.real_y, 400);
+      unlockCamera();
+      assert.equal(isFreeCamera(), true);
+      assert.equal(isFollowCamera(), false);
+    });
   });
 });
 

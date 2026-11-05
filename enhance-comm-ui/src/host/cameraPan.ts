@@ -23,6 +23,11 @@ import { readHostWorldZoom } from "../lib/worldZoom";
 
 let installed = false;
 let freeCamera = false;
+/**
+ * When true and not free-cam, keep map.real_* on the live observed character
+ * every position_map (hub observe has no `character`, so stock will not).
+ */
+let followCamera = true;
 let lockX = 0;
 let lockY = 0;
 /** Observer/spectator world pos frozen when free-cam starts (vision hole). */
@@ -50,9 +55,16 @@ let mousePanArmed = false;
 
 type FreeListener = (free: boolean) => void;
 const freeListeners: FreeListener[] = [];
+type FollowListener = (following: boolean) => void;
+const followListeners: FollowListener[] = [];
 
 function notifyFree(): void {
   for (let i = 0; i < freeListeners.length; i++) freeListeners[i](freeCamera);
+}
+
+function notifyFollow(): void {
+  const on = followCamera && !freeCamera;
+  for (let i = 0; i < followListeners.length; i++) followListeners[i](on);
 }
 
 export function subscribeFreeCamera(listener: FreeListener): () => void {
@@ -63,8 +75,21 @@ export function subscribeFreeCamera(listener: FreeListener): () => void {
   };
 }
 
+export function subscribeFollowCamera(listener: FollowListener): () => void {
+  followListeners.push(listener);
+  return () => {
+    const idx = followListeners.indexOf(listener);
+    if (idx >= 0) followListeners.splice(idx, 1);
+  };
+}
+
 export function isFreeCamera(): boolean {
   return freeCamera;
+}
+
+/** True when the camera is locked to continuously track the observed character. */
+export function isFollowCamera(): boolean {
+  return followCamera && !freeCamera;
 }
 
 /**
@@ -206,7 +231,7 @@ function readObservedWorldXY(): { x: number; y: number } | null {
   return null;
 }
 
-/** Enter free camera at the current map position (idempotent). */
+/** Enter free camera at the current map position (idempotent). Panning clears Follow. */
 export function unlockCamera(): void {
   syncFreeCameraAfterRealmChange();
   if (!freeCamera) {
@@ -224,12 +249,15 @@ export function unlockCamera(): void {
     hasObserverAnchor = true;
     freeCamRealmKey = readCameraRealmKey();
     freeCamera = true;
+    const wasFollow = followCamera;
+    followCamera = false;
     notifyFree();
+    if (wasFollow) notifyFollow();
   }
   ensureRaf();
 }
 
-/** Reattach camera to observe follow (call before or with o:home). */
+/** Exit free-cam (stock / Follow path can drive the view again). */
 export function lockCamera(): void {
   freeCamera = false;
   stickPan = { x: 0, y: 0 };
@@ -240,6 +268,34 @@ export function lockCamera(): void {
   notifyFree();
   // Next unlock will re-capture; while locked, vision follows live entity/map.
   hasObserverAnchor = false;
+}
+
+function emitObserveHome(): void {
+  const sock = window.socket as { emit?: (e: string) => void } | undefined;
+  if (sock && typeof sock.emit === "function") sock.emit("o:home");
+}
+
+/** Snap map.real_* to the live observed (or self) world position. */
+function snapMapToObserved(): boolean {
+  const map = hostMap();
+  const at = readObservedWorldXY();
+  if (map && at) {
+    lockX = at.x;
+    lockY = at.y;
+    map.real_x = at.x;
+    map.real_y = at.y;
+    const pos = (window as Window & { position_map?: () => void }).position_map;
+    if (typeof pos === "function") {
+      try {
+        pos();
+      } catch {
+        /* ignore */
+      }
+    }
+    return true;
+  }
+  syncLockFromMap();
+  return false;
 }
 
 /**
@@ -511,6 +567,7 @@ function stopRafIfIdle(): void {
  * Keep free-cam lock across stock `position_map` / `draw`.
  * Temporarily clear `character` so stock does not yank `map.real_*` back
  * while still running the map.x/y + dtile path on our lock.
+ * When Follow is on (hub observe has no character), write live observed XY.
  */
 function patchedPositionMap(this: unknown): void {
   syncFreeCameraAfterRealmChange();
@@ -519,6 +576,14 @@ function patchedPositionMap(this: unknown): void {
   if (freeCamera && map) {
     map.real_x = lockX;
     map.real_y = lockY;
+  } else if (followCamera && map) {
+    const at = readObservedWorldXY();
+    if (at) {
+      lockX = at.x;
+      lockY = at.y;
+      map.real_x = at.x;
+      map.real_y = at.y;
+    }
   }
   const savedChar = freeCamera && w.character ? w.character : null;
   if (savedChar) w.character = undefined;
@@ -532,6 +597,14 @@ function patchedPositionMap(this: unknown): void {
     // skipped via character null — ensure lock sticks for the next retile.
     map.real_x = lockX;
     map.real_y = lockY;
+  } else if (followCamera && map) {
+    const at = readObservedWorldXY();
+    if (at) {
+      lockX = at.x;
+      lockY = at.y;
+      map.real_x = at.x;
+      map.real_y = at.y;
+    }
   }
 }
 
@@ -548,45 +621,62 @@ function installPositionMapHook(): void {
 }
 
 /**
- * Follow chrome — re-lock free camera, snap to the live observer, then o:home.
- * Snapping first avoids landing on stale free-cam lock coords after a map hop.
+ * One-shot recenter on the observed character.
+ * Keeps free-cam if you were panning (center without engaging Follow).
+ * If already following, just snaps / o:home.
  */
-export function followObservedCamera(): void {
-  lockCamera();
-  const map = hostMap();
-  const at = readObservedWorldXY();
-  if (map && at) {
-    lockX = at.x;
-    lockY = at.y;
-    map.real_x = at.x;
-    map.real_y = at.y;
-    const pos = (window as Window & { position_map?: () => void }).position_map;
-    if (typeof pos === "function") {
-      try {
-        pos();
-      } catch {
-        /* ignore */
-      }
+export function centerOnObservedCamera(): void {
+  const stayFree = freeCamera;
+  snapMapToObserved();
+  emitObserveHome();
+  if (stayFree) {
+    freeCamera = true;
+    const at = readObservedWorldXY();
+    if (at) {
+      observerAnchorX = at.x;
+      observerAnchorY = at.y;
+      hasObserverAnchor = true;
     }
-  } else {
-    syncLockFromMap();
+    freeCamRealmKey = readCameraRealmKey();
+    notifyFree();
   }
-  const sock = window.socket as { emit?: (e: string) => void } | undefined;
-  if (sock && typeof sock.emit === "function") sock.emit("o:home");
   window.setTimeout(() => {
-    if (!freeCamera) {
-      const again = readObservedWorldXY();
-      const m = hostMap();
-      if (m && again) {
-        lockX = again.x;
-        lockY = again.y;
-        m.real_x = again.x;
-        m.real_y = again.y;
-      } else {
-        syncLockFromMap();
-      }
+    if (stayFree && freeCamera) {
+      snapMapToObserved();
+      // Stay free at the snapped lock.
+      freeCamera = true;
+    } else if (!freeCamera) {
+      snapMapToObserved();
     }
   }, 400);
+}
+
+/**
+ * Toggle continuous track of the observed character (exits free-cam when on).
+ * Panning / joystick clears Follow via unlockCamera.
+ */
+export function setFollowCamera(on: boolean): void {
+  if (on) {
+    followCamera = true;
+    lockCamera();
+    snapMapToObserved();
+    emitObserveHome();
+    notifyFollow();
+    window.setTimeout(() => {
+      if (followCamera && !freeCamera) snapMapToObserved();
+    }, 400);
+    return;
+  }
+  followCamera = false;
+  notifyFollow();
+  unlockCamera();
+}
+
+/**
+ * Enable Follow (legacy chrome / `__ecuFollowObserved`). Prefer setFollowCamera.
+ */
+export function followObservedCamera(): void {
+  setFollowCamera(true);
 }
 
 export function installCameraPan(): void {
@@ -629,8 +719,14 @@ export function installCameraPan(): void {
     syncFreeCameraAfterRealmChange();
   }, 250);
   void realmPoll;
-  (window as Window & { __ecuFollowObserved?: () => void }).__ecuFollowObserved =
-    followObservedCamera;
+  const w = window as Window & {
+    __ecuFollowObserved?: () => void;
+    __ecuCenterObserved?: () => void;
+    __ecuSetFollowCamera?: (on: boolean) => void;
+  };
+  w.__ecuFollowObserved = followObservedCamera;
+  w.__ecuCenterObserved = centerOnObservedCamera;
+  w.__ecuSetFollowCamera = setFollowCamera;
 }
 
 export function isCameraPanInstalled(): boolean {

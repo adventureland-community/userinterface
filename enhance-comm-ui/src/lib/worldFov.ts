@@ -47,18 +47,29 @@ export function readAppliedWorldFov(): number {
 
 /** CSS viewport size the canvas should cover (UI / window). */
 export function readWindowCssSize(): { w: number; h: number } {
-  const w =
+  let w =
     typeof window !== "undefined" &&
     typeof window.innerWidth === "number" &&
     window.innerWidth > 0
       ? Math.round(window.innerWidth)
       : 1280;
-  const h =
+  let h =
     typeof window !== "undefined" &&
     typeof window.innerHeight === "number" &&
     window.innerHeight > 0
       ? Math.round(window.innerHeight)
       : 720;
+  // Fullscreen on mobile often updates visualViewport before (or without)
+  // window.inner* — take the larger so the canvas grows into the new space.
+  // Soft-keyboard shrinks vv while inner stays: max keeps the world full-bleed
+  // (chrome lifts via --ecu-vv-keyboard instead).
+  if (typeof window !== "undefined") {
+    const vv = window.visualViewport;
+    if (vv && vv.width > 0 && vv.height > 0) {
+      w = Math.max(w, Math.round(vv.width));
+      h = Math.max(h, Math.round(vv.height));
+    }
+  }
   return { w: Math.max(1, w), h: Math.max(1, h) };
 }
 
@@ -227,5 +238,6 @@ export function nameplateTextResolution(fov?: number): number {
       ? window.devicePixelRatio
       : 1;
   const denseness = f >= 1 ? f : 1 / f;
-  return Math.max(1, Math.min(4, Math.ceil(denseness * dpr)));
+  // Cap 6 — wide phone FOV × boost needs denser glyphs than 4 before CSS shrink.
+  return Math.max(1, Math.min(6, Math.ceil(denseness * dpr)));
 }

@@ -13,6 +13,7 @@ import {
   clampWorldFov,
   readAppliedWorldFov,
 } from "../lib/worldFov";
+import { installViewportRefit } from "./viewportRefit";
 
 let installed = false;
 let appliedOnce = false;
@@ -113,6 +114,7 @@ export function installWorldFov(): void {
   if (installed) return;
   installed = true;
   installResizeHook();
+  installViewportRefit();
 
   if (tryApplySaved()) return;
 
