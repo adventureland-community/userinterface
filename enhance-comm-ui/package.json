@@ -10,7 +10,8 @@
     "watch": "node scripts/dev-watch.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:serve": "node scripts/dev-server.mjs",
-    "overlay:sync": "node scripts/fetch-overlay-client.mjs"
+    "overlay:sync": "node scripts/fetch-overlay-client.mjs",
+    "phone:flows": "node agentic/mobile-preview/flows/drive-real-flows.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",

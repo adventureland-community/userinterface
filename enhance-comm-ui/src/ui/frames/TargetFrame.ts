@@ -16,6 +16,8 @@ export type TargetFrameProps = {
   setSelectedEntity: (id: string) => void;
   /** When true and there is no target, render a layout placeholder. */
   layoutEdit?: boolean;
+  /** Phone Players page — denser type / icons. */
+  compact?: boolean;
 };
 
 function targetTrailing(
@@ -41,7 +43,8 @@ function targetTrailing(
  * player-frame entity's aggro list. Caller resolves `aggroMobs`.
  */
 export function TargetFrame(props: TargetFrameProps): any {
-  const { observing, target, layoutEdit, aggroMobs = [] } = props;
+  const { observing, target, layoutEdit, aggroMobs = [], compact } = props;
+  const phone = compact === true;
 
   if (target) {
     const tid = String(target.id);
@@ -49,10 +52,10 @@ export function TargetFrame(props: TargetFrameProps): any {
       key: `tgt-${tid}`,
       entity: target,
       hpColor: classColors[target.ctype || ""] || "red",
-      fontSize: "21px",
+      fontSize: phone ? "16px" : "21px",
       trailing: targetTrailing(observing, target),
       // Match party/boss density — default EffectsRow 36px dominates the frame.
-      effectsIconSize: 22,
+      effectsIconSize: phone ? 18 : 22,
       effectsOverlay: true,
       aggroMobs,
       onSelect: (id: string) => {

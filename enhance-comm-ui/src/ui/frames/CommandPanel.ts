@@ -99,7 +99,11 @@ export function CommandPanel(props: CommandPanelProps): any {
   const [expanded, setExpanded] = React.useState(
     () => detectViewportProfile() === "phone",
   );
-  const [phoneTab, setPhoneTab] = React.useState("code" as PhoneTab);
+  // Phone: Quick templates read denser than a mostly-empty CodeMirror.
+  const [phoneTab, setPhoneTab] = React.useState(
+    () =>
+      (detectViewportProfile() === "phone" ? "snippets" : "code") as PhoneTab,
+  );
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const headRef = React.useRef(null as HTMLDivElement | null);
 
@@ -607,11 +611,12 @@ export function CommandPanel(props: CommandPanelProps): any {
       });
 
   const lastSnip = findSnippetById(snippets, lastRunId);
-  const usePhoneTabs = narrow;
+  // Phone always uses Code|Quick tabs — don't wait for ResizeObserver narrow.
+  const usePhoneTabs = phoneUi || narrow;
   const showCode = !usePhoneTabs || phoneTab === "code";
   const showSnippets = !usePhoneTabs || phoneTab === "snippets";
   const hintLabel = phoneUi
-    ? "observer → code_eval · swipe title to close"
+    ? "Write code · Save template · Quick to re-run"
     : "observer → code_eval · Ctrl+Enter · Ctrl+Space";
 
   const toolbar = e(
@@ -630,23 +635,25 @@ export function CommandPanel(props: CommandPanelProps): any {
     e("input", {
       type: "text",
       value: newName,
-      placeholder: "Snippet name",
+      placeholder: phoneUi ? "Template name" : "Snippet name",
       onChange: (ev: any) => setNewName(ev.target.value),
       style: Object.assign({}, inputStyle, {
         flex: "1 1 120px",
         minWidth: "100px",
       }),
     }),
-    e("input", {
-      type: "text",
-      value: newFolder,
-      placeholder: "Folder (optional)",
-      onChange: (ev: any) => setNewFolder(ev.target.value),
-      style: Object.assign({}, inputStyle, {
-        flex: "0 1 110px",
-        minWidth: "90px",
-      }),
-    }),
+    phoneUi
+      ? null
+      : e("input", {
+          type: "text",
+          value: newFolder,
+          placeholder: "Folder (optional)",
+          onChange: (ev: any) => setNewFolder(ev.target.value),
+          style: Object.assign({}, inputStyle, {
+            flex: "0 1 110px",
+            minWidth: "90px",
+          }),
+        }),
     selected
       ? e(
           "button",
@@ -664,12 +671,55 @@ export function CommandPanel(props: CommandPanelProps): any {
       {
         type: "button",
         onClick: onSaveAsSnippet,
-        style: btnStyle(),
-        title: "Save as a new snippet",
+        style: btnStyle({ accent: phoneUi && !selected }),
+        title: "Save editor as a new template",
       },
-      "Save as",
+      phoneUi ? "Save template" : "Save as",
     ),
   );
+
+  const phoneTabs = usePhoneTabs
+    ? e(
+        "div",
+        {
+          className: "CommandPanel-tabs",
+          role: "tablist",
+          "aria-label": "Command views",
+        },
+        e(
+          "button",
+          {
+            type: "button",
+            role: "tab",
+            className:
+              "CommandPanel-tab" + (phoneTab === "code" ? " is-active" : ""),
+            "aria-selected": phoneTab === "code",
+            onClick: () => setPhoneTab("code"),
+          },
+          "Code",
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            role: "tab",
+            className:
+              "CommandPanel-tab" +
+              (phoneTab === "snippets" ? " is-active" : ""),
+            "aria-selected": phoneTab === "snippets",
+            onClick: () => setPhoneTab("snippets"),
+          },
+          "Quick",
+          snippets.length
+            ? e(
+                "span",
+                { className: "CommandPanel-tabCount" },
+                String(snippets.length),
+              )
+            : null,
+        ),
+      )
+    : null;
 
   const statusEl = e(
     "div",
@@ -754,7 +804,26 @@ export function CommandPanel(props: CommandPanelProps): any {
           { className: "CommandPanel-empty" },
           snippets.length
             ? "No snippets match this search."
-            : "No snippets yet — write a command and Save as.",
+            : phoneUi
+              ? e(
+                  React.Fragment,
+                  null,
+                  e(
+                    "div",
+                    null,
+                    "No templates yet — write code, then Save template.",
+                  ),
+                  e(
+                    "button",
+                    {
+                      type: "button",
+                      className: "CommandPanel-empty__code",
+                      onClick: () => setPhoneTab("code"),
+                    },
+                    "Open Code",
+                  ),
+                )
+              : "No snippets yet — write a command and Save as.",
         ),
   );
 
@@ -765,6 +834,7 @@ export function CommandPanel(props: CommandPanelProps): any {
       className:
         "CommandPanel" +
         (narrow ? " is-narrow" : "") +
+        (phoneUi ? " is-phone" : "") +
         (expanded ? " is-expanded" : "") +
         (usePhoneTabs ? " is-phone-tabs" : "") +
         (usePhoneTabs ? " tab-" + phoneTab : ""),
@@ -816,44 +886,7 @@ export function CommandPanel(props: CommandPanelProps): any {
         className: "CommandPanel-expand",
       }),
     ),
-    usePhoneTabs
-      ? e(
-          "div",
-          {
-            className: "CommandPanel-tabs",
-            role: "tablist",
-            "aria-label": "Command views",
-          },
-          e(
-            "button",
-            {
-              type: "button",
-              role: "tab",
-              className:
-                "CommandPanel-tab" + (phoneTab === "code" ? " is-active" : ""),
-              "aria-selected": phoneTab === "code",
-              onClick: () => setPhoneTab("code"),
-            },
-            "Code",
-          ),
-          e(
-            "button",
-            {
-              type: "button",
-              role: "tab",
-              className:
-                "CommandPanel-tab" +
-                (phoneTab === "snippets" ? " is-active" : ""),
-              "aria-selected": phoneTab === "snippets",
-              onClick: () => setPhoneTab("snippets"),
-            },
-            "Snippets",
-            snippets.length
-              ? e("span", { className: "CommandPanel-tabCount" }, String(snippets.length))
-              : null,
-          ),
-        )
-      : null,
+    !phoneUi ? phoneTabs : null,
     e(
       "div",
       { className: "CommandPanel-body" },
@@ -862,11 +895,32 @@ export function CommandPanel(props: CommandPanelProps): any {
             "div",
             { className: "CommandPanel-main" },
             editor,
-            toolbar,
-            statusEl,
+            phoneUi ? null : toolbar,
+            phoneUi ? null : statusEl,
           )
         : null,
       showSnippets ? side : null,
     ),
+    phoneUi
+      ? e(
+          "div",
+          { className: "CommandPanel-phoneFoot" },
+          phoneTab === "code" ? toolbar : null,
+          phoneTab === "code" ? statusEl : null,
+          phoneTabs,
+          props.onRequestClose
+            ? e(
+                "button",
+                {
+                  type: "button",
+                  className: "CommandPanel-phoneDone",
+                  onClick: () =>
+                    props.onRequestClose && props.onRequestClose(),
+                },
+                "Done",
+              )
+            : null,
+        )
+      : null,
   );
 }

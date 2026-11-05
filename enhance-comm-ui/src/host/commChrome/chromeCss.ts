@@ -164,6 +164,11 @@ ${BOTTOM_CHROME_HIT_TARGETS} {
   cursor: default;
   pointer-events: none;
 }
+.ecu-btn.is-on {
+  border-color: #9dd4ec;
+  background: #2a3640;
+  color: #9dd4ec;
+}
 
 /* Primary strip: character chips + server only */
 .ecu-chrome {
@@ -1032,6 +1037,36 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
 /* Slim party roster on phone — no desktop 480px width. */
 html.ecu-phone-dock-on .ecu-roster {
   max-width: min(100vw - 12px, 360px);
+}
+/* Show/Buffs in-flow on phone — absolute overlay ate chip headers. */
+html.ecu-phone-dock-on .ecu-roster-toolbar,
+#comm-ui[data-viewport="phone"] .ecu-roster-toolbar {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+  justify-content: flex-start;
+  margin: 0 0 4px;
+  max-width: 100%;
+}
+/* Players page unit frames — clear dock, full bleed. */
+/* Phone map: target unit card occludes playfield + sheets — use map tap / Players. */
+#comm-ui[data-viewport="phone"] [data-panel="targetFrame"],
+#comm-ui[data-viewport="phone"] .comm-pos-targetFrame {
+  display: none !important;
+}
+#comm-ui[data-viewport="phone"] .comm-pos-playerFrame,
+#comm-ui[data-viewport="phone"] .comm-pos-targetFrame {
+  max-width: calc(100vw - 16px);
+}
+#comm-ui[data-viewport="phone"] .comm-pos-playerFrame {
+  z-index: 28;
+}
+#comm-ui[data-viewport="phone"] .comm-pos-targetFrame {
+  z-index: 29;
+}
+#comm-ui[data-viewport="phone"] .comm-pos-players {
+  z-index: 24;
+  max-width: calc(100vw - 12px);
 }
 html.ecu-phone-dock-on .ecu-meter-shell {
   max-width: calc(100vw - 16px);

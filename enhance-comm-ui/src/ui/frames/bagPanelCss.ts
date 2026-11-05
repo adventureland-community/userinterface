@@ -35,25 +35,91 @@ const CSS = `
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 12px;
-  padding: 24px 16px;
-  text-align: center;
+  padding: 20px 16px 16px;
+  text-align: left;
   color: #a8aeb6;
   font-size: 14px;
+  min-height: 0;
+}
+.comm-bag-panel__empty-icon {
+  align-self: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  background: #2a2410;
+  border: 1px solid #a86;
+  color: #ffe08a;
+  font-size: 34px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.comm-bag-panel__empty-title {
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: #e8eef4;
+}
+.comm-bag-panel__empty-copy {
+  text-align: center;
+  line-height: 1.45;
+  color: #a8aeb6;
+}
+.comm-bag-panel__empty-steps {
+  margin: 4px 0 0;
+  padding: 14px 14px 14px 14px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  background: #121212;
+  color: #c8cdd4;
+  font-size: 14px;
+  line-height: 1.5;
+  list-style: none;
+  counter-reset: ecu-bag-step;
+}
+.comm-bag-panel__empty-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  counter-increment: ecu-bag-step;
+}
+.comm-bag-panel__empty-steps li::before {
+  content: counter(ecu-bag-step);
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #2a2410;
+  border: 1px solid #a86;
+  color: #ffe08a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 26px;
+  text-align: center;
+}
+.comm-bag-panel__empty-steps li + li {
+  margin-top: 10px;
 }
 .comm-bag-panel__empty-btn {
   appearance: none;
   border: 1px solid #a86;
   background: #2a2410;
   color: #ffe08a;
-  min-height: 44px;
-  padding: 10px 16px;
+  min-height: 48px;
+  padding: 12px 16px;
   font: inherit;
   font-size: 15px;
+  font-weight: 600;
   border-radius: 8px;
   cursor: pointer;
+  margin-top: auto;
+  width: 100%;
 }
 .comm-bag-panel.is-phone .comm-bag-sync-chrome {
   min-height: 48px;
@@ -66,26 +132,33 @@ const CSS = `
   box-sizing: border-box;
 }
 .comm-bag-panel.is-phone .comm-bag-sync-chrome button {
-  min-height: 40px;
-  padding: 8px 12px;
-  font-size: 14px;
+  min-height: 48px;
+  min-width: 88px;
+  padding: 10px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
 }
-/* Phone expand: sync/actions sit as a foot so the sheet isn’t an empty void under the grid. */
+/* Phone expand: grid fills the sheet; actions live in the foot. */
+.comm-bag-panel.is-phone {
+  display: flex;
+  flex-direction: column;
+}
 .comm-bag-panel.is-phone.is-expanded .comm-bag-panel__head {
   order: 1;
 }
-.comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
-  order: 2;
-}
 .comm-bag-panel.is-phone.is-expanded .comm-bag-sync-chrome {
-  order: 3;
-  margin-top: auto;
+  order: 2;
+  margin-top: 0;
   margin-bottom: 0;
-  border-left: none;
-  border-right: none;
-  border-bottom: none;
-  border-top: 1px solid #333;
-  background: #121212;
+}
+.comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
+  order: 3;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneFoot {
+  order: 40;
 }
 .comm-bag-panel.is-expanded {
   width: 100% !important;
@@ -114,10 +187,54 @@ const CSS = `
   zoom: 1.45;
 }
 .comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
-  /* Pin the board to the sync foot — empty flex space stays under the title. */
-  align-items: flex-end;
+  /* Pack the board under the title — avoid a black void above the grid. */
+  align-items: flex-start;
   justify-content: center;
   padding: 8px 4px 10px;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneFoot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #3a3a3a;
+  background: rgba(12, 12, 12, 0.96);
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneActs {
+  display: flex;
+  gap: 8px;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneAct {
+  appearance: none;
+  flex: 1 1 0;
+  min-height: 48px;
+  border: 1px solid #555;
+  border-radius: 12px;
+  background: #1c1c1c;
+  color: #eee;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneAct:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.comm-bag-panel.is-phone .comm-bag-panel__phoneDone {
+  appearance: none;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
 }
 ` + phoneShellExpandCss("bag", "ecu-bag-shell-expanded", ".comm-bag-panel");
 

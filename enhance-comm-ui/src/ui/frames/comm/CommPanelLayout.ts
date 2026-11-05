@@ -39,7 +39,11 @@ import { ServerInfo } from "../ServerInfo";
 import { Enemies } from "../Enemies";
 import { EntityInfo } from "../EntityInfo";
 import { StockInfoPanel } from "../InfoDialogPanel";
-import { PlayerFrame, UNIT_FRAME_STYLE } from "../PlayerRow";
+import {
+  PlayerFrame,
+  UNIT_FRAME_STYLE,
+  UNIT_FRAME_STYLE_PHONE,
+} from "../PlayerRow";
 import { TargetFrame } from "../TargetFrame";
 import { BossBarPanel } from "../BossBarPanel";
 import { AbilityTimelinePanel } from "../AbilityTimelinePanel";
@@ -672,8 +676,14 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
             aggroMobs: aggroMobsForFramedEntity(byTarget, framePlayer),
             setSelectedEntity: deps.setSelectedEntity,
             layoutEdit: deps.layoutEdit,
+            compact: deps.viewportProfile === "phone",
           }),
-          { style: UNIT_FRAME_STYLE },
+          {
+            style:
+              deps.viewportProfile === "phone"
+                ? UNIT_FRAME_STYLE_PHONE
+                : UNIT_FRAME_STYLE,
+          },
         )
       : null,
 
@@ -686,8 +696,14 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
             aggroMobs: aggroMobsForFramedEntity(byTarget, frameTarget),
             setSelectedEntity: deps.setSelectedEntity,
             layoutEdit: deps.layoutEdit,
+            compact: deps.viewportProfile === "phone",
           }),
-          { style: UNIT_FRAME_STYLE },
+          {
+            style:
+              deps.viewportProfile === "phone"
+                ? UNIT_FRAME_STYLE_PHONE
+                : UNIT_FRAME_STYLE,
+          },
         )
       : null,
 

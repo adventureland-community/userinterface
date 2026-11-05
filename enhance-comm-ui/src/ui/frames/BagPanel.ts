@@ -175,6 +175,8 @@ function BagSyncChrome(props: {
   canSort: boolean;
   sortRunning: boolean;
   onSort?: () => void;
+  /** Phone: actions live in the foot bar — keep status only. */
+  statusOnly?: boolean;
 }): any {
   const React = getReact();
   const {
@@ -188,6 +190,7 @@ function BagSyncChrome(props: {
     canSort,
     sortRunning,
     onSort,
+    statusOnly,
   } = props;
   const [now, setNow] = React.useState(() => Date.now());
 
@@ -264,64 +267,68 @@ function BagSyncChrome(props: {
       },
       label,
     ),
-    canSort
-      ? e(
+    statusOnly
+      ? null
+      : canSort
+        ? e(
+            "button",
+            {
+              type: "button",
+              disabled: busy,
+              title:
+                "Sort inventory on the watched character (configure rules in Settings → Bag). Uses swap()/imove — may take several moves.",
+              onClick: (ev: any) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                if (onSort) onSort();
+              },
+              style: {
+                flexShrink: 0,
+                cursor: busy ? "wait" : "pointer",
+                fontSize: TYPE.secondary,
+                lineHeight: "1.2",
+                padding: "3px 8px",
+                minHeight: "26px",
+                margin: 0,
+                border: "1px solid #666",
+                background: busy ? "#1a1a1a" : "#222",
+                color: busy ? "#777" : "#ddd",
+                ...PIXEL_TEXT,
+              },
+            },
+            sortRunning ? "Sorting…" : "Sort",
+          )
+        : null,
+    statusOnly
+      ? null
+      : e(
           "button",
           {
             type: "button",
-            disabled: busy,
+            disabled: refreshing,
             title:
-              "Sort inventory on the watched character (configure rules in Settings → Bag). Uses swap()/imove — may take several moves.",
+              "Reconnect observer for a fresh inventory snapshot. Stock /comm has no lighter inventory refresh — falls back to re-drawing the local snapshot if reconnect is unavailable.",
             onClick: (ev: any) => {
               ev.preventDefault();
               ev.stopPropagation();
-              if (onSort) onSort();
+              refreshObservedInventory();
             },
             style: {
               flexShrink: 0,
-              cursor: busy ? "wait" : "pointer",
+              cursor: refreshing ? "wait" : "pointer",
               fontSize: TYPE.secondary,
               lineHeight: "1.2",
               padding: "3px 8px",
               minHeight: "26px",
               margin: 0,
               border: "1px solid #666",
-              background: busy ? "#1a1a1a" : "#222",
-              color: busy ? "#777" : "#ddd",
+              background: refreshing ? "#1a1a1a" : "#222",
+              color: refreshing ? "#777" : "#ddd",
               ...PIXEL_TEXT,
             },
           },
-          sortRunning ? "Sorting…" : "Sort",
-        )
-      : null,
-    e(
-      "button",
-      {
-        type: "button",
-        disabled: refreshing,
-        title:
-          "Reconnect observer for a fresh inventory snapshot. Stock /comm has no lighter inventory refresh — falls back to re-drawing the local snapshot if reconnect is unavailable.",
-        onClick: (ev: any) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          refreshObservedInventory();
-        },
-        style: {
-          flexShrink: 0,
-          cursor: refreshing ? "wait" : "pointer",
-          fontSize: TYPE.secondary,
-          lineHeight: "1.2",
-          padding: "3px 8px",
-          minHeight: "26px",
-          margin: 0,
-          border: "1px solid #666",
-          background: refreshing ? "#1a1a1a" : "#222",
-          color: refreshing ? "#777" : "#ddd",
-          ...PIXEL_TEXT,
-        },
-      },
-      "Refresh",
-    ),
+          "Refresh",
+        ),
   );
 }
 
@@ -471,7 +478,28 @@ export function BagPanel(props: BagPanelProps): any {
       ? e(
           "div",
           { className: "comm-bag-panel__empty" },
-          e("div", null, "Pick a character to watch before opening Bag."),
+          e(
+            "div",
+            { className: "comm-bag-panel__empty-icon", "aria-hidden": true },
+            "B",
+          ),
+          e(
+            "div",
+            { className: "comm-bag-panel__empty-title" },
+            "Bag needs a character",
+          ),
+          e(
+            "div",
+            { className: "comm-bag-panel__empty-copy" },
+            "Watch someone first so inventory sync has a source. Your bag stays closed until then.",
+          ),
+          e(
+            "ol",
+            { className: "comm-bag-panel__empty-steps" },
+            e("li", null, "Tap Watch a character below."),
+            e("li", null, "Choose someone in your party or nearby."),
+            e("li", null, "Bag opens when you are watching them."),
+          ),
           e(
             "button",
             {
@@ -482,7 +510,7 @@ export function BagPanel(props: BagPanelProps): any {
                 openPhoneObserve();
               },
             },
-            "Choose character",
+            "Watch a character",
           ),
         )
       : null,
@@ -497,6 +525,7 @@ export function BagPanel(props: BagPanelProps): any {
           commandPending,
           canSort,
           sortRunning,
+          statusOnly: phoneUi,
           onSort: () => {
             if (bagSortCommand()) setSortRunning(true);
           },
@@ -513,5 +542,51 @@ export function BagPanel(props: BagPanelProps): any {
         pointerEvents: "auto",
       },
     }),
+    phoneUi && !showNeedObserve
+      ? e(
+          "div",
+          { className: "comm-bag-panel__phoneFoot" },
+          e(
+            "div",
+            { className: "comm-bag-panel__phoneActs" },
+            canSort
+              ? e(
+                  "button",
+                  {
+                    type: "button",
+                    className: "comm-bag-panel__phoneAct",
+                    disabled: refreshing || commandPending || sortRunning,
+                    onClick: () => {
+                      if (bagSortCommand()) setSortRunning(true);
+                    },
+                  },
+                  sortRunning ? "Sorting…" : "Sort",
+                )
+              : null,
+            e(
+              "button",
+              {
+                type: "button",
+                className: "comm-bag-panel__phoneAct",
+                disabled: refreshing,
+                onClick: () => refreshObservedInventory(),
+              },
+              refreshing ? "Refreshing…" : "Refresh",
+            ),
+          ),
+          props.onRequestClose
+            ? e(
+                "button",
+                {
+                  type: "button",
+                  className: "comm-bag-panel__phoneDone",
+                  onClick: () =>
+                    props.onRequestClose && props.onRequestClose(),
+                },
+                "Done",
+              )
+            : null,
+        )
+      : null,
   );
 }

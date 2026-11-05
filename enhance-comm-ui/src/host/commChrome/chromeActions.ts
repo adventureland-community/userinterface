@@ -1,4 +1,11 @@
 import { gateObservedBagOpen } from "../bagOpenGate";
+import {
+  centerOnObservedCamera,
+  isFollowCamera,
+  setFollowCamera,
+  subscribeFollowCamera,
+  subscribeFreeCamera,
+} from "../cameraPan";
 import { syncMailBadge } from "../mail/mailUnread";
 import { openMail } from "../mail/mailSession";
 import { openMarket } from "../market";
@@ -143,19 +150,40 @@ export function toggleObserve(name: string): void {
   observeCharacter(n);
 }
 
+function onCenterClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  centerOnObservedCamera();
+}
+
 function onFollowClick(ev: Event): void {
   ev.preventDefault();
   ev.stopPropagation();
-  // Prefer ECU free-camera re-lock when the pan host is installed.
-  const follow = (window as Window & {
-    __ecuFollowObserved?: () => void;
-  }).__ecuFollowObserved;
-  if (typeof follow === "function") {
-    follow();
-    return;
-  }
-  const sock = window.socket as { emit?: (e: string) => void } | undefined;
-  if (sock && typeof sock.emit === "function") sock.emit("o:home");
+  setFollowCamera(!isFollowCamera());
+  syncFollowPressed();
+}
+
+function syncFollowPressed(): void {
+  const btn = document.querySelector(
+    '.ecu-btn[data-ecu-tour="btn-follow"]',
+  ) as HTMLButtonElement | null;
+  if (!btn) return;
+  const following = isFollowCamera();
+  btn.classList.toggle("is-on", following);
+  btn.setAttribute("aria-pressed", following ? "true" : "false");
+  btn.title = following
+    ? "Following observed — tap to free camera"
+    : "Follow observed character";
+}
+
+let followChromeBound = false;
+
+function ensureFollowChromeSync(): void {
+  if (followChromeBound) return;
+  followChromeBound = true;
+  const sync = () => syncFollowPressed();
+  subscribeFollowCamera(sync);
+  subscribeFreeCamera(sync);
 }
 
 function onBagClick(ev: Event): void {
@@ -263,6 +291,7 @@ function onMainframeClick(ev: Event): void {
 }
 
 type ActionKind =
+  | "center"
   | "follow"
   | "bag"
   | "command"
@@ -273,10 +302,12 @@ type ActionKind =
   | "docs"
   | "mainframe";
 
-/** Compact SVG icons for Follow / Bag / Chat / Command / Mail / Docs. */
+/** Compact SVG icons for Center / Follow / Bag / Chat / Command / Mail / Docs. */
 const ACTION_ICONS: Record<ActionKind, string> = {
-  follow:
+  center:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
+  follow:
+    '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 19c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.5 5.5a8 8 0 0 0-11.5-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7.2 5.2L8 3.5M7.2 5.2L5.4 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   bag: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   command:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
@@ -330,7 +361,8 @@ export function buildActionsEl(): HTMLElement {
   };
 
   actions.append(
-    mk("follow", "Follow", "Center on observed character", onFollowClick),
+    mk("center", "Center", "Center on observed character", onCenterClick),
+    mk("follow", "Follow", "Follow observed character", onFollowClick),
     mk("bag", "Bag", "Observed inventory", onBagClick),
     mk("chat", "Chat", "Server chat — send as observed character", onChatClick),
     mk("mail", "Mail", "Account mail", onMailClick),
@@ -350,11 +382,13 @@ export function buildActionsEl(): HTMLElement {
       onMainframeClick,
     ),
   );
+  ensureFollowChromeSync();
   return actions;
 }
 
 function syncActionTourAttrs(actions: HTMLElement): void {
   const map: Record<string, string> = {
+    Center: "btn-center",
     Follow: "btn-follow",
     Bag: "btn-bag",
     Chat: "btn-chat",
@@ -392,15 +426,19 @@ export function syncActionsEnabled(): void {
       btn.textContent ||
       ""
     ).trim();
-    // Bag/Command/Follow need an observed character; Chat/Mail work logged-in
-    // (Chat send still requires observe).
+    // Bag/Command/Center/Follow need an observed character; Chat/Mail work
+    // logged-in (Chat send still requires observe).
     const needsObs =
-      label === "Follow" || label === "Bag" || label === "Command";
+      label === "Center" ||
+      label === "Follow" ||
+      label === "Bag" ||
+      label === "Command";
     if (needsObs) {
       btn.disabled = !watching;
       btn.classList.toggle("is-disabled", !watching);
     }
   }
+  syncFollowPressed();
 }
 
 export function ensureChromeShell(): void {

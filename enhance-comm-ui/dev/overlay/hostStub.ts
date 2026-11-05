@@ -129,7 +129,46 @@ export function makePreviewPlayer(): PreviewPlayer {
     real_y: 0,
     skin: "fpriest",
     party: PREVIEW_PARTY,
-  };
+    gold: 2_450_000,
+    items: [
+      { name: "mpot1", q: 80 },
+      { name: "hpot1", q: 120 },
+      { name: "shoes", level: 7, q: 1 },
+      { name: "helmet", level: 6, q: 1 },
+      { name: "leather", q: 40 },
+      { name: "fire", q: 12 },
+      { name: "gloves", level: 4, q: 1 },
+      { name: "pants", level: 5, q: 1 },
+      { name: "scroll0", q: 30 },
+      { name: "sword", level: 3, q: 1 },
+      { name: "staff", level: 2, q: 1 },
+      { name: "gem0", q: 2 },
+      { name: "coat", level: 4, q: 1 },
+      { name: "hpbelt", level: 5, q: 1 },
+      { name: "cscroll0", q: 9 },
+      { name: "scroll1", q: 18 },
+      { name: "crabclaw", q: 14 },
+      { name: "frogt", q: 6 },
+      { name: "feather", q: 33 },
+      { name: "wbook0", level: 2, q: 1 },
+      { name: "strring", level: 3, q: 1 },
+      null,
+      { name: "intearring", level: 2, q: 1 },
+      { name: "bow", level: 6, q: 1 },
+      { name: "shield", level: 5, q: 1 },
+      { name: "gem1", q: 1 },
+      { name: "hpamulet", level: 3, q: 1 },
+      { name: "mpamulet", level: 2, q: 1 },
+      { name: "ringsj", level: 4, q: 1 },
+      { name: "vitearring", level: 1, q: 1 },
+      { name: "dexring", level: 2, q: 1 },
+      { name: "orbofstr", level: 1, q: 1 },
+      { name: "sshield", level: 3, q: 1 },
+      { name: "basher", level: 5, q: 1 },
+      { name: "fireblade", level: 4, q: 1 },
+    ],
+    __ecuBagSyncedAt: Date.now(),
+  } as PreviewPlayer;
 }
 
 export function makePreviewParty(): PreviewPlayer[] {
@@ -191,16 +230,102 @@ export function installPreviewHost(): {
   const player = makePreviewPlayer();
   const party = makePreviewParty();
   (window as any).is_comm = true;
+  (window as any).user_id = "ecu-overlay-preview";
+  (window as any).user_auth = "ecu-overlay-preview";
   window.character = null;
   window.observing = player;
   window.entities = { [player.id]: player };
   window.xtarget = null;
+  // Phone overlay shots: keep Spike target frame off the map / sheets.
+  (window as { __ecuFreezeTarget?: boolean }).__ecuFreezeTarget = true;
   window.current_map = "main";
   window.current_in = "main";
   setHostMapName("main");
   window.server_region = "EU";
   window.server_identifier = "I";
   window.S = {};
+  // Inventory painter so Bag panel shows real item sprites in overlay.
+  if (typeof window.render_inventory !== "function") {
+    window.render_inventory = function previewRenderInventory() {
+      const host =
+        document.getElementById("bottomleftcorner") ||
+        document.getElementById("comm-bag-mount");
+      if (!host) return;
+      const items = Array.isArray((window.observing as any)?.items)
+        ? ((window.observing as any).items as Array<{
+            name?: string;
+            q?: number;
+            level?: number;
+          } | null>)
+        : [];
+      const G = (window as any).G;
+      const itemContainer =
+        typeof (window as any).item_container === "function"
+          ? ((window as any).item_container as (
+              item: any,
+              actual?: any,
+            ) => string)
+          : null;
+      let html =
+        '<div class="ecu-preview-bag" style="display:grid;grid-template-columns:repeat(7,minmax(48px,1fr));gap:5px;padding:6px">';
+      for (let i = 0; i < Math.max(42, items.length); i++) {
+        const it = items[i];
+        if (!it || !it.name) {
+          html +=
+            '<div style="min-height:52px;border:1px solid #333;background:#111;border-radius:6px"></div>';
+          continue;
+        }
+        const name = String(it.name);
+        const def = G && G.items ? G.items[name] : null;
+        const skin =
+          (def && (def.skin_a || def.skin)) ||
+          (G && G.positions && G.positions[name] ? name : null) ||
+          name;
+        const title =
+          name +
+          (it.level != null ? " +" + it.level : "") +
+          (it.q != null && it.q > 1 ? " ×" + it.q : "");
+        let inner = "";
+        if (itemContainer) {
+          try {
+            inner = itemContainer(
+              {
+                skin,
+                size: 40,
+                level: it.level,
+                q: it.q,
+                onclick: "pcs(event)",
+              },
+              it,
+            );
+          } catch {
+            inner = "";
+          }
+        }
+        if (!inner) {
+          const short = name.length > 7 ? name.slice(0, 6) + "…" : name;
+          const meta =
+            (it.level != null ? "+" + it.level : "") +
+            (it.q != null && it.q > 1 ? "×" + it.q : "");
+          inner =
+            '<span style="font-size:11px;line-height:1.15;color:#eee;text-align:center">' +
+            short +
+            (meta ? " " + meta : "") +
+            "</span>";
+        }
+        // Stock item_container already paints qty/level — skip extra badges.
+        html +=
+          '<div title="' +
+          title.replace(/"/g, "") +
+          '" style="position:relative;min-height:52px;border:1px solid #555;background:#1a1a1a;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center">' +
+          inner +
+          "</div>";
+      }
+      html += "</div>";
+      host.innerHTML = html;
+      window.inventory = true;
+    };
+  }
   window.X = {
     characters: [
       {
@@ -223,8 +348,30 @@ export function installPreviewHost(): {
         address: "127.0.0.1",
         path: "",
       },
+      {
+        key: "EU_II",
+        region: "EU",
+        name: "II",
+        players: 42,
+        address: "127.0.0.1",
+        path: "",
+      },
+      {
+        key: "US_I",
+        region: "US",
+        name: "I",
+        players: 31,
+        address: "127.0.0.1",
+        path: "",
+      },
     ],
-    unread: 0,
+    unread: 1,
+  };
+  (window as any).server_to_ui = function (key: string) {
+    if (key === "EU_I") return "EU I";
+    if (key === "EU_II") return "EU II";
+    if (key === "US_I") return "US I";
+    return key || "";
   };
   window.socket = {
     id: "ecu-overlay-preview",
@@ -232,10 +379,6 @@ export function installPreviewHost(): {
     emit: function () {},
   };
   (window as any).pings = [38, 42, 40, 45, 41];
-  (window as any).server_to_ui = function (key: string) {
-    if (key === "EU_I") return "EU I";
-    return key || "";
-  };
   if (typeof window.simple_distance !== "function") {
     window.simple_distance = function (a: any, b: any) {
       const ax = a?.real_x ?? a?.x ?? 0;

@@ -15,6 +15,8 @@ export type MailSearchBarProps = {
   setPillPersist: (p: MailPill) => void;
   /** Phone — scope pills stay behind Filters until opened. */
   compact?: boolean;
+  /** Phone — full-panel filters screen covers the mail body. */
+  onFiltersScreenChange?: (open: boolean) => void;
 };
 
 function fieldRow(label: string, input: any): any {
@@ -43,15 +45,26 @@ function textInput(
 /** Gmail-style search field + “Show search options” panel. */
 export function MailSearchBar(props: MailSearchBarProps): any {
   const React = getReact();
-  const { query, setQuery, pill, setPillPersist, compact } = props;
+  const { query, setQuery, pill, setPillPersist, compact, onFiltersScreenChange } =
+    props;
   const [open, setOpen] = React.useState(false);
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [form, setForm] = React.useState(
     () => queryToMailSearchForm(query, pill) as MailSearchFormState,
   );
   const wrapRef = React.useRef(null as HTMLElement | null);
-  const showPills = !compact || filtersOpen;
+  const showPills = !compact;
   const filtersActive = pill !== "all";
+
+  React.useEffect(() => {
+    if (!compact) return;
+    onFiltersScreenChange?.(filtersOpen);
+  }, [compact, filtersOpen, onFiltersScreenChange]);
+
+  React.useEffect(() => {
+    if (!compact || !filtersOpen) return;
+    setForm(queryToMailSearchForm(query, pill));
+  }, [compact, filtersOpen]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -93,6 +106,14 @@ export function MailSearchBar(props: MailSearchBarProps): any {
     setOpen(false);
   };
 
+  const applyFiltersScreen = () => {
+    setQuery(mailSearchFormToQuery(form));
+    setPillPersist(form.scope);
+    setFiltersOpen(false);
+  };
+
+  const closeFiltersScreen = () => setFiltersOpen(false);
+
   const clearAll = () => {
     setQuery("");
     setForm({ ...EMPTY_MAIL_SEARCH_FORM, scope: pill });
@@ -129,6 +150,141 @@ export function MailSearchBar(props: MailSearchBarProps): any {
       ),
     );
   }
+
+  const scopeRows: any[] = [];
+  for (let i = 0; i < MAIL_SEARCH_SCOPES.length; i++) {
+    const s = MAIL_SEARCH_SCOPES[i];
+    scopeRows.push(
+      e(
+        "button",
+        {
+          key: s.id,
+          type: "button",
+          className:
+            "comm-mail__filters-row" +
+            (form.scope === s.id ? " is-on" : ""),
+          onClick: () => patchForm({ scope: s.id }),
+        },
+        e("span", { className: "comm-mail__filters-row-label" }, s.label),
+        form.scope === s.id
+          ? e("span", { className: "comm-mail__filters-row-check", "aria-hidden": "true" }, "✓")
+          : null,
+      ),
+    );
+  }
+
+  const filtersScreen =
+    compact && filtersOpen
+      ? e(
+          "div",
+          {
+            className: "comm-mail__filters-screen",
+            role: "dialog",
+            "aria-label": "Mail filters",
+          },
+          e(
+            "div",
+            { className: "comm-mail__filters-head" },
+            e(
+              "button",
+              {
+                type: "button",
+                className: "comm-mail__filters-back",
+                "aria-label": "Back",
+                onClick: closeFiltersScreen,
+              },
+              "←",
+            ),
+            e("span", { className: "comm-mail__filters-title" }, "Filters"),
+          ),
+          e(
+            "div",
+            { className: "comm-mail__filters-body" },
+            e(
+              "div",
+              { className: "comm-mail__filters-section" },
+              e(
+                "div",
+                { className: "comm-mail__filters-section-title" },
+                "Scope",
+              ),
+              ...scopeRows,
+            ),
+            e(
+              "div",
+              { className: "comm-mail__filters-section" },
+              e(
+                "div",
+                { className: "comm-mail__filters-section-title" },
+                "Attachment",
+              ),
+              e(
+                "label",
+                { className: "comm-mail__filters-toggle" },
+                e("input", {
+                  type: "checkbox",
+                  checked: form.hasAttachment,
+                  onChange: (ev: any) =>
+                    patchForm({ hasAttachment: !!ev.target.checked }),
+                }),
+                "Has attachment",
+              ),
+              e(
+                "label",
+                {
+                  className: "comm-mail__filters-toggle",
+                  title: "Attachment still in the mail — ready to take",
+                },
+                e("input", {
+                  type: "checkbox",
+                  checked: form.untakenOnly,
+                  onChange: (ev: any) => {
+                    const on = !!ev.target.checked;
+                    patchForm({
+                      untakenOnly: on,
+                      takenOnly: on ? false : form.takenOnly,
+                    });
+                  },
+                }),
+                "Untaken only",
+              ),
+              e(
+                "label",
+                {
+                  className: "comm-mail__filters-toggle",
+                  title:
+                    "Attachment already taken — useful for cleanup / batch delete",
+                },
+                e("input", {
+                  type: "checkbox",
+                  checked: form.takenOnly,
+                  onChange: (ev: any) => {
+                    const on = !!ev.target.checked;
+                    patchForm({
+                      takenOnly: on,
+                      untakenOnly: on ? false : form.untakenOnly,
+                    });
+                  },
+                }),
+                "Taken only",
+              ),
+            ),
+          ),
+          e(
+            "div",
+            { className: "comm-mail__filters-foot" },
+            e(
+              "button",
+              {
+                type: "button",
+                className: "comm-mail__btn comm-mail__btn--gold comm-mail__filters-apply",
+                onClick: applyFiltersScreen,
+              },
+              "Apply filters",
+            ),
+          ),
+        )
+      : null;
 
   return e(
     "div",
@@ -359,5 +515,6 @@ export function MailSearchBar(props: MailSearchBarProps): any {
           ),
         )
       : null,
+    filtersScreen,
   );
 }

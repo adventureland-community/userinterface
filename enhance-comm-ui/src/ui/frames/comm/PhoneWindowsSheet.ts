@@ -32,6 +32,11 @@ import {
 } from "../../../lib/phoneHomePages";
 import type { MeterInstance } from "../../../meters/meterTypes";
 import { ensurePhoneNavCss } from "./phoneNavCss";
+import {
+  PHONE_HUD_PRESET_IDS,
+  PHONE_HUD_PRESET_LABELS,
+  type PhoneHudPresetId,
+} from "../../../lib/phoneHudPresets";
 
 export type PhoneWindowsSheetProps = {
   open: boolean;
@@ -52,6 +57,7 @@ export type PhoneWindowsSheetProps = {
   setPhoneHomeScreens: (screens: PhoneHomeScreen[]) => void;
   phoneHomePage: number;
   setPhoneHomePage: (page: number) => void;
+  applyPhoneHudPreset: (preset: PhoneHudPresetId) => void;
 };
 
 type AppTile = {
@@ -447,6 +453,23 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
         { className: "ecu-phone-sheet__body" },
         e("div", { className: "ecu-phone-sheet__sec" }, "Home screens"),
         e("div", { className: "ecu-phone-sheet__actions" }, ...screenTabs),
+        e("div", { className: "ecu-phone-sheet__sec" }, "HUD preset"),
+        e(
+          "div",
+          { className: "ecu-phone-sheet__actions", "data-ecu-tour": "phone-hud-presets" },
+          ...PHONE_HUD_PRESET_IDS.map((pid) =>
+            e(
+              "button",
+              {
+                key: "preset-" + pid,
+                type: "button",
+                className: "ecu-phone-sheet__chip",
+                onClick: () => props.applyPhoneHudPreset(pid),
+              },
+              PHONE_HUD_PRESET_LABELS[pid],
+            ),
+          ),
+        ),
         e(
           "div",
           { className: "ecu-phone-sheet__actions" },
@@ -593,17 +616,24 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
               },
               "Apps",
             )
-          : e(
+          : null,
+      ),
+      body,
+      !editHome
+        ? e(
+            "div",
+            { className: "ecu-phone-sheet__foot" },
+            e(
               "button",
               {
                 type: "button",
-                className: "ecu-phone-sheet__done",
+                className: "ecu-phone-sheet__done ecu-phone-sheet__done--foot",
                 onClick: () => props.onClose(),
               },
               "Done",
             ),
-      ),
-      body,
+          )
+        : null,
     ),
   );
 }

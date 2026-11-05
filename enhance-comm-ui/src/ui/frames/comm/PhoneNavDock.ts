@@ -27,6 +27,7 @@ import {
   type PhoneHomeScreen,
 } from "../../../lib/phoneHomePages";
 import type { PanelId } from "../../../lib/layout";
+import type { PhoneHudPresetId } from "../../../lib/phoneHudPresets";
 import type { MeterInstance } from "../../../meters/meterTypes";
 import {
   installPhoneEdgeGestures,
@@ -63,6 +64,7 @@ export type PhoneNavDockProps = {
   setPhoneHomePage: (page: number) => void;
   phoneHomeScreens: PhoneHomeScreen[];
   setPhoneHomeScreens: (screens: PhoneHomeScreen[]) => void;
+  applyPhoneHudPreset: (preset: PhoneHudPresetId) => void;
 };
 
 function dockStatusBtn(
@@ -680,6 +682,7 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
         props.setPhoneHomePage(page);
         storePhoneHomePage(page);
       },
+      applyPhoneHudPreset: props.applyPhoneHudPreset,
     }),
     e(PhoneObserveSheet, {
       open: observeOpen,

@@ -69,9 +69,12 @@ export function syncSimToHost(
         focus = ent;
       }
     }
-    if (focus) {
+    if (focus && !(window as { __ecuFreezeTarget?: boolean }).__ecuFreezeTarget) {
       player.target = focus.id;
       window.xtarget = focus;
+    } else if ((window as { __ecuFreezeTarget?: boolean }).__ecuFreezeTarget) {
+      player.target = undefined;
+      window.xtarget = null;
     }
   } else {
     for (let i = 0; i < seed.length; i++) {

@@ -483,19 +483,19 @@ const CSS = `
   position: fixed;
   left: 0;
   right: 0;
-  top: 0;
+  top: auto;
   bottom: 0;
   z-index: 510;
-  max-height: none;
-  height: 100%;
+  max-height: min(78vh, 680px);
+  height: min(78vh, 680px);
   display: flex;
   flex-direction: column;
   pointer-events: auto;
   background: #1c1b1f;
-  border-radius: 0;
-  box-shadow: none;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+  padding-top: 0;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   font-family: Roboto, "Segoe UI", system-ui, sans-serif;
   color: #e6e1e5;
 }
@@ -545,6 +545,18 @@ const CSS = `
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+}
+.ecu-phone-sheet__foot {
+  flex: 0 0 auto;
+  padding: 8px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(230, 225, 229, 0.08);
+}
+.ecu-phone-sheet__done--foot {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
 }
 .ecu-phone-sheet__body {
   overflow: auto;
@@ -682,13 +694,13 @@ const CSS = `
   left: 0;
   right: 0;
   /* Sit just above the Material dock (chrome stack is hidden on phone). */
-  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 6px);
+  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 2px);
   z-index: 235;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 4px 8px;
-  padding: 4px 10px 8px;
+  gap: 2px 6px;
+  padding: 2px 8px 4px;
 }
 .ecu-phone-home-dots__side {
   pointer-events: auto;
@@ -741,16 +753,12 @@ const CSS = `
   padding: 0 4px;
 }
 .ecu-phone-home-dots__current {
-  font-size: 12px;
-  font-weight: 700;
-  color: #e8eef4;
-  letter-spacing: 0.02em;
-  text-align: center;
-  white-space: nowrap;
-  max-width: 120px;
+  /* Keep for a11y; visual weight is the dots — label was eating map. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  clip: rect(0, 0, 0, 0);
 }
 .ecu-phone-home-dots__track {
   display: flex;
@@ -919,19 +927,22 @@ const CSS = `
   color: #938f99;
 }
 .ecu-phone-apps {
-  padding: 4px 16px 24px;
+  padding: 4px 16px 8px;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  /* Pack launcher to the top — empty sheet air above icons tanks raters. */
+  justify-content: flex-start;
 }
 .ecu-phone-apps__grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px 12px;
-  padding: 12px 4px 20px;
+  padding: 8px 4px 12px;
   align-content: start;
-  flex: 1 1 auto;
+  margin-top: 0;
+  flex: 0 1 auto;
 }
 .ecu-phone-apps__tile {
   display: flex;

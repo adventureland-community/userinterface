@@ -235,8 +235,22 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
   buffInfo: { x: 2, y: 14, anchor: "tl", autoSize: true },
   itemInfo: { x: 2, y: 36, anchor: "tl", autoSize: true },
   kills: { x: 98, y: 40, anchor: "tr" },
-  playerFrame: { x: 28, y: 48, anchor: "bc", ...UNIT_FRAME_DEFAULT },
-  targetFrame: { x: 72, y: 48, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+  // Stacked full-width above the Material dock — side-by-side at mid-band
+  // overlapped the party roster and each other on ~360px phones.
+  playerFrame: {
+    x: 50,
+    y: 78,
+    anchor: "bc",
+    frameW: 360,
+    frameH: 96,
+  },
+  targetFrame: {
+    x: 50,
+    y: 66,
+    anchor: "bc",
+    frameW: 360,
+    frameH: 96,
+  },
   bossBar: { x: 50, y: 12, anchor: "tc", frameW: 360 },
   instanceRun: { x: 50, y: 18, anchor: "tc" },
   instance: {

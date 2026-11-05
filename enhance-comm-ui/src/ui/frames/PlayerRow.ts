@@ -15,6 +15,15 @@ export const UNIT_FRAME_STYLE: Record<string, any> = {
   boxSizing: "border-box",
 };
 
+/** Phone Players page — full-bleed stacked frames above the dock. */
+export const UNIT_FRAME_STYLE_PHONE: Record<string, any> = {
+  width: "min(360px, calc(100vw - 16px))",
+  minWidth: 0,
+  maxWidth: "calc(100vw - 16px)",
+  overflow: "visible",
+  boxSizing: "border-box",
+};
+
 export type PlayerFrameProps = {
   /** Observed character, or spectator focus unit when not observing. */
   observing?: EntityLike | null;
@@ -23,19 +32,22 @@ export type PlayerFrameProps = {
   setSelectedEntity: (id: string) => void;
   /** When true and nothing to show, render a layout placeholder. */
   layoutEdit?: boolean;
+  /** Phone Players page — denser type / icons. */
+  compact?: boolean;
 };
 
 export function PlayerFrame(props: PlayerFrameProps): any {
   const { observing, aggroMobs = [], layoutEdit } = props;
+  const phone = props.compact === true;
 
   if (observing) {
     return e(ObservedUnit, {
       key: `obs-${String(observing.id)}`,
       entity: observing,
       hpColor: classColors[observing.ctype || ""] || "#666",
-      fontSize: "21px",
+      fontSize: phone ? "16px" : "21px",
       // Match party/boss density — default EffectsRow 36px dominates the frame.
-      effectsIconSize: 22,
+      effectsIconSize: phone ? 18 : 22,
       effectsOverlay: true,
       aggroMobs,
       onSelect: (id: string) => {

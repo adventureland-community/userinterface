@@ -1242,13 +1242,116 @@ export const MARKET_PANEL_CSS = `
 .MarketPanel.is-phone .MarketPanel-togs {
   width: 100%;
   margin-left: 0;
-  flex-wrap: wrap;
-  gap: 8px 14px;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 10px 4px;
+}
+.MarketPanel.is-phone {
+  display: flex;
+  flex-direction: column;
+}
+.MarketPanel.is-phone .MarketPanel-head {
+  flex: 0 0 auto;
+}
+.MarketPanel.is-phone .MarketPanel-tools {
+  flex: 0 0 auto;
+}
+.MarketPanel.is-phone .MarketPanel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFoot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #333;
+  background: rgba(12, 12, 12, 0.96);
+}
+.MarketPanel.is-phone .MarketPanel-phoneDone {
+  appearance: none;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.MarketPanel.is-phone .MarketPanel-offerActs {
+  gap: 8px;
+}
+.MarketPanel.is-phone .MarketPanel-offerActs > button:not(.MarketPanel-rowMore) {
+  min-height: 44px;
+  min-width: 72px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+}
+.MarketPanel.is-phone .MarketPanel-rowMore {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+  border-radius: 10px;
+}
+.MarketPanel.is-phone .MarketPanel-togs--phoneBar {
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  scrollbar-width: none;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFacets {
+  width: 100%;
+  gap: 6px;
+  margin: 0;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFacets button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+.MarketPanel.is-phone .MarketPanel-you.is-collapsed {
+  /* Keep catalog tall — bag/stand is a one-line toggle only. */
+  flex: 0 0 auto;
+}
+.MarketPanel.is-phone .MarketPanel-togs--phoneBar::-webkit-scrollbar {
+  display: none;
+}
+.MarketPanel.is-phone .MarketPanel-togs--phoneBar .MarketPanel-tog {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 12px;
+  border-radius: 18px;
 }
 .MarketPanel.is-phone .MarketPanel-tog {
+  flex: 0 0 auto;
   min-height: 40px;
-  font-size: 14px;
-  padding: 6px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 14px;
+  border: 1px solid #333;
+  border-radius: 20px;
+  background: #141414;
+  color: #aaa;
+  white-space: nowrap;
+}
+.MarketPanel.is-phone .MarketPanel-tog:has(input:checked),
+.MarketPanel.is-phone .MarketPanel-tog.is-on {
+  border-color: #3a5;
+  background: #1a2a1a;
+  color: #7ad86a;
 }
 .MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch,
 .MarketPanel.is-phone .MarketPanel-tools input[type="search"] {
@@ -1282,19 +1385,41 @@ export const MARKET_PANEL_CSS = `
   .MarketPanel.is-phone .MarketPanel-you.is-collapsed .MarketPanel-youStand {
     display: none;
   }
+  /* Open You as a bottom sheet over the catalog so browse context stays. */
   .MarketPanel.is-phone .MarketPanel-you.is-open {
-    flex: 0 0 min(40vh, 300px);
-    max-height: min(40vh, 300px);
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    flex: none;
+    width: 100%;
+    max-height: min(58vh, 420px);
+    border-radius: 16px 16px 0 0;
+    border-top: 1px solid #444;
+    background: #1c1b1f;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+    overflow: auto;
   }
-  .MarketPanel.is-phone .MarketPanel-col[data-ecu-tour="market-focus"] {
-    order: 3;
-    flex: 0 0 auto;
-    max-height: min(38vh, 280px);
+  .MarketPanel.is-phone {
+    position: relative;
+  }
+  .MarketPanel.is-phone .MarketPanel-col[data-ecu-slot="market-focus"] {
+    order: 1;
+    flex: 1 1 auto;
+    min-height: 200px;
+    max-height: none;
     border-bottom: 0;
-    border-top: 1px solid var(--mk-line);
+    border-top: 0;
+  }
+  .MarketPanel.is-phone:has(
+      .MarketPanel-col[data-ecu-slot="market-focus"][data-ecu-has-focus="1"]
+    )
+    .MarketPanel-col[data-ecu-slot="market-grid"] {
+    display: none;
   }
   .MarketPanel.is-phone
-    .MarketPanel-col[data-ecu-tour="market-focus"]:not([data-ecu-has-focus="1"]) {
+    .MarketPanel-col[data-ecu-slot="market-focus"]:not([data-ecu-has-focus="1"]) {
     display: none;
   }
 }
@@ -1335,7 +1460,11 @@ export const MARKET_PANEL_CSS = `
 }
 .MarketPanel.is-phone .MarketPanel-pageDots {
   flex-shrink: 0;
-  padding: 2px 6px 4px;
+  order: 20;
+  margin-top: auto;
+  padding: 6px 8px 8px;
+  border-top: 1px solid #2a2a2a;
+  background: #101214;
 }
 .MarketPanel.is-phone .MarketPanel-tools {
   display: flex;
@@ -1363,7 +1492,88 @@ export const MARKET_PANEL_CSS = `
   font-size: 12px;
 }
 .MarketPanel.is-phone .MarketPanel-head {
-  padding: 8px 10px;
+  padding: 4px 8px;
+  gap: 6px;
+  min-height: 0;
+}
+.MarketPanel.is-phone .MarketPanel-title {
+  font-size: 14px;
+}
+.MarketPanel.is-phone .MarketPanel-pill {
+  font-size: 11px;
+}
+.MarketPanel.is-phone .MarketPanel-tools {
+  padding: 4px 8px;
+  gap: 6px;
+}
+.MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch,
+.MarketPanel.is-phone .MarketPanel-tools input[type="search"] {
+  min-height: 36px;
+  font-size: 15px;
+}
+.MarketPanel.is-phone .MarketPanel-ph,
+.MarketPanel.is-phone .MarketPanel-ph--phone {
+  padding: 3px 8px;
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+.MarketPanel.is-phone .MarketPanel-sort select {
+  height: 26px;
+  font-size: 11px;
+  padding: 0 6px;
+}
+.MarketPanel.is-phone .MarketPanel-youToggle {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFacets button {
+  min-height: 44px;
+  font-size: 15px;
+}
+.MarketPanel.is-phone .MarketPanel-phoneFoot {
+  gap: 4px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+}
+.MarketPanel.is-phone .MarketPanel-phoneDone {
+  min-height: 44px;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard {
+  min-height: 0;
+  overflow: hidden;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard__top {
+  padding: 6px 24px 2px 8px;
+  gap: 6px;
+  min-height: 40px;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard .nm {
+  min-height: 0;
+  padding: 2px 8px 4px;
+  font-size: 12px;
+  line-height: 1.25;
+  margin: 0;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard__prices .row-p {
+  padding: 5px 8px 6px;
+  gap: 1px;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard__counts {
+  gap: 2px;
+  font-size: 9px;
+}
+.MarketPanel.is-phone .MarketPanel-itemCard__counts .s,
+.MarketPanel.is-phone .MarketPanel-itemCard__counts .b,
+.MarketPanel.is-phone .MarketPanel-itemCard__counts .g {
+  padding: 1px 4px;
+  min-width: 24px;
+}
+.MarketPanel.is-phone .MarketPanel-itemGrid {
+  grid-template-columns: 1fr;
+  /* Fit icon + name + sell/buy without clipping (~4–5 visible rows). */
+  grid-auto-rows: minmax(108px, auto);
+  gap: 4px;
+  padding: 4px 6px 8px;
 }
 ` + phoneShellExpandCss("market", "ecu-market-shell-expanded", ".MarketPanel");
 

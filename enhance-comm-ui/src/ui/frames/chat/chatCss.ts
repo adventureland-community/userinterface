@@ -472,6 +472,10 @@ export const CHAT_PANEL_CSS = `
 .ecu-chat-status.is-visible {
   display: block;
 }
+.ecu-chat.is-phone .ecu-chat-status.is-err {
+  /* Fixture / hub pull noise shouldn't eat the compose stack on phone. */
+  display: none;
+}
 .ecu-chat-status.is-err {
   color: #f0a0a0;
 }
@@ -569,6 +573,11 @@ export const CHAT_PANEL_CSS = `
   border-bottom: 1px solid var(--ecu-chat-line);
   background: var(--ecu-chat-panel);
 }
+/* Phone: keep server pager above the log so compose stays a clean thumb path. */
+.ecu-chat.is-narrow .ecu-chat-server-dots {
+  flex-shrink: 0;
+  padding: 2px 6px 4px;
+}
 .ecu-chat.is-narrow .ecu-chat-main {
   width: 100%;
   min-width: 0;
@@ -602,10 +611,14 @@ export const CHAT_PANEL_CSS = `
 }
 .ecu-chat.is-narrow .ecu-chat-log {
   padding: 6px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 .ecu-chat.is-narrow .ecu-chat-log .ecu-chat-line {
   padding-top: 6px;
   padding-bottom: 6px;
+  flex: 0 0 auto;
 }
 .ecu-chat.is-narrow .ecu-chat-log,
 .ecu-chat.is-narrow .ecu-chat-body {
@@ -638,6 +651,294 @@ export const CHAT_PANEL_CSS = `
 .ecu-chat.is-narrow .ecu-chat-send {
   min-width: 72px;
   flex: 0 0 auto;
+}
+
+/* Phone hub — Material-style segment + bubble transcript. */
+.ecu-chat.is-phone .ecu-chat-phone-hub {
+  flex-shrink: 0;
+  padding: 6px 10px 4px;
+  border-bottom: 1px solid var(--ecu-chat-line);
+  background: var(--ecu-chat-panel);
+}
+.ecu-chat.is-phone .ecu-chat-phone-hub--foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 0;
+  border-top: 1px solid var(--ecu-chat-line);
+  background: var(--ecu-chat-panel);
+}
+.ecu-chat.is-phone .ecu-chat-phone-done {
+  appearance: none;
+  flex: 0 0 auto;
+  width: calc(100% - 20px);
+  margin: 0 10px 8px;
+  min-height: 44px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ecu-chat.is-phone .ecu-chat-phone-seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #101214;
+  border: 1px solid #333;
+}
+.ecu-chat.is-phone .ecu-chat-phone-seg-btn {
+  appearance: none;
+  cursor: pointer;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #a8aeb6;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.ecu-chat.is-phone .ecu-chat-phone-seg-btn.is-on {
+  background: #2a3340;
+  color: #e8f0ff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.ecu-chat.is-phone .ecu-chat-server-pick {
+  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #555;
+  border-radius: 999px;
+  background: #181a20;
+  color: #c9e4ff;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: normal;
+  text-align: left;
+}
+.ecu-chat.is-phone .ecu-chat-server-pick.is-open {
+  border-color: var(--ecu-chat-accent);
+  background: #2a2410;
+  color: #ffe08a;
+}
+.ecu-chat.is-phone .ecu-chat-server-pick-caret {
+  flex: 0 0 auto;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  z-index: 5;
+  max-height: min(52%, 320px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px 14px 0 0;
+  border: 1px solid var(--ecu-chat-line);
+  border-bottom: none;
+  background: var(--ecu-chat-panel);
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.5);
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-head {
+  flex-shrink: 0;
+  padding: 10px 12px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ecu-chat-muted);
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 10px;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-row {
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 6px;
+  padding: 10px 12px;
+  min-height: 44px;
+  border: 1px solid #444;
+  border-radius: 10px;
+  background: #181a20;
+  color: #e8e8e8;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 20px;
+  text-align: left;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-row.is-active {
+  border-color: var(--ecu-chat-accent);
+  background: #2a2410;
+  color: #ffe08a;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-chat.is-phone .ecu-chat-server-sheet-count {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--ecu-chat-muted);
+}
+.ecu-chat.is-phone .ecu-chat-quick-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 2px;
+}
+.ecu-chat.is-phone .ecu-chat-quick-chip {
+  cursor: pointer;
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #555;
+  background: #181a20;
+  color: #ddd;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.1;
+  font-weight: 600;
+}
+.ecu-chat.is-phone .ecu-chat-quick-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ecu-chat.is-phone .ecu-chat-log {
+  padding: 8px 10px 10px;
+}
+.ecu-chat.is-phone .ecu-chat-line {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 88%;
+  padding: 3px 0;
+  align-self: flex-start;
+}
+.ecu-chat.is-phone .ecu-chat-line.ecu-chat-row--mine {
+  align-self: flex-end;
+}
+.ecu-chat.is-phone .ecu-chat-line.ecu-chat-row--system {
+  align-self: center;
+  max-width: 96%;
+}
+.ecu-chat.is-phone .ecu-chat-row {
+  margin: 0;
+  max-width: 100%;
+}
+.ecu-chat.is-phone .ecu-chat-bubble {
+  box-sizing: border-box;
+  padding: 8px 10px 10px;
+  border-radius: 16px 16px 16px 4px;
+  background: #22252c;
+  border: 1px solid #3a4048;
+  color: inherit;
+}
+.ecu-chat.is-phone .ecu-chat-row--mine .ecu-chat-bubble {
+  border-radius: 16px 16px 4px 16px;
+  background: #2a2410;
+  border-color: rgba(201, 162, 39, 0.45);
+}
+.ecu-chat.is-phone .ecu-chat-row--party .ecu-chat-bubble {
+  background: rgba(40, 56, 72, 0.95);
+  border-color: rgba(126, 200, 239, 0.35);
+}
+.ecu-chat.is-phone .ecu-chat-row--pm .ecu-chat-bubble {
+  background: rgba(56, 36, 44, 0.95);
+  border-color: rgba(240, 160, 180, 0.35);
+}
+.ecu-chat.is-phone .ecu-chat-row--system .ecu-chat-bubble {
+  background: transparent;
+  border-color: transparent;
+  font-style: italic;
+}
+.ecu-chat.is-phone .ecu-chat-bubble-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 18px;
+}
+.ecu-chat.is-phone .ecu-chat-row--mine .ecu-chat-bubble-meta {
+  flex-direction: row-reverse;
+}
+.ecu-chat.is-phone .ecu-chat-bubble-meta .ecu-chat-time {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.ecu-chat.is-phone .ecu-chat-bubble-meta .ecu-chat-owner {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: inherit;
+  line-height: inherit;
+}
+.ecu-chat.is-phone .ecu-chat-bubble .ecu-chat-body {
+  display: block;
+  font-size: 16px;
+  line-height: 1.35;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-phone-hub,
+.ecu-chat.is-phone.is-keyboard .ecu-chat-title-from,
+.ecu-chat.is-phone.is-keyboard .ecu-chat-expand {
+  display: none;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-title {
+  min-height: 0;
+  padding: 4px 8px;
+  gap: 6px;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-title-label,
+.ecu-chat.is-phone.is-keyboard .ecu-chat-server-pick {
+  font-size: 14px;
+  line-height: 18px;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-quick-row {
+  display: none;
+}
+.ecu-chat.is-phone.is-keyboard .ecu-chat-status.is-visible {
+  padding-top: 0;
+  line-height: 16px;
+  font-size: 12px;
 }
 ` +
   phoneShellExpandCss("chat", "ecu-chat-shell-expanded", ".ecu-chat");

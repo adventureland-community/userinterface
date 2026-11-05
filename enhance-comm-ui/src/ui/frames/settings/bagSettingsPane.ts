@@ -328,39 +328,66 @@ export function BagSettingsPane(props: BagSettingsPaneProps): any {
   }
 
   if (!query || matchesText("sort rule priority add", query)) {
-    kids.push(settingsSection("Sort rules (priority order)"), ...ruleRows);
-    kids.push(
-      e(
-        "div",
-        { style: { marginTop: "6px" } },
+    const used: Record<string, boolean> = Object.create(null);
+    for (let i = 0; i < prefs.rules.length; i++) {
+      used[prefs.rules[i].key] = true;
+    }
+    const addChips: any[] = [];
+    for (let i = 0; i < BAG_SORT_KEY_CATALOG.length; i++) {
+      const d = BAG_SORT_KEY_CATALOG[i];
+      if (used[d.key]) continue;
+      if (
+        query &&
+        !matchesText(`${d.label} ${d.key} ${d.help} add sort`, query)
+      ) {
+        continue;
+      }
+      addChips.push(
         e(
-          "select",
+          "button",
           {
-            defaultValue: "",
-            onChange: (ev: { target: HTMLSelectElement }) => {
-              const key = ev.target.value as BagSortKey;
-              if (!key) return;
+            type: "button",
+            key: "add-" + d.key,
+            className: "ecu-settings-reset",
+            title: d.help || d.label,
+            onClick: () => {
               patchBagSortPrefs({
                 preset: "custom",
-                rules: addBagSortRule(prefs.rules, key),
+                rules: addBagSortRule(prefs.rules, d.key),
               });
-              ev.target.value = "";
               refresh();
             },
             style: {
-              fontSize: "12px",
-              background: "#1a1a1a",
-              color: "#ddd",
-              border: "1px solid #555",
+              fontSize: "13px",
+              padding: "8px 10px",
+              minHeight: "40px",
             },
           },
-          e("option", { value: "" }, "+ Add sort rule…"),
-          ...BAG_SORT_KEY_CATALOG.map((d) =>
-            e("option", { key: d.key, value: d.key }, d.label),
-          ),
+          "+ " + d.label,
         ),
-      ),
-    );
+      );
+    }
+    // Chips first so phone first-paint isn't an empty band under tall rules.
+    if (addChips.length) {
+      kids.push(
+        settingsSection("Add rules"),
+        e(
+          "div",
+          {
+            key: "add-rules",
+            className: "ecu-settings-bag-add",
+            style: {
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "6px",
+              marginBottom: "8px",
+            },
+          },
+          ...addChips,
+        ),
+      );
+    }
+    kids.push(settingsSection("Sort rules (priority order)"), ...ruleRows);
   }
 
   if (ruleRows.length === 0 && query) {

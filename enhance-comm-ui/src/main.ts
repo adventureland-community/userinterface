@@ -24,6 +24,7 @@ import { startWorldOverlay } from "./viz/startWorldOverlay";
 import { installCameraPan } from "./host/cameraPan";
 import { installNameplateSharpness } from "./host/nameplateSharpness";
 import { installWorldZoom } from "./host/worldZoom";
+import { seedPhoneOverlayFixtures } from "./debug/phoneOverlayFixtures";
 
 publishEcuBuildInfo();
 
@@ -200,6 +201,7 @@ function onLoad(): void {
   installWorldZoom();
   installNameplateSharpness();
   installCameraPan();
+  seedPhoneOverlayFixtures();
 
   let domContainer = document.querySelector("#comm-ui") as HTMLElement | null;
   if (!domContainer) {

@@ -10,6 +10,7 @@ import {
   resolveLayoutProfile,
   savePanelPos,
   savePanelVisible,
+  patchSettings,
   saveSettings,
   type LayoutProfileMode,
   type PanelLayoutsByProfile,
@@ -32,6 +33,10 @@ import {
   resolveLiteHud,
   type HudDensity,
 } from "../../lib/perfPrefs";
+import {
+  phoneHudPresetPatch,
+  type PhoneHudPresetId,
+} from "../../lib/phoneHudPresets";
 import { gateObservedBagOpen } from "../../host/bagOpenGate";
 import {
   applyBagLayoutPos,
@@ -85,6 +90,7 @@ export type PanelLayoutState = {
   opacityFor: (id: PanelId) => number;
   hudDensity: HudDensity;
   setHudDensity: (mode: HudDensity) => void;
+  applyPhoneHudPreset: (preset: PhoneHudPresetId) => void;
   liteHud: boolean;
 };
 
@@ -291,6 +297,17 @@ export function usePanelLayoutState(): PanelLayoutState {
     saveSettings({ hudDensity: mode });
   };
 
+  const applyPhoneHudPreset = (preset: PhoneHudPresetId) => {
+    const patch = phoneHudPresetPatch(preset);
+    setPhoneHudVisible(patch.phoneHudVisible);
+    setHudDensityState(patch.hudDensity);
+    patchSettings({
+      phoneHudVisible: patch.phoneHudVisible,
+      hudDensity: patch.hudDensity,
+      replacePhoneHudVisible: patch.replacePhoneHudVisible,
+    });
+  };
+
   return {
     panelVisible,
     setPanelVisible,
@@ -317,6 +334,7 @@ export function usePanelLayoutState(): PanelLayoutState {
     opacityFor,
     hudDensity,
     setHudDensity,
+    applyPhoneHudPreset,
     liteHud,
   };
 }

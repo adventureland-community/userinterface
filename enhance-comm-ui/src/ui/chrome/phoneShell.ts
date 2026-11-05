@@ -10,6 +10,27 @@
 export const PHONE_SHELL_EXPAND_BOTTOM =
   "calc(max(var(--ecu-phone-dock-h, 48px), var(--ecu-vv-keyboard, 0px)) + 8px)";
 
+/** Any panel shell currently lifted as a phone bottom sheet. */
+export const PHONE_SHELL_EXPANDED_SELECTOR =
+  "[data-panel].ecu-chat-shell-expanded," +
+  "[data-panel].ecu-command-shell-expanded," +
+  "[data-panel].ecu-bank-shell-expanded," +
+  "[data-panel].ecu-market-shell-expanded," +
+  "[data-panel].ecu-mail-shell-expanded," +
+  "[data-panel].ecu-bag-shell-expanded," +
+  "[data-panel].ecu-settings-shell-expanded," +
+  ".ecu-settings-backdrop.is-phone";
+
+/** Hide camera chrome while a phone sheet covers the world. */
+export function syncPhoneSheetOpenClass(): void {
+  if (typeof document === "undefined") return;
+  if (document.querySelector(PHONE_SHELL_EXPANDED_SELECTOR)) {
+    document.documentElement.classList.add("ecu-phone-sheet-open");
+  } else {
+    document.documentElement.classList.remove("ecu-phone-sheet-open");
+  }
+}
+
 /**
  * Fixed inset above the Material dock / soft keyboard. Pass `innerSelector`
  * (e.g. `.BankPanel`) so the panel fills the lifted shell.
@@ -30,9 +51,9 @@ export function phoneShellExpandCss(
   return `
 [data-panel="${panelAttr}"].${className} {
   position: fixed !important;
-  left: 8px !important;
-  right: 8px !important;
-  top: 8px !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: max(10px, env(safe-area-inset-top, 0px)) !important;
   bottom: ${PHONE_SHELL_EXPAND_BOTTOM} !important;
   width: auto !important;
   height: auto !important;
@@ -42,8 +63,30 @@ export function phoneShellExpandCss(
   min-height: 0 !important;
   z-index: 480 !important;
   transform: none !important;
-  border-radius: 16px 16px 0 0 !important;
+  border-radius: 20px 20px 0 0 !important;
   overflow: hidden !important;
+  box-shadow: 0 -10px 36px rgba(0, 0, 0, 0.5) !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+/* Sheet mode: foot Done replaces window X / expand chrome. */
+[data-panel="${panelAttr}"].${className} > .comm-pos-panel-close,
+[data-panel="${panelAttr}"].${className} .comm-pos-panel-close,
+[data-panel="${panelAttr}"].${className} .ecu-panel-expand,
+[data-panel="${panelAttr}"].${className} .CommandPanel-expand,
+[data-panel="${panelAttr}"].${className} .BankPanel-expand,
+[data-panel="${panelAttr}"].${className} .MarketPanel-expand,
+[data-panel="${panelAttr}"].${className} .comm-bag-panel__expand,
+[data-panel="${panelAttr}"].${className} .ecu-chat-expand,
+[data-panel="${panelAttr}"].${className} .comm-mail__expand {
+  display: none !important;
+}
+html.ecu-phone-sheet-open .ecu-cam-chrome,
+html.ecu-phone-sheet-open [data-panel="targetFrame"],
+html.ecu-phone-sheet-open .comm-pos-targetFrame {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 ${inner}`;
 }

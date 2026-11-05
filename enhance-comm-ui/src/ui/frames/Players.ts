@@ -43,9 +43,21 @@ import {
   PARTY_CHIP_WIDTH,
   PARTY_MAX_COLS,
   PARTY_ROSTER_PAD,
-  partyChipRowWidth,
-  partyRosterMaxWidth,
 } from "../../lib/frameSizes";
+import { detectViewportProfile } from "../../lib/viewport";
+
+/** Phone roster — two narrower columns so the world stays visible. */
+const PHONE_CHIP_WIDTH = 152;
+const PHONE_MAX_COLS = 2;
+
+function chipRowMaxWidth(chipW: number, cols: number): number {
+  const n = Math.max(1, Math.floor(cols));
+  return n * chipW + (n - 1) * PARTY_CHIP_GAP;
+}
+
+function rosterMaxWidth(chipW: number, cols: number): number {
+  return PARTY_ROSTER_PAD * 2 + chipRowMaxWidth(chipW, cols);
+}
 
 export type PlayersProps = {
   entities: EntityLike[];
@@ -96,6 +108,8 @@ function countMembers(parties: PartyGroup[]): number {
 }
 
 type ChipCtx = {
+  chipWidth: number;
+  maxCols: number;
   byTarget: Record<string, EntityLike[]>;
   selectedEntity?: string;
   observingId?: string;
@@ -157,7 +171,7 @@ function renderPlayerChip(player: EntityLike, ctx: ChipCtx): any {
       style: {
         position: "relative",
         flex: "0 0 auto",
-        width: PARTY_CHIP_WIDTH + "px",
+        width: ctx.chipWidth + "px",
         background: "transparent",
         cursor: "pointer",
         overflow: "visible",
@@ -349,8 +363,8 @@ function renderPartyBlock(opts: {
           alignItems: "flex-start",
           gap: PARTY_CHIP_GAP + "px",
           maxWidth: solo
-            ? PARTY_CHIP_WIDTH + "px"
-            : partyChipRowWidth(PARTY_MAX_COLS) + "px",
+            ? chipCtx.chipWidth + "px"
+            : chipRowMaxWidth(chipCtx.chipWidth, chipCtx.maxCols) + "px",
         },
       },
       ...members.map((player) => renderPlayerChip(player, chipCtx)),
@@ -395,6 +409,9 @@ export function Players(props: PlayersProps): any {
     () => (getSettings().partyRosterShow || "all") as PartyRosterShow,
   );
 
+  const phone = detectViewportProfile() === "phone";
+  const chipWidth = phone ? PHONE_CHIP_WIDTH : PARTY_CHIP_WIDTH;
+  const maxCols = phone ? PHONE_MAX_COLS : PARTY_MAX_COLS;
   const observing = findObserving(props.entities, props.observingId);
   const allParties = partyGroups(props.entities);
   const parties = filterPartiesForShow({
@@ -407,6 +424,8 @@ export function Players(props: PlayersProps): any {
   const sharedMode = buffMode === "shared";
 
   const chipCtx: ChipCtx = {
+    chipWidth,
+    maxCols,
     byTarget: props.byTarget,
     selectedEntity: props.selectedEntity,
     observingId: props.observingId,
@@ -453,14 +472,21 @@ export function Players(props: PlayersProps): any {
   return e(
     "div",
     {
-      className: "ecu-roster" + (props.layoutEdit ? " is-layout-edit" : ""),
+      className:
+        "ecu-roster" +
+        (props.layoutEdit ? " is-layout-edit" : "") +
+        (phone ? " is-phone" : ""),
       style: {
         padding: PARTY_ROSTER_PAD + "px",
         display: "flex",
         gap: "6px",
         flexDirection: "column",
         width: "fit-content",
-        maxWidth: partyRosterMaxWidth(PARTY_MAX_COLS) + "px",
+        maxWidth: rosterMaxWidth(chipWidth, maxCols) + "px",
+        maxHeight: phone ? "min(42vh, 380px)" : undefined,
+        overflowX: "hidden",
+        overflowY: phone ? "auto" : "visible",
+        WebkitOverflowScrolling: phone ? "touch" : undefined,
         boxSizing: "border-box",
         position: "relative",
       },
@@ -501,7 +527,7 @@ export function Players(props: PlayersProps): any {
               flexWrap: "wrap",
               alignItems: "flex-start",
               gap: "6px " + PARTY_CHIP_GAP + "px",
-              maxWidth: partyChipRowWidth(PARTY_MAX_COLS) + "px",
+              maxWidth: chipRowMaxWidth(chipWidth, maxCols) + "px",
             },
           },
           ...singles.map((party) =>

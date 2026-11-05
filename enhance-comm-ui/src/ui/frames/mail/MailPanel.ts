@@ -80,6 +80,7 @@ export function MailPanel(props: MailPanelProps = {}): any {
   const mailObs = useMailObservingSnap();
   const phoneUi = detectViewportProfile() === "phone";
   const [expanded, setExpanded] = React.useState(() => phoneUi);
+  const [filtersScreenOpen, setFiltersScreenOpen] = React.useState(false);
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const headRef = React.useRef(null as HTMLDivElement | null);
   const bodyRef = React.useRef(null as HTMLDivElement | null);
@@ -357,6 +358,7 @@ export function MailPanel(props: MailPanelProps = {}): any {
     "comm-mail" +
     (wide ? "" : " is-narrow") +
     (phoneUi ? " is-phone" : "") +
+    (filtersScreenOpen ? " is-filters-screen" : "") +
     (expanded ? " is-expanded" : "") +
     (isReading ? " is-reading" : "") +
     (isCompose ? " is-compose" : "") +
@@ -524,13 +526,15 @@ export function MailPanel(props: MailPanelProps = {}): any {
             )
           : null,
       e("span", { className: "comm-mail__headGrow" }),
-      e(PanelExpandButton, {
-        expanded,
-        onToggle: () => setExpanded(!expanded),
-        expandTitle: "Expand mail",
-        restoreTitle: "Restore mail size",
-        className: "comm-mail__expand",
-      }),
+      phoneUi && props.onRequestClose
+        ? null
+        : e(PanelExpandButton, {
+            expanded,
+            onToggle: () => setExpanded(!expanded),
+            expandTitle: "Expand mail",
+            restoreTitle: "Restore mail size",
+            className: "comm-mail__expand",
+          }),
     ),
     e(MailToolbar, {
       snap,
@@ -550,6 +554,7 @@ export function MailPanel(props: MailPanelProps = {}): any {
       setBrowseMode: setBrowseModePersist,
       selectedItemMailIds,
       compact: phoneUi,
+      onFiltersScreenChange: phoneUi ? setFiltersScreenOpen : undefined,
     }),
     e(MailBannerBar, { snap, caps, compact: phoneUi }),
     e(
@@ -590,5 +595,20 @@ export function MailPanel(props: MailPanelProps = {}): any {
         pane,
       ),
     ),
+    phoneUi && props.onRequestClose
+      ? e(
+          "div",
+          { className: "comm-mail__phoneFoot" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__phoneDone",
+              onClick: () => props.onRequestClose && props.onRequestClose(),
+            },
+            "Done",
+          ),
+        )
+      : null,
   );
 }

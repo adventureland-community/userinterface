@@ -265,6 +265,10 @@ export type CommUiSettings = {
    */
   worldWheelZoomEnabled: boolean;
   /**
+   * Phone camera joystick side. Default right for one-handed right-thumb pan.
+   */
+  cameraJoystickSide: "left" | "right";
+  /**
    * Explicit show/hide for lite-default-off panels while lite HUD is active.
    * Does not rewrite desktop panelVisible defaults.
    */
@@ -272,6 +276,12 @@ export type CommUiSettings = {
   /** Phone combat-home screens (widgets per swipe page). */
   phoneHomeScreens?: PhoneHomeScreen[];
 };
+
+export function normalizeCameraJoystickSide(
+  raw: unknown,
+): "left" | "right" {
+  return raw === "left" ? "left" : "right";
+}
 
 const DEFAULT_COMMAND_SNIPPETS: CommandSnippet[] = [
   { id: "loot", name: "Loot", code: "loot()" },
@@ -317,6 +327,7 @@ const DEFAULTS: CommUiSettings = {
   hudDensity: "auto",
   worldOverlayEnabled: true,
   worldWheelZoomEnabled: true,
+  cameraJoystickSide: "right",
   phoneHudVisible: {},
   phoneHomeScreens: defaultPhoneHomeScreens(),
   changelogSeenId: null,
@@ -645,6 +656,9 @@ function migrate(parsed: any): CommUiSettings {
     hudDensity: normalizeHudDensity(parsed.hudDensity),
     worldOverlayEnabled: parsed.worldOverlayEnabled !== false,
     worldWheelZoomEnabled: parsed.worldWheelZoomEnabled !== false,
+    cameraJoystickSide: normalizeCameraJoystickSide(
+      parsed.cameraJoystickSide,
+    ),
     phoneHudVisible:
       parsed.phoneHudVisible && typeof parsed.phoneHudVisible === "object"
         ? (parsed.phoneHudVisible as PanelVisibleMap)
@@ -775,6 +789,7 @@ function freshDefaults(): CommUiSettings {
     hudDensity: "auto",
     worldOverlayEnabled: true,
     worldWheelZoomEnabled: true,
+    cameraJoystickSide: "right",
     phoneHudVisible: {},
     phoneHomeScreens: defaultPhoneHomeScreens(),
   };
@@ -826,13 +841,18 @@ export function loadSettings(): CommUiSettings {
  * Merge a partial into the cached snapshot and persist.
  * Prefer this over load+save mid-render.
  */
-export function patchSettings(
-  partial: Partial<CommUiSettings>,
-): CommUiSettings {
+export type SettingsPatch = Partial<CommUiSettings> & {
+  replacePhoneHudVisible?: boolean;
+};
+
+export function patchSettings(partial: SettingsPatch): CommUiSettings {
+  const replacePhoneHudVisible = partial.replacePhoneHudVisible === true;
+  const { replacePhoneHudVisible: _drop, ...settingsPartial } = partial;
+  void _drop;
   const current = getSettings();
   const next: CommUiSettings = {
     ...current,
-    ...partial,
+    ...settingsPartial,
   };
   if (partial.combatChannels) {
     next.combatChannels = normalizeChannels(partial.combatChannels);
@@ -888,11 +908,20 @@ export function patchSettings(
   if (typeof partial.worldWheelZoomEnabled === "boolean") {
     next.worldWheelZoomEnabled = partial.worldWheelZoomEnabled;
   }
-  if (partial.phoneHudVisible) {
-    next.phoneHudVisible = {
-      ...(current.phoneHudVisible || {}),
-      ...partial.phoneHudVisible,
-    };
+  if (partial.cameraJoystickSide != null) {
+    next.cameraJoystickSide = normalizeCameraJoystickSide(
+      partial.cameraJoystickSide,
+    );
+  }
+  if (settingsPartial.phoneHudVisible !== undefined) {
+    if (replacePhoneHudVisible) {
+      next.phoneHudVisible = { ...settingsPartial.phoneHudVisible };
+    } else if (settingsPartial.phoneHudVisible) {
+      next.phoneHudVisible = {
+        ...(current.phoneHudVisible || {}),
+        ...settingsPartial.phoneHudVisible,
+      };
+    }
   }
   if (partial.phoneHomeScreens) {
     next.phoneHomeScreens = normalizePhoneHomeScreens(partial.phoneHomeScreens);
@@ -1027,6 +1056,15 @@ export function patchSettings(
   delete next.combatVisible;
   settingsCache = next;
   writeSettingsToStorage(next);
+  if (typeof window !== "undefined") {
+    try {
+      window.dispatchEvent(
+        new CustomEvent("ecu:settings", { detail: partial }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
   return next;
 }
 

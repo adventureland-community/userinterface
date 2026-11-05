@@ -58,7 +58,6 @@ export const COMM_UI_SUBSECTIONS: readonly SettingsSubsection[] = [
   {
     id: settingsSectionId("Controls"),
     label: "Controls",
-    visible: () => !isPhoneViewport(),
   },
   {
     id: settingsSectionId("Mobile install"),
@@ -95,12 +94,94 @@ function dataSectionMatches(query: string): boolean {
 }
 
 function controlsSectionMatches(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const phone =
+    "joystick side left right thumb camera stick pan phone hand controls";
+  const desktop =
+    "wheel zoom trackpad scroll camera fov middle accidental laptop desktop controls";
+  if (isPhoneViewport()) return phone.includes(q) || "controls".includes(q);
+  return (phone + " " + desktop).includes(q);
+}
+
+function wheelZoomRowMatches(query: string): boolean {
   // Wheel/trackpad FOV zoom is a desktop input; phones use pinch / Map out·in.
   if (isPhoneViewport()) return false;
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return "wheel zoom trackpad scroll camera fov middle accidental laptop desktop controls".includes(
+  return "wheel zoom trackpad scroll camera fov middle accidental laptop desktop".includes(
     q,
+  );
+}
+
+function joystickSideRowMatches(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return "joystick side left right thumb camera stick pan phone hand".includes(
+    q,
+  );
+}
+
+/** Shared camera joystick row (Comm UI Controls + phone Display pane). */
+export function pushCameraJoystickSideRow(
+  kids: any[],
+  bump: () => void,
+): void {
+  const settings = getSettings();
+  const side = settings.cameraJoystickSide === "left" ? "left" : "right";
+  kids.push(
+    e(
+      "div",
+      { key: "joystick-side", className: "ecu-settings-row" },
+      e(
+        "div",
+        { className: "ecu-settings-row-copy" },
+        e(
+          "span",
+          { className: "ecu-settings-row-label" },
+          "Camera joystick side",
+        ),
+        e(
+          "span",
+          { className: "ecu-settings-help" },
+          "Default right for one-handed right-thumb pan. Also flip with ← side / side → above the stick.",
+        ),
+      ),
+      e(
+        "div",
+        {
+          className: "ecu-settings-seg",
+          role: "group",
+          "aria-label": "Joystick side",
+        },
+        e(
+          "button",
+          {
+            type: "button",
+            className: side === "left" ? "is-on" : "",
+            "aria-pressed": side === "left" ? "true" : "false",
+            onClick: () => {
+              patchSettings({ cameraJoystickSide: "left" });
+              bump();
+            },
+          },
+          "Left",
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: side === "right" ? "is-on" : "",
+            "aria-pressed": side === "right" ? "true" : "false",
+            onClick: () => {
+              patchSettings({ cameraJoystickSide: "right" });
+              bump();
+            },
+          },
+          "Right",
+        ),
+      ),
+    ),
   );
 }
 
@@ -125,7 +206,7 @@ export function countCommUiSettingsMatches(query: string): number {
   for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
     if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
   }
-  if (controlsSectionMatches(query)) total += 1;
+  if (wheelZoomRowMatches(query) || joystickSideRowMatches(query)) total += 1;
   if (installSectionMatches(query)) total += 1;
   if (dataSectionMatches(query)) total += 1;
   return total;
@@ -178,21 +259,30 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
 
   if (controlsSectionMatches(query)) {
     const settings = getSettings();
-    kids.push(settingsSection("Controls"));
-    kids.push(
-      settingsCheckboxRow(
-        "wheel-zoom",
-        "Mouse wheel / trackpad zoom",
-        settings.worldWheelZoomEnabled !== false,
-        (next) => {
-          patchSettings({ worldWheelZoomEnabled: next });
-          setCtrlTick((n: number) => n + 1);
-        },
-        {
-          help: "Desktop only. Scroll over the map changes camera FOV. Turn off if a laptop trackpad zooms by accident. Pinch and Map out·in still work.",
-        },
-      ),
-    );
+    const showWheel = wheelZoomRowMatches(query);
+    const showStick = joystickSideRowMatches(query);
+    if (showWheel || showStick) {
+      kids.push(settingsSection("Controls"));
+    }
+    if (showStick) {
+      pushCameraJoystickSideRow(kids, () => setCtrlTick((n: number) => n + 1));
+    }
+    if (showWheel) {
+      kids.push(
+        settingsCheckboxRow(
+          "wheel-zoom",
+          "Mouse wheel / trackpad zoom",
+          settings.worldWheelZoomEnabled !== false,
+          (next) => {
+            patchSettings({ worldWheelZoomEnabled: next });
+            setCtrlTick((n: number) => n + 1);
+          },
+          {
+            help: "Desktop only. Scroll over the map changes camera FOV. Turn off if a laptop trackpad zooms by accident. Pinch and Map out·in still work.",
+          },
+        ),
+      );
+    }
   }
 
   if (installSectionMatches(query)) {

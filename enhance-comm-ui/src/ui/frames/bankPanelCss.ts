@@ -409,6 +409,11 @@ const CSS = `
 }
 
 /* Phone — larger head / seg / search targets. */
+.BankPanel.is-phone {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .BankPanel.is-phone .BankPanel-btn {
   min-height: 40px;
   padding: 8px 12px;
@@ -428,22 +433,87 @@ const CSS = `
   min-height: 44px;
   font-size: 16px;
 }
-.BankPanel.is-phone .BankPanel-pageDots {
-  flex-shrink: 0;
-  padding-top: 2px;
-  padding-bottom: 4px;
+.BankPanel.is-phone .BankPanel-phoneTabs {
+  width: 100%;
+  margin-top: 4px;
+}
+.BankPanel.is-phone .BankPanel-phoneFoot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #3a3a3a;
+  background: rgba(12, 12, 12, 0.96);
+}
+.BankPanel.is-phone .BankPanel-phoneTabs--foot {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border-top: none;
+  background: transparent;
+  gap: 6px;
+}
+.BankPanel.is-phone .BankPanel-phoneTabs button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.BankPanel.is-phone .BankPanel-phoneTabs--foot button {
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+.BankPanel.is-phone .BankPanel-phoneFootActs {
+  display: flex;
+  gap: 8px;
+}
+.BankPanel.is-phone .BankPanel-phoneAct {
+  appearance: none;
+  flex: 1 1 0;
+  min-height: 48px;
+  border: 1px solid #555;
+  border-radius: 12px;
+  background: #1c1c1c;
+  color: #eee;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.BankPanel.is-phone .BankPanel-phoneAct:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.BankPanel.is-phone .BankPanel-phoneDone {
+  appearance: none;
+  flex: 1 1 0;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.BankPanel.is-phone .BankPanel-readySub {
+  display: none;
 }
 .BankPanel.is-phone .BankPanel-body {
   touch-action: pan-y;
 }
-/* Larger phone slots — 7×48px is too dense for thumbs. */
+/* Larger phone slots — 3×96px for reliable thumbs. */
 .BankPanel.is-phone .BankPanel-packGrid {
-  grid-template-columns: repeat(4, 72px);
-  gap: 3px;
+  grid-template-columns: repeat(3, 96px);
+  gap: 6px;
+  justify-content: center;
 }
 .BankPanel.is-phone .BankPanel-slot {
-  width: 72px;
-  height: 72px;
+  width: 96px;
+  height: 96px;
 }
 .BankPanel.is-phone .BankPanel-grid {
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
@@ -451,6 +521,18 @@ const CSS = `
 }
 .BankPanel.is-phone .BankPanel-tools {
   padding: 6px 10px 4px;
+}
+.BankPanel.is-phone .BankPanel-head .BankPanel-sub,
+.BankPanel.is-phone .BankPanel-help,
+.BankPanel.is-phone .BankPanel-tourHint {
+  display: none;
+}
+.BankPanel.is-phone .BankPanel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.BankPanel.is-phone .BankPanel-sortSeg {
+  display: none;
 }
 
 ` + phoneShellExpandCss("bank", "ecu-bank-shell-expanded", ".BankPanel");

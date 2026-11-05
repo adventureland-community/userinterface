@@ -34,6 +34,7 @@ export type MailToolbarProps = {
   selectedItemMailIds: string[] | null;
   /** Phone — denser chrome, filters behind a toggle. */
   compact?: boolean;
+  onFiltersScreenChange?: (open: boolean) => void;
 };
 
 export function MailToolbar(props: MailToolbarProps): any {
@@ -56,6 +57,7 @@ export function MailToolbar(props: MailToolbarProps): any {
     setBrowseMode,
     selectedItemMailIds,
     compact,
+    onFiltersScreenChange,
   } = props;
 
   const itemsMode = browseMode === "items";
@@ -237,6 +239,7 @@ export function MailToolbar(props: MailToolbarProps): any {
       pill,
       setPillPersist,
       compact,
+      onFiltersScreenChange,
     }),
     e(
       "div",

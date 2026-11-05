@@ -15,6 +15,7 @@ import {
   subscribeMarketTravel,
   hydrateMarketCacheFromIdb,
   schedulePersistMarketCache,
+  getCachedMarketMerchants,
   type MarketTravelItinerary,
 } from "../../host/market";
 import {
@@ -107,7 +108,6 @@ import { TradeSlotCell } from "../trade/TradeSlotCell";
 import { openTradeItemInfo } from "../trade/tradeSlotActions";
 import { ensureMarketPanelCss } from "./marketPanelCss";
 import { PanelExpandButton } from "../chrome/panelExpandControl";
-import { PeerPageDots } from "../chrome/PeerPageDots";
 import { installPeerPageGestures } from "../chrome/peerPageGestures";
 import { usePhoneShellExpand } from "../chrome/usePhoneShellExpand";
 import { detectViewportProfile } from "../../lib/viewport";
@@ -136,6 +136,12 @@ const MARKET_FACET_PAGES: Array<{ key: Facet; label: string }> = [
   { key: "wanted", label: "Buying" },
   { key: "giveaway", label: "Giveaways" },
   { key: "trade", label: "Trades" },
+];
+/** Phone foot facets — keep to 3 thumbs; Gifts/Trades stay in Filters. */
+const MARKET_FACET_PAGES_PHONE: Array<{ key: Facet; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "sale", label: "Buy" },
+  { key: "wanted", label: "Sell" },
 ];
 const MARKET_FACET_KEYS = MARKET_FACET_PAGES.map((p) => p.key);
 
@@ -407,7 +413,7 @@ export function MarketPanel(props: MarketPanelProps): any {
   const bodyRef = React.useRef(null as HTMLDivElement | null);
   const phoneUi = detectViewportProfile() === "phone";
   const [expanded, setExpanded] = React.useState(() => phoneUi);
-  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [filtersOpen, setFiltersOpen] = React.useState(() => phoneUi);
   /** Phone: Bag/Stand sheet collapsed so the catalog keeps the viewport. */
   const [youOpen, setYouOpen] = React.useState(false);
 
@@ -527,6 +533,15 @@ export function MarketPanel(props: MarketPanelProps): any {
     const res = await pullMerchants();
     setCatalogLoading(false);
     if (!res.ok) {
+      // Overlay preview has no hub /api/pull_merchants — keep seeded cache.
+      if ((window as { __ecuOverlayPreview?: boolean }).__ecuOverlayPreview) {
+        const seeded = getCachedMarketMerchants();
+        if (seeded.length) {
+          setCatalogMerchants(seeded);
+          setCatalogMsg("");
+          return;
+        }
+      }
       setCatalogMsg(res.message || "Catalog refresh failed");
       return;
     }
@@ -587,6 +602,7 @@ export function MarketPanel(props: MarketPanelProps): any {
     setNearOnly(sync.nearOnly);
     setCanAfford(sync.canAfford);
     setHaveStock(sync.haveStock);
+    if (phoneUi && next.trim().length > 0) setFiltersOpen(true);
     if (merchantFilter && next.toLowerCase().indexOf("merchant:") < 0) {
       setMerchantFilter(null);
     }
@@ -1502,7 +1518,7 @@ export function MarketPanel(props: MarketPanelProps): any {
                     level: g.level,
                     p: g.p,
                     data: g.data,
-                    size: 48,
+                    size: phoneUi ? 36 : 48,
                     bankQ,
                     title:
                       itemLabel(g.name, g.level, g.p) +
@@ -1848,15 +1864,17 @@ export function MarketPanel(props: MarketPanelProps): any {
           ),
         ),
       ]
-    : [
-        e("div", { key: "ph", className: "MarketPanel-ph" }, "Focus"),
-        e(
-          "div",
-          { key: "empty", className: "MarketPanel-empty" },
-          e("strong", null, "No item selected"),
-          "Pick a card in the market grid, a bag stack, or a stand slot.",
-        ),
-      ];
+    : phoneUi
+      ? null
+      : [
+          e("div", { key: "ph", className: "MarketPanel-ph" }, "Focus"),
+          e(
+            "div",
+            { key: "empty", className: "MarketPanel-empty" },
+            e("strong", null, "No item selected"),
+            "Pick a card in the market grid, a bag stack, or a stand slot.",
+          ),
+        ];
 
   const filterActive = nearOnly || canAfford || haveStock || favOnly;
 
@@ -1900,13 +1918,15 @@ export function MarketPanel(props: MarketPanelProps): any {
             "Cancel travel",
           )
         : null,
-      e(PanelExpandButton, {
-        expanded,
-        onToggle: () => setExpanded(!expanded),
-        expandTitle: "Expand market",
-        restoreTitle: "Restore market size",
-        className: "MarketPanel-expand",
-      }),
+      !phoneUi
+        ? e(PanelExpandButton, {
+            expanded,
+            onToggle: () => setExpanded(!expanded),
+            expandTitle: "Expand market",
+            restoreTitle: "Restore market size",
+            className: "MarketPanel-expand",
+          })
+        : null,
       e(
         "button",
         {
@@ -1918,7 +1938,7 @@ export function MarketPanel(props: MarketPanelProps): any {
           },
           title: pulledAt ? "Catalog " + String(pulledAt) : "Refresh catalog",
         },
-        catalogLoading ? "…" : "Refresh",
+        catalogLoading ? "…" : phoneUi ? "↻" : "Refresh",
       ),
     ),
     e(
@@ -1951,21 +1971,8 @@ export function MarketPanel(props: MarketPanelProps): any {
         trailingAliases: { mer: "merchant" },
         onClear: () => setMerchantFilter(null),
       }),
-      phoneUi
+      !phoneUi
         ? e(
-            "button",
-            {
-              type: "button",
-              className:
-                "MarketPanel-btn MarketPanel-filtersBtn" +
-                (filtersOpen ? " is-on" : "") +
-                (filterActive ? " is-active" : ""),
-              "aria-expanded": filtersOpen,
-              onClick: () => setFiltersOpen(!filtersOpen),
-            },
-            filtersOpen ? "Hide filters" : filterActive ? "Filters ●" : "Filters",
-          )
-        : e(
             "div",
             { className: "MarketPanel-seg" },
             MARKET_FACET_PAGES.map((p) =>
@@ -1986,8 +1993,9 @@ export function MarketPanel(props: MarketPanelProps): any {
                 p.label,
               ),
             ),
-          ),
-      !phoneUi || filtersOpen
+          )
+        : null,
+      !phoneUi
         ? e(
             "div",
             { className: "MarketPanel-togs" },
@@ -2052,21 +2060,6 @@ export function MarketPanel(props: MarketPanelProps): any {
           )
         : null,
     ),
-    phoneUi
-      ? e(PeerPageDots, {
-          pages: MARKET_FACET_PAGES,
-          activeKey: facet,
-          onSelect: (key: string) =>
-            applyToggleSync({
-              facet: key as Facet,
-              nearOnly,
-              canAfford,
-              haveStock,
-            }),
-          ariaLabel: "Market facets",
-          className: "MarketPanel-pageDots",
-        })
-      : null,
     e(
       "div",
       { className: "MarketPanel-body", ref: bodyRef },
@@ -2574,20 +2567,29 @@ export function MarketPanel(props: MarketPanelProps): any {
         },
         e(
           "div",
-          { className: "MarketPanel-ph" },
-          "Market ",
-          e(
-            "em",
-            null,
-            groups.length + " items · " + rows.length + " listings",
-          ),
+          {
+            className:
+              "MarketPanel-ph" + (phoneUi ? " MarketPanel-ph--phone" : ""),
+          },
+          phoneUi
+            ? e("em", null, groups.length + " · " + rows.length)
+            : e(
+                React.Fragment,
+                null,
+                "Market ",
+                e(
+                  "em",
+                  null,
+                  groups.length + " items · " + rows.length + " listings",
+                ),
+              ),
           e(
             "span",
             { className: "MarketPanel-phTools" },
             e(
               "label",
               { className: "MarketPanel-sort" },
-              e("span", null, "Sort"),
+              phoneUi ? null : e("span", null, "Sort"),
               e(
                 "select",
                 {
@@ -2596,6 +2598,7 @@ export function MarketPanel(props: MarketPanelProps): any {
                     setGroupSort(String(ev.target.value) as MarketGroupSort);
                   },
                   title: "Sort market cards",
+                  "aria-label": "Sort market cards",
                 },
                 MARKET_GROUP_SORT_OPTIONS.map((opt) =>
                   e(
@@ -2620,5 +2623,49 @@ export function MarketPanel(props: MarketPanelProps): any {
         focusPane,
       ),
     ),
+    phoneUi
+      ? e(
+          "div",
+          { className: "MarketPanel-phoneFoot" },
+          e(
+            "div",
+            {
+              className: "MarketPanel-seg MarketPanel-phoneFacets",
+              role: "group",
+              "aria-label": "Market Buy / Sell",
+            },
+            MARKET_FACET_PAGES_PHONE.map((p) =>
+              e(
+                "button",
+                {
+                  type: "button",
+                  key: p.key,
+                  className: facet === p.key ? "is-on" : "",
+                  onClick: () =>
+                    applyToggleSync({
+                      facet: p.key,
+                      nearOnly,
+                      canAfford,
+                      haveStock,
+                    }),
+                },
+                p.label,
+              ),
+            ),
+          ),
+          props.onRequestClose
+            ? e(
+                "button",
+                {
+                  type: "button",
+                  className: "MarketPanel-phoneDone",
+                  onClick: () =>
+                    props.onRequestClose && props.onRequestClose(),
+                },
+                "Done",
+              )
+            : null,
+        )
+      : null,
   );
 }

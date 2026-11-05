@@ -2,6 +2,7 @@ import { e, getReact } from "../../../host/react";
 import {
   HUD_DENSITIES,
   hudDensityLabel,
+  isPhoneViewport,
   type HudDensity,
 } from "../../../lib/perfPrefs";
 import { getSettings, patchSettings } from "../../../lib/settings";
@@ -21,6 +22,7 @@ import {
   settingsSectionId,
   type SettingsSubsection,
 } from "./settingsPaneChrome";
+import { pushCameraJoystickSideRow } from "./commUiSettingsPane";
 
 export type CommHudSettingsPaneProps = {
   query?: string;
@@ -85,10 +87,18 @@ function metersMatches(query: string): boolean {
   return matchesQuery("meters hide dps hps combat skada", query);
 }
 
+function phoneCameraControlsMatch(query: string): boolean {
+  if (!isPhoneViewport()) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return "joystick camera stick pan side display fov nameplate".includes(q);
+}
+
 export function countCommHudSettingsMatches(query: string): number {
   const q = query.trim().toLowerCase();
   const sections = overlayToggleSectionsForPane("commHud");
   let total = 0;
+  if (phoneCameraControlsMatch(query)) total += 1;
   if (hudDensityMatches(query)) total += 1;
   if (metersMatches(query)) total += 1;
   for (let s = 0; s < sections.length; s++) {
@@ -122,7 +132,13 @@ export function CommHudSettingsPane(props: CommHudSettingsPaneProps): any {
       patchSettings({ hudDensity: mode });
       setTick((n: number) => n + 1);
     });
-  const sections = overlayToggleSectionsForPane("commHud");
+  const phone = isPhoneViewport();
+  const sections = phone
+    ? [
+        ...overlayToggleSectionsForPane("commHud"),
+        ...overlayToggleSectionsForPane("drawings"),
+      ]
+    : overlayToggleSectionsForPane("commHud");
   const kids: any[] = [
     e(
       "p",
@@ -131,6 +147,40 @@ export function CommHudSettingsPane(props: CommHudSettingsPaneProps): any {
     ),
   ];
   let rowCount = 0;
+
+  // Phone: overlay toggles first so first paint is a dense checkbox wall.
+  for (let s = 0; s < sections.length; s++) {
+    const section = sections[s];
+    const rows: any[] = [];
+    for (let i = 0; i < section.defs.length; i++) {
+      const def = section.defs[i];
+      if (!matchesOverlayToggle(def, query)) continue;
+      rows.push(
+        settingsCheckboxRow(
+          def.key,
+          def.label,
+          vizSettings[def.key],
+          (next) =>
+            patchVizSettings({ [def.key]: next } as Partial<
+              Record<VizSettingKey, boolean>
+            >),
+          {
+            help: def.help,
+            tag: tagLabel(def.tag) || undefined,
+          },
+        ),
+      );
+    }
+    if (!rows.length) continue;
+    rowCount += rows.length;
+    kids.push(settingsSection(section.title), ...rows);
+  }
+
+  if (phoneCameraControlsMatch(query)) {
+    rowCount += 1;
+    kids.push(settingsSection("Camera"));
+    pushCameraJoystickSideRow(kids, () => setTick((n: number) => n + 1));
+  }
 
   if (hudDensityMatches(query)) {
     rowCount += 1;
@@ -183,33 +233,6 @@ export function CommHudSettingsPane(props: CommHudSettingsPaneProps): any {
         },
       ),
     );
-  }
-
-  for (let s = 0; s < sections.length; s++) {
-    const section = sections[s];
-    const rows: any[] = [];
-    for (let i = 0; i < section.defs.length; i++) {
-      const def = section.defs[i];
-      if (!matchesOverlayToggle(def, query)) continue;
-      rows.push(
-        settingsCheckboxRow(
-          def.key,
-          def.label,
-          vizSettings[def.key],
-          (next) =>
-            patchVizSettings({ [def.key]: next } as Partial<
-              Record<VizSettingKey, boolean>
-            >),
-          {
-            help: def.help,
-            tag: tagLabel(def.tag) || undefined,
-          },
-        ),
-      );
-    }
-    if (!rows.length) continue;
-    rowCount += rows.length;
-    kids.push(settingsSection(section.title), ...rows);
   }
   if (!rowCount) {
     kids.push(

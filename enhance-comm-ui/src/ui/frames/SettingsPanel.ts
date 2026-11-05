@@ -6,7 +6,10 @@
 import { e, getReact } from "../../host/react";
 import type { PanelId, PanelPos } from "../../lib/layout";
 import { PositionedPanel } from "../chrome/PositionedPanel";
-import { bindSwipeDownClose } from "../chrome/phoneShell";
+import {
+  bindSwipeDownClose,
+  syncPhoneSheetOpenClass,
+} from "../chrome/phoneShell";
 import { ensureSettingsPanelCss } from "./settingsPanelCss";
 import {
   defaultSettingsPaneId,
@@ -16,6 +19,16 @@ import {
   visibleSettingsSubsections,
   type SettingsPaneId,
 } from "./settings/settingsRegistry";
+
+/** Phone top pills — map to existing panes (not new settings). */
+const PHONE_SETTINGS_PILLS: readonly {
+  id: SettingsPaneId;
+  label: string;
+}[] = [
+  { id: "commUi", label: "Phone" },
+  { id: "bag", label: "Bag" },
+  { id: "commHud", label: "Display" },
+];
 import type { HudDensity } from "../../lib/perfPrefs";
 import { detectViewportProfile } from "../../lib/viewport";
 
@@ -64,7 +77,11 @@ function navBtn(
 export function SettingsPanel(props: SettingsPanelProps): any {
   const React = getReact();
   ensureSettingsPanelCss();
-  const [cat, setCat] = React.useState(defaultSettingsPaneId);
+  const phone = detectViewportProfile() === "phone";
+  // Phone opens on Display — toggles + (phone) drawing switches fill the sheet.
+  const [cat, setCat] = React.useState(
+    () => (phone ? "commHud" : defaultSettingsPaneId()) as SettingsPaneId,
+  );
   const [query, setQuery] = React.useState("");
   const [activeSec, setActiveSec] = React.useState("");
   const propsRef = React.useRef(props);
@@ -96,6 +113,27 @@ export function SettingsPanel(props: SettingsPanelProps): any {
   }, [cat]);
 
   const navKids = React.useMemo(() => {
+    if (phone && !trimmedQuery) {
+      const kids: any[] = [];
+      for (let i = 0; i < PHONE_SETTINGS_PILLS.length; i++) {
+        const pill = PHONE_SETTINGS_PILLS[i];
+        kids.push(
+          e(
+            "button",
+            {
+              type: "button",
+              key: pill.id,
+              className:
+                "ecu-settings-phone-pill" + (cat === pill.id ? " is-on" : ""),
+              "aria-pressed": cat === pill.id ? "true" : "false",
+              onClick: () => setCat(pill.id),
+            },
+            pill.label,
+          ),
+        );
+      }
+      return kids;
+    }
     const kids: any[] = [];
     for (let i = 0; i < SETTINGS_PANES.length; i++) {
       const pane = SETTINGS_PANES[i];
@@ -159,15 +197,20 @@ export function SettingsPanel(props: SettingsPanelProps): any {
       );
     }
     return kids;
-  }, [cat, counts, trimmedQuery, setCat, activeSec]);
+  }, [cat, counts, trimmedQuery, setCat, activeSec, phone]);
 
-  const phone = detectViewportProfile() === "phone";
   const headRef = React.useRef(null as HTMLElement | null);
 
   React.useEffect(() => {
     if (!phone) return;
     return bindSwipeDownClose(headRef.current, onClose);
   }, [phone, onClose]);
+
+  React.useEffect(() => {
+    if (!phone) return;
+    syncPhoneSheetOpenClass();
+    return () => syncPhoneSheetOpenClass();
+  }, [phone]);
 
   const modalBody = e(
     "div",
@@ -194,27 +237,35 @@ export function SettingsPanel(props: SettingsPanelProps): any {
             setQuery(ev.target.value || ""),
         }),
       ),
-      phone
-        ? e(
-            "button",
-            {
-              type: "button",
-              className: "ecu-settings-phone-done",
-              onClick: onClose,
-            },
-            "Done",
-          )
-        : null,
     ),
     e(
       "div",
       { className: "ecu-settings-split" },
-      e("div", { className: "ecu-settings-nav" }, ...navKids),
+      e(
+        "div",
+        { className: "ecu-settings-nav" + (phone ? " ecu-settings-nav--foot" : "") },
+        ...navKids,
+        phone
+          ? e(
+              "button",
+              {
+                type: "button",
+                key: "phone-done",
+                className: "ecu-settings-phone-done",
+                onClick: onClose,
+              },
+              "Done",
+            )
+          : null,
+      ),
       e(
         "div",
         { className: "ecu-settings-pane" },
         e("div", { className: "ecu-settings-pane-title" }, active.label),
-        e("p", { className: "ecu-settings-pane-desc" }, active.description),
+        // Phone: skip the long pane blurb — rows + foot pills need the height.
+        phone
+          ? null
+          : e("p", { className: "ecu-settings-pane-desc" }, active.description),
         active.render({
           query: trimmedQuery,
           visible: props.visible,

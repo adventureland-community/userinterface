@@ -405,8 +405,40 @@ export const COMMAND_PANEL_CSS = `
   gap: 8px;
 }
 .CommandPanel.is-narrow .CommandPanel-editor {
-  min-height: 180px;
+  min-height: 240px;
   flex: 1 1 auto;
+}
+.CommandPanel.is-phone {
+  background: #0e0e10;
+}
+.CommandPanel.is-phone .CommandPanel-side,
+.CommandPanel.is-phone .CommandPanel-main {
+  background: #0e0e10;
+}
+.CommandPanel.is-phone .CommandPanel-editor {
+  min-height: 200px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+/* Code tab: editor fills leftover space; Run + Save template stay in the foot. */
+.CommandPanel.is-phone.tab-code .CommandPanel-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 8px;
+  overflow: hidden;
+}
+.CommandPanel.is-phone.tab-code .CommandPanel-editor,
+.CommandPanel.is-phone.tab-code .CodeMirror {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: 100%;
+  height: 100%;
+}
+.CommandPanel.is-phone.tab-code .CommandPanel-toolbar,
+.CommandPanel.is-phone.tab-code .CommandPanel-status {
+  flex: 0 0 auto;
 }
 .CommandPanel.is-narrow .CommandPanel-side {
   flex: 1 1 auto;
@@ -440,6 +472,29 @@ export const COMMAND_PANEL_CSS = `
   font-size: 16px;
   padding: 10px 12px;
 }
+/* Phone: Run owns a full row; name + Save as share the second. */
+.CommandPanel.is-phone .CommandPanel-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.CommandPanel.is-phone .CommandPanel-run {
+  flex: 1 1 100%;
+  width: 100%;
+  min-height: 48px !important;
+  padding: 12px 14px !important;
+  font-size: 16px !important;
+  font-weight: 600;
+}
+.CommandPanel.is-phone .CommandPanel-toolbar input {
+  flex: 1 1 140px;
+}
+.CommandPanel.is-phone .CommandPanel-toolbar > button:not(.CommandPanel-run) {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+.CommandPanel.is-phone.tab-code .CommandPanel-toolbar {
+  flex: 0 0 auto;
+}
 .CommandPanel.is-narrow .CommandPanel-rerun {
   min-height: 40px;
   padding: 8px 12px;
@@ -454,6 +509,117 @@ export const COMMAND_PANEL_CSS = `
 }
 .CommandPanel.is-phone-tabs .CommandPanel-sub {
   display: none;
+}
+/* Phone Quick tab — macro cards with thumb-sized Run. */
+.CommandPanel.is-phone.tab-snippets .CommandPanel-side__head {
+  gap: 8px;
+}
+.CommandPanel.is-phone.tab-snippets .CommandPanel-snip {
+  min-height: 56px;
+  padding: 12px 10px;
+  gap: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #3a3a3a;
+  margin-bottom: 8px;
+}
+.CommandPanel.is-phone.tab-snippets .CommandPanel-snip__pick {
+  font-size: 17px;
+  font-weight: 600;
+  padding: 8px 6px;
+}
+.CommandPanel.is-phone.tab-snippets .CommandPanel-snip__run {
+  min-height: 44px;
+  min-width: 72px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+.CommandPanel.is-phone.tab-snippets .CommandPanel-snip__del {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+.CommandPanel.is-phone .CommandPanel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 8px;
+}
+.CommandPanel.is-phone .CommandPanel-empty__code {
+  appearance: none;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #a86;
+  border-radius: 10px;
+  background: #2a2410;
+  color: #ffe08a;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.CommandPanel.is-phone {
+  display: flex;
+  flex-direction: column;
+}
+.CommandPanel.is-phone .CommandPanel-phoneFoot {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #3a3a3a;
+  background: rgba(12, 12, 12, 0.96);
+}
+.CommandPanel.is-phone .CommandPanel-phoneFoot .CommandPanel-toolbar {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+.CommandPanel.is-phone .CommandPanel-tabs {
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border-top: none;
+  background: transparent;
+}
+.CommandPanel.is-phone .CommandPanel-phoneDone {
+  appearance: none;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.CommandPanel.is-phone .CommandPanel-head {
+  order: 1;
+}
+.CommandPanel.is-phone .CommandPanel-body {
+  order: 20;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.CommandPanel.is-phone .CommandPanel-phoneFoot {
+  order: 40;
+}
+.CommandPanel.is-phone .CommandPanel-tab {
+  flex: 1 1 0;
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 10px 14px;
 }
 ` + phoneShellExpandCss("command", "ecu-command-shell-expanded", ".CommandPanel");
 

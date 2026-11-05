@@ -182,6 +182,31 @@ export const SETTINGS_PANEL_CSS = `
   flex-shrink: 0;
   cursor: pointer;
 }
+.ecu-settings-seg {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 0;
+  border: 1px solid #555;
+  background: #1a1a1a;
+}
+.ecu-settings-seg button {
+  appearance: none;
+  margin: 0;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: #bbb;
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+.ecu-settings-seg button + button {
+  border-left: 1px solid #555;
+}
+.ecu-settings-seg button.is-on {
+  background: #2a3640;
+  color: #9dd4ec;
+}
 .ecu-pick-wrap {
   margin: 8px 0 4px;
   position: relative;
@@ -657,39 +682,97 @@ export const SETTINGS_PANEL_CSS = `
   left: 0;
   width: auto;
   height: auto;
+  display: flex;
+  flex-direction: column;
   align-items: stretch;
-  justify-content: stretch;
+  justify-content: flex-end;
   padding: 0;
   background: rgba(0, 0, 0, 0.72);
 }
 .ecu-settings-modal.is-phone {
   width: 100%;
-  height: 100%;
+  height: auto;
   max-width: none;
   max-height: none;
-  border-radius: 16px 16px 0 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: max(10px, env(safe-area-inset-top, 0px));
+  border-radius: 20px 20px 0 0;
   border-left: none;
   border-right: none;
   border-bottom: none;
-  box-shadow: none;
+  box-shadow: 0 -10px 36px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
 }
 .ecu-settings-modal.is-phone .ecu-settings-split {
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .ecu-settings-modal.is-phone .ecu-settings-nav {
+  order: 40;
   width: 100%;
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   border-right: none;
-  border-bottom: 1px solid #2e343a;
-  padding: 10px 12px;
+  border-top: 1px solid #2e343a;
+  border-bottom: none;
+  margin-top: auto;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: rgba(12, 14, 16, 0.96);
   scrollbar-width: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav--foot {
+  flex-wrap: wrap;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav--foot .ecu-settings-phone-pill {
+  flex: 1 1 calc(33% - 8px);
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav--foot .ecu-settings-phone-done {
+  flex: 1 1 100%;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #4a6a7a;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.14);
+  color: #9dd4ec;
+  font-size: 16px;
+  font-weight: 600;
+}
+.ecu-settings-modal.is-phone .ecu-settings-pane {
+  order: 20;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ecu-settings-phone-pill {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #3d4650;
+  border-radius: 999px;
+  background: #1a1f24;
+  color: #c8cdd4;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ecu-settings-phone-pill.is-on,
+.ecu-settings-phone-pill[aria-pressed="true"] {
+  border-color: #5a8aa8;
+  background: #2a3640;
+  color: #9dd4ec;
 }
 .ecu-settings-modal.is-phone .ecu-settings-nav::-webkit-scrollbar {
   display: none;
@@ -729,17 +812,49 @@ export const SETTINGS_PANEL_CSS = `
   border-radius: 16px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-pane {
-  padding: 14px 16px 24px;
+  padding: 8px 12px 10px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-pane-title {
-  font-size: 22px;
+  font-size: 18px;
+  margin: 0 0 6px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-pane-desc {
-  font-size: 15px;
+  display: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-lead {
+  display: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-help {
+  display: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-sec {
+  margin: 10px 0 4px;
+  padding-top: 6px;
+  font-size: 12px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-row {
+  padding: 6px 0;
+  gap: 6px;
+  min-height: 40px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-row--bag-rule {
+  padding: 4px 0;
+  min-height: 0;
+  flex-wrap: wrap;
+}
+.ecu-settings-modal.is-phone .ecu-settings-bag-add .ecu-settings-reset {
+  flex: 1 1 calc(50% - 6px);
+  min-width: 0;
+}
+.ecu-settings-modal.is-phone .ecu-settings-reset {
+  font-size: 14px;
+  padding: 8px 12px;
+  min-height: 40px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-hd {
-  gap: 10px;
+  gap: 8px;
   align-items: center;
+  padding: 8px 10px;
 }
 .ecu-settings-phone-done {
   flex: 0 0 auto;

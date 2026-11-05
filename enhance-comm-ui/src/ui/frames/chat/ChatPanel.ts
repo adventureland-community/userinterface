@@ -41,7 +41,10 @@ import {
 } from "../../../lib/chatServerPages";
 import { detectViewportProfile } from "../../../lib/viewport";
 import { PeerPageDots } from "../../chrome/PeerPageDots";
-import { bindSwipeDownClose } from "../../chrome/phoneShell";
+import {
+  bindSwipeDownClose,
+  syncPhoneSheetOpenClass,
+} from "../../chrome/phoneShell";
 import { ensureChatCss } from "./chatCss";
 import { installChatServerPageGestures } from "./chatServerPageGestures";
 
@@ -57,6 +60,16 @@ const SIDEBAR_FILTERS: { id: SidebarFilter; label: string }[] = [
   { id: "private", label: "PM" },
   { id: "party", label: "Party" },
 ];
+
+type PhoneHubSeg = "party" | "server" | "private";
+
+const PHONE_HUB_SEGS: { id: PhoneHubSeg; label: string }[] = [
+  { id: "party", label: "Party" },
+  { id: "server", label: "Server" },
+  { id: "private", label: "Whisper" },
+];
+
+const PHONE_QUICK_REPLIES = ["omw", "packing", "brb", "heal", "pull"] as const;
 
 
 function isLoggedIn(): boolean {
@@ -191,13 +204,30 @@ function persistActiveDraft(
   if (active.type === "new") active.to = whisperTo;
 }
 
-function rowClassName(msg: ChatMessage): string {
+function rowClassName(msg: ChatMessage, mine?: boolean): string {
   const parts = ["ecu-chat-row"];
   if (msg.local) parts.push("ecu-chat-local");
+  if (mine) parts.push("ecu-chat-row--mine");
   if (msg.channel === "party") parts.push("ecu-chat-row--party");
   else if (msg.channel === "pm") parts.push("ecu-chat-row--pm");
   else if (msg.channel === "system") parts.push("ecu-chat-row--system");
   return parts.join(" ");
+}
+
+function isMineChatMessage(
+  msg: ChatMessage,
+  fromName: string,
+  observingName: string,
+): boolean {
+  if (msg.local) return true;
+  const owner = msg.owner && msg.owner !== "^" ? msg.owner : "";
+  if (!owner) return false;
+  const o = owner.toLowerCase();
+  if (fromName && o === fromName.toLowerCase()) return true;
+  if (observingName && msg.channel === "party" && o === observingName.toLowerCase()) {
+    return true;
+  }
+  return false;
 }
 
 /** Compact clock; includes month/day when not today. */
@@ -238,11 +268,18 @@ export function resolveChatInlineColor(
 function ChatRow(props: {
   msg: ChatMessage;
   onAuthorClick?: (name: string) => void;
+  phoneUi?: boolean;
+  fromName?: string;
+  observingName?: string;
 }): any {
   const msg = props.msg;
   const time = formatChatTimestamp(msg.at);
-  // Keep time + author + body as one flowing paragraph (no flex-shrink wrap).
   const ownerName = msg.owner && msg.owner !== "^" ? msg.owner : "";
+  const mine = isMineChatMessage(
+    msg,
+    props.fromName || "",
+    props.observingName || "",
+  );
   const owner = ownerName
     ? e(
         "button",
@@ -253,22 +290,50 @@ function ChatRow(props: {
             if (props.onAuthorClick) props.onAuthorClick(ownerName);
           },
         },
-        ownerName + ":",
+        props.phoneUi ? ownerName : ownerName + ":",
       )
     : null;
   const inline = resolveChatInlineColor(msg.channel, msg.color);
   const style = inline ? { color: inline } : undefined;
+  const body = e(
+    "span",
+    { className: "ecu-chat-body" },
+    msg.message,
+    msg.xserver ? e("span", { className: "ecu-chat-x" }, "[X]") : null,
+  );
+
+  if (props.phoneUi) {
+    return e(
+      "div",
+      {
+        className: "ecu-chat-line " + rowClassName(msg, mine),
+        style,
+        title: msg.at ? new Date(msg.at).toLocaleString() : undefined,
+      },
+      e(
+        "div",
+        { className: "ecu-chat-bubble" },
+        e(
+          "div",
+          { className: "ecu-chat-bubble-meta" },
+          owner,
+          time ? e("span", { className: "ecu-chat-time" }, time) : null,
+        ),
+        body,
+      ),
+    );
+  }
+
   return e(
     "div",
     {
-      className: rowClassName(msg),
+      className: rowClassName(msg, mine),
       style,
       title: msg.at ? new Date(msg.at).toLocaleString() : undefined,
     },
     time ? e("span", { className: "ecu-chat-time" }, time) : null,
     owner,
-    e("span", { className: "ecu-chat-body" }, msg.message),
-    msg.xserver ? e("span", { className: "ecu-chat-x" }, "[X]") : null,
+    body,
   );
 }
 
@@ -311,6 +376,9 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
   const [expanded, setExpanded] = React.useState(
     () => detectViewportProfile() === "phone",
   );
+  const [phoneUi] = React.useState(() => detectViewportProfile() === "phone");
+  const [keyboardOpen, setKeyboardOpen] = React.useState(false);
+  const [serverSheetOpen, setServerSheetOpen] = React.useState(false);
   const [listFilter, setListFilter] = React.useState("all" as SidebarFilter);
 
   const rootRef = React.useRef(null as HTMLDivElement | null);
@@ -550,6 +618,11 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
       const shell = findPanelShell(root, "chat");
       if (root) root.style.setProperty("--ecu-vv-keyboard", px);
       if (shell) shell.style.setProperty("--ecu-vv-keyboard", px);
+      if (typeof document !== "undefined") {
+        document.documentElement.style.setProperty("--ecu-vv-keyboard", px);
+        document.body.style.setProperty("--ecu-vv-keyboard", px);
+      }
+      setKeyboardOpen((prev) => (prev === inset > 0 ? prev : inset > 0));
       // Keep compose visible once the sheet has resized above the keyboard.
       if (inset > 0 && root) {
         const focused = root.querySelector(
@@ -570,43 +643,71 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
       const shell = findPanelShell(root, "chat");
       if (root) root.style.removeProperty("--ecu-vv-keyboard");
       if (shell) shell.style.removeProperty("--ecu-vv-keyboard");
+      if (typeof document !== "undefined") {
+        document.documentElement.style.removeProperty("--ecu-vv-keyboard");
+        document.body.style.removeProperty("--ecu-vv-keyboard");
+      }
     };
   }, []);
 
   React.useEffect(() => {
-    const shell = findPanelShell(rootRef.current, "chat");
-    if (!shell) return;
+    let cancelled = false;
+    let tries = 0;
+    let timer = 0 as number | ReturnType<typeof setTimeout>;
 
-    if (expanded) {
-      if (!preExpandSizeRef.current) {
-        preExpandSizeRef.current = {
-          w: Math.round(shell.offsetWidth),
-          h: Math.round(shell.offsetHeight),
-        };
+    const apply = () => {
+      if (cancelled) return;
+      const shell = findPanelShell(rootRef.current, "chat");
+      if (!shell) {
+        if (tries < 12) {
+          tries += 1;
+          timer = window.setTimeout(apply, 50);
+        }
+        return;
       }
-      shell.setAttribute("data-ecu-suspend-frame-resize", "1");
-      shell.classList.add("ecu-chat-shell-expanded");
-      return () => {
+
+      if (expanded) {
+        if (!preExpandSizeRef.current) {
+          preExpandSizeRef.current = {
+            w: Math.round(shell.offsetWidth),
+            h: Math.round(shell.offsetHeight),
+          };
+        }
+        shell.setAttribute("data-ecu-suspend-frame-resize", "1");
+        shell.classList.add("ecu-chat-shell-expanded");
+        syncPhoneSheetOpenClass();
+        return;
+      }
+
+      shell.classList.remove("ecu-chat-shell-expanded");
+      shell.removeAttribute("data-ecu-suspend-frame-resize");
+      syncPhoneSheetOpenClass();
+      const saved = preExpandSizeRef.current;
+      preExpandSizeRef.current = null;
+      if (
+        saved &&
+        saved.w >= 80 &&
+        saved.h >= 80 &&
+        typeof props.onFrameSizeRestore === "function"
+      ) {
+        // After CSS fullscreen drops, put the persisted frame back.
+        window.requestAnimationFrame(() => {
+          props.onFrameSizeRestore!({ w: saved.w, h: saved.h });
+        });
+      }
+    };
+
+    apply();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+      const shell = findPanelShell(rootRef.current, "chat");
+      if (shell) {
         shell.classList.remove("ecu-chat-shell-expanded");
         shell.removeAttribute("data-ecu-suspend-frame-resize");
-      };
-    }
-
-    shell.classList.remove("ecu-chat-shell-expanded");
-    shell.removeAttribute("data-ecu-suspend-frame-resize");
-    const saved = preExpandSizeRef.current;
-    preExpandSizeRef.current = null;
-    if (
-      saved &&
-      saved.w >= 80 &&
-      saved.h >= 80 &&
-      typeof props.onFrameSizeRestore === "function"
-    ) {
-      // After CSS fullscreen drops, put the persisted frame back.
-      window.requestAnimationFrame(() => {
-        props.onFrameSizeRestore!({ w: saved.w, h: saved.h });
-      });
-    }
+      }
+      syncPhoneSheetOpenClass();
+    };
   }, [expanded, props.onFrameSizeRestore]);
 
   React.useEffect(() => {
@@ -686,6 +787,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     setWhisperTo(chat.to || "");
     stickBottomRef.current = true;
     if (narrow) setSidebarOpen(false);
+    if (chat.type !== "server") setServerSheetOpen(false);
     bump();
     if (chat.type !== "new" && chat.type !== "party") void pullActiveChat(false);
   };
@@ -736,11 +838,62 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     setWhisperTo(chat.to || to || "");
     stickBottomRef.current = true;
     if (narrow) setSidebarOpen(false);
+    setServerSheetOpen(false);
     bump();
     window.setTimeout(() => {
       const el = inputRef.current;
       if (el && typeof el.focus === "function") el.focus();
     }, 30);
+  };
+
+  const selectFirstPrivateChat = (): void => {
+    const list = listHubConversations();
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].type === "private") {
+        selectConversation(list[i].key);
+        return;
+      }
+    }
+    startNewWhisper();
+  };
+
+  const selectDefaultServerChat = (): void => {
+    const want = resolveCurrentServerKey();
+    if (want) {
+      rememberHubChat({ type: "server", server: want });
+      selectConversation(hubChatKey({ type: "server", server: want }));
+      return;
+    }
+    const list = listHubConversations();
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].type === "server") {
+        selectConversation(list[i].key);
+        return;
+      }
+    }
+    seedServerChats();
+    const keys = readServerOrderKeys();
+    if (keys.length) {
+      rememberHubChat({ type: "server", server: keys[0] });
+      selectConversation(hubChatKey({ type: "server", server: keys[0] }));
+    }
+  };
+
+  const activatePhoneHubSeg = (seg: PhoneHubSeg) => {
+    if (seg === "party") {
+      setListFilter("party");
+      ensurePartyConversation();
+      selectConversation("party");
+      return;
+    }
+    if (seg === "server") {
+      setListFilter("server");
+      selectDefaultServerChat();
+      return;
+    }
+    setListFilter("private");
+    if (active?.type === "private" || active?.type === "new") return;
+    selectFirstPrivateChat();
   };
 
   const loadOlder = async () => {
@@ -771,8 +924,8 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     stickBottomRef.current = dist < 40;
   };
 
-  const send = async () => {
-    const text = draft.trim();
+  const send = async (overrideText?: string) => {
+    const text = (overrideText ?? draftRef.current).trim();
     if (!text || sending) return;
     const chat = getHubActiveConversation();
     if (!chat) {
@@ -876,6 +1029,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
   };
 
   const observing = getObserving();
+  const observingName = observing && observing.name ? String(observing.name) : "";
   const canParty = !!(observing && observing.name);
   const isParty = !!(active && active.type === "party");
   const partyMessages = isParty
@@ -883,6 +1037,12 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     : [];
   const messages = active && !isParty ? sortedMessages(active) : [];
   const title = active ? conversationTitle(active) : "Chat";
+
+  let phoneHubActiveSeg: PhoneHubSeg = "server";
+  if (active?.type === "party") phoneHubActiveSeg = "party";
+  else if (active?.type === "private" || active?.type === "new") {
+    phoneHubActiveSeg = "private";
+  }
 
   const statusLine = !isLoggedIn() && !isParty
     ? "Log in to use Hub chat"
@@ -996,6 +1156,93 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     );
   }
 
+  const phoneHubSegButtons: any[] = [];
+  if (phoneUi) {
+    for (let i = 0; i < PHONE_HUB_SEGS.length; i++) {
+      const seg = PHONE_HUB_SEGS[i];
+      phoneHubSegButtons.push(
+        e(
+          "button",
+          {
+            key: seg.id,
+            type: "button",
+            className:
+              "ecu-chat-phone-seg-btn" +
+              (phoneHubActiveSeg === seg.id ? " is-on" : ""),
+            "aria-pressed": phoneHubActiveSeg === seg.id,
+            onClick: () => activatePhoneHubSeg(seg.id),
+          },
+          seg.label,
+        ),
+      );
+    }
+  }
+
+  const serverSheetRows: any[] = [];
+  if (phoneUi) {
+    const servers =
+      window.X && Array.isArray(window.X.servers) ? window.X.servers : [];
+    for (let i = 0; i < servers.length; i++) {
+      const server = servers[i] as {
+        key?: string;
+        region?: string;
+        name?: string;
+        players?: number;
+      };
+      if (!server?.key) continue;
+      const key = hubChatKey({ type: "server", server: String(server.key) });
+      const selected = active?.key === key;
+      const label = serverUiLabel(String(server.key));
+      const online = Number(server.players) || 0;
+      serverSheetRows.push(
+        e(
+          "button",
+          {
+            key: key,
+            type: "button",
+            className:
+              "ecu-chat-server-sheet-row" + (selected ? " is-active" : ""),
+            onClick: () => {
+              rememberHubChat({ type: "server", server: String(server.key) });
+              selectConversation(key);
+              setServerSheetOpen(false);
+            },
+          },
+          e("span", { className: "ecu-chat-server-sheet-label" }, label),
+          e(
+            "span",
+            { className: "ecu-chat-server-sheet-count" },
+            String(online) + " online",
+          ),
+        ),
+      );
+    }
+  }
+
+  const quickReplyChips: any[] = [];
+  if (phoneUi) {
+    for (let i = 0; i < PHONE_QUICK_REPLIES.length; i++) {
+      const text = PHONE_QUICK_REPLIES[i];
+      quickReplyChips.push(
+        e(
+          "button",
+          {
+            key: text,
+            type: "button",
+            className: "ecu-chat-quick-chip",
+            disabled: sending || (isParty ? !canParty : !isLoggedIn()),
+            onClick: () => {
+              setDraft(text);
+              draftRef.current = text;
+              void send(text);
+            },
+          },
+          text,
+        ),
+      );
+    }
+  }
+
   const filterButtons: any[] = [];
   for (let i = 0; i < SIDEBAR_FILTERS.length; i++) {
     const f = SIDEBAR_FILTERS[i];
@@ -1024,6 +1271,9 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
           e(ChatRow, {
             key: msg.id,
             msg,
+            phoneUi,
+            fromName,
+            observingName,
             onAuthorClick: (name: string) => startNewWhisper(name),
           }),
         );
@@ -1077,6 +1327,9 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
           e(ChatRow, {
             key: msg.id,
             msg,
+            phoneUi,
+            fromName,
+            observingName,
             onAuthorClick: (name: string) => startNewWhisper(name),
           }),
         );
@@ -1101,9 +1354,11 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     {
       className:
         "ecu-chat" +
+        (phoneUi ? " is-phone" : "") +
         (narrow ? " is-narrow" : "") +
         (narrow && sidebarOpen ? " is-sidebar-open" : "") +
-        (expanded ? " is-expanded" : ""),
+        (expanded ? " is-expanded" : "") +
+        (keyboardOpen ? " is-keyboard" : ""),
       "data-ecu-chat": "1",
       ref: rootRef,
     },
@@ -1174,7 +1429,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
             ref: titleRef,
             className: "ecu-chat-title" + (titleBusy ? " is-busy" : ""),
           },
-          narrow
+          narrow && !phoneUi
             ? e(
                 "button",
                 {
@@ -1188,7 +1443,38 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
                 sidebarOpen ? "Hide" : "Chats",
               )
             : null,
-          e("span", { className: "ecu-chat-title-label" }, title),
+          phoneUi && phoneHubActiveSeg === "private"
+            ? e(
+                "button",
+                {
+                  type: "button",
+                  className:
+                    "ecu-chat-title-toggle" +
+                    (sidebarOpen ? " is-open" : ""),
+                  onClick: () => setSidebarOpen(!sidebarOpen),
+                  "aria-expanded": sidebarOpen,
+                },
+                sidebarOpen ? "Hide" : "Chats",
+              )
+            : null,
+          !(phoneUi && active?.type === "server")
+            ? e("span", { className: "ecu-chat-title-label" }, title)
+            : null,
+          phoneUi && active?.type === "server"
+            ? e(
+                "button",
+                {
+                  type: "button",
+                  className:
+                    "ecu-chat-server-pick" +
+                    (serverSheetOpen ? " is-open" : ""),
+                  "aria-expanded": serverSheetOpen,
+                  onClick: () => setServerSheetOpen(!serverSheetOpen),
+                },
+                title,
+                e("span", { className: "ecu-chat-server-pick-caret" }, "▾"),
+              )
+            : null,
           !isParty
             ? e(
                 "label",
@@ -1228,7 +1514,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
           }),
         ),
         (() => {
-          if (!narrow) return null;
+          if (!narrow || phoneUi) return null;
           const serverKeys = listServerChatKeys(
             conversations,
             readServerOrderKeys(),
@@ -1278,9 +1564,53 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
               statusLine,
             )
           : null,
+        phoneUi && serverSheetOpen
+          ? e("button", {
+              key: "server-sheet-backdrop",
+              type: "button",
+              className: "ecu-chat-server-sheet-backdrop",
+              "aria-label": "Close server list",
+              onClick: () => setServerSheetOpen(false),
+            })
+          : null,
+        phoneUi && serverSheetOpen
+          ? e(
+              "div",
+              {
+                key: "server-sheet",
+                className: "ecu-chat-server-sheet",
+                role: "dialog",
+                "aria-label": "Server chats",
+              },
+              e("div", { className: "ecu-chat-server-sheet-head" }, "Servers"),
+              e("div", { className: "ecu-chat-server-sheet-list" }, serverSheetRows),
+            )
+          : null,
+        phoneUi
+          ? e(
+              "div",
+              {
+                className: "ecu-chat-phone-hub ecu-chat-phone-hub--foot",
+                role: "group",
+                "aria-label": "Chat channel",
+              },
+              e("div", { className: "ecu-chat-phone-seg" }, phoneHubSegButtons),
+            )
+          : null,
         e(
           "div",
           { className: "ecu-chat-compose" },
+          phoneUi && quickReplyChips.length
+            ? e(
+                "div",
+                {
+                  className: "ecu-chat-quick-row",
+                  role: "group",
+                  "aria-label": "Quick replies",
+                },
+                quickReplyChips,
+              )
+            : null,
           e(
             "div",
             { className: "ecu-chat-compose-row" },
@@ -1344,6 +1674,18 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
             ),
           ),
         ),
+        phoneUi && props.onRequestClose
+          ? e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-chat-phone-done",
+                onClick: () =>
+                  props.onRequestClose && props.onRequestClose(),
+              },
+              "Done",
+            )
+          : null,
       ),
     ),
   );

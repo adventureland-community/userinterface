@@ -788,12 +788,54 @@ export const MAIL_CHROME_CSS = `
   min-width: 0;
   width: 100%;
 }
+.comm-mail.is-phone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.comm-mail.is-phone .comm-mail__phoneFoot {
+  order: 50;
+  flex: 0 0 auto;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #333;
+  background: rgba(12, 12, 12, 0.96);
+}
+.comm-mail.is-phone .comm-mail__phoneDone {
+  appearance: none;
+  width: 100%;
+  min-height: 48px;
+  border: none;
+  border-radius: 14px;
+  background: rgba(157, 212, 236, 0.16);
+  color: #9dd4ec;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
 .comm-mail.is-phone .comm-mail__toolbar-primary {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   width: 100%;
+}
+.comm-mail.is-phone .comm-mail__toolbar.is-compact {
+  order: 5;
+}
+.comm-mail.is-phone .comm-mail__body {
+  order: 20;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.comm-mail.is-phone .comm-mail__items-seg {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  margin-top: auto;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(12, 12, 12, 0.96);
+  border-top: 1px solid #333;
 }
 .comm-mail.is-phone .comm-mail__toolbar-primary .comm-mail__items-seg {
   flex: 1 1 auto;
@@ -802,12 +844,37 @@ export const MAIL_CHROME_CSS = `
 .comm-mail.is-phone .comm-mail__toolbar-primary .comm-mail__btn {
   flex: 0 0 auto;
 }
+/* Phone More → thumb sheet at bottom so the inbox stays the main surface. */
 .comm-mail.is-phone .comm-mail__toolbar-bulk {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px;
   width: 100%;
-  padding-top: 2px;
+  box-sizing: border-box;
+  padding: 14px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #444;
+  border-radius: 16px 16px 0 0;
+  background: #1c1b1f;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+}
+.comm-mail.is-phone .comm-mail__toolbar-bulk .comm-mail__btn,
+.comm-mail.is-phone .comm-mail__toolbar-bulk .comm-mail__pill {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.comm-mail.is-phone:has(.comm-mail__toolbar-bulk) .comm-mail__chrome-strip,
+.comm-mail.is-phone:has(.comm-mail__toolbar-bulk) .comm-mail__banner,
+.comm-mail.is-phone:has(.comm-mail__toolbar-bulk) .comm-mail__chrome {
+  display: none;
+}
+.comm-mail.is-phone:has(.comm-mail__toolbar-bulk) .comm-mail__body {
+  padding-bottom: 132px;
 }
 .comm-mail.is-phone .comm-mail__more-btn.is-on {
   border-color: #6af;
@@ -843,6 +910,136 @@ export const MAIL_CHROME_CSS = `
   color: #ffe08a;
   background: #2a2410;
 }
+.comm-mail.is-phone.is-filters-screen .comm-mail__search-wrap.is-compact {
+  position: static;
+}
+.comm-mail.is-phone .comm-mail__filters-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  background: #121416;
+  border-top: 1px solid #333;
+}
+.comm-mail.is-phone.is-filters-screen .comm-mail__body,
+.comm-mail.is-phone.is-filters-screen .comm-mail__banner,
+.comm-mail.is-phone.is-filters-screen .comm-mail__chrome-strip,
+.comm-mail.is-phone.is-filters-screen .comm-mail__chrome,
+.comm-mail.is-phone.is-filters-screen .comm-mail__toolbar-primary,
+.comm-mail.is-phone.is-filters-screen .comm-mail__toolbar-bulk,
+.comm-mail.is-phone.is-filters-screen .comm-mail__search-shell {
+  display: none;
+}
+.comm-mail.is-phone.is-filters-screen .comm-mail__toolbar.is-compact {
+  flex: 1 1 auto;
+  min-height: 0;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.comm-mail.is-phone.is-filters-screen .comm-mail__search-wrap.is-compact {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+}
+.comm-mail.is-phone .comm-mail__filters-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  background: #101214;
+}
+.comm-mail.is-phone .comm-mail__filters-back {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #9cf;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px 0 0;
+  cursor: pointer;
+}
+.comm-mail.is-phone .comm-mail__filters-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #eee;
+}
+.comm-mail.is-phone .comm-mail__filters-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0;
+  -webkit-overflow-scrolling: touch;
+}
+.comm-mail.is-phone .comm-mail__filters-section-title {
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #888;
+}
+.comm-mail.is-phone .comm-mail__filters-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  appearance: none;
+  border: none;
+  border-bottom: 1px solid #222;
+  background: transparent;
+  color: #ddd;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  min-height: 48px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.comm-mail.is-phone .comm-mail__filters-row.is-on {
+  color: #ffe08a;
+  background: #1a1810;
+}
+.comm-mail.is-phone .comm-mail__filters-row-check {
+  color: #7ad86a;
+  font-weight: 700;
+}
+.comm-mail.is-phone .comm-mail__filters-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #222;
+  color: #ddd;
+  font-size: 15px;
+  cursor: pointer;
+}
+.comm-mail.is-phone .comm-mail__filters-toggle input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.comm-mail.is-phone .comm-mail__filters-foot {
+  flex-shrink: 0;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #333;
+  background: #101214;
+}
+.comm-mail.is-phone .comm-mail__filters-apply {
+  width: 100%;
+  min-height: 48px;
+  font-size: 15px;
+}
 .comm-mail.is-phone .comm-mail__btn,
 .comm-mail.is-phone .comm-mail__pill,
 .comm-mail.is-phone .comm-mail__items-seg-btn {
@@ -873,9 +1070,16 @@ export const MAIL_CHROME_CSS = `
   gap: 4px;
   padding-top: 4px;
 }
+.comm-mail.is-phone .comm-mail__check {
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+}
 .comm-mail.is-phone .comm-mail__row {
-  padding: 8px 10px;
-  gap: 8px;
+  padding: 10px 10px;
+  gap: 10px;
+  min-height: 56px;
+  align-items: flex-start;
 }
 .comm-mail.is-phone .comm-mail__row .comm-mail__title {
   font-size: 14px;

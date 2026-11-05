@@ -5,7 +5,7 @@ import type { PanelId, PanelPos } from "./layout";
 export type FrameMigration = (pos: PanelPos, def: PanelPos) => PanelPos;
 
 /** Bump when adding a new one-shot frame migrator; settings runs them once. */
-export const LAYOUT_FRAME_REV = 9;
+export const LAYOUT_FRAME_REV = 10;
 
 /** Shipped defaults only — round off scale noise, do not match nearby user sizes. */
 function shipped(n: number | undefined, target: number): boolean {
@@ -61,12 +61,29 @@ export function migrateThreatFrame(pos: PanelPos, def: PanelPos): PanelPos {
   };
 }
 
-/** playerFrame / targetFrame — 320×~144 from the min-box era. */
+/**
+ * playerFrame / targetFrame — 320×~144 min-box era, plus phone mid-band
+ * side-by-side (x 28|72 @ y 48) that collided with the Players roster.
+ */
 export function migrateUnitFrame(pos: PanelPos, def: PanelPos): PanelPos {
   const defW = typeof def.frameW === "number" ? def.frameW : 300;
   const defH = typeof def.frameH === "number" ? def.frameH : 112;
-  if (!shipped(pos.frameW, 320) || !shipped(pos.frameH, 144)) return pos;
-  return { ...pos, frameW: defW, frameH: defH };
+  if (shipped(pos.frameW, 320) && shipped(pos.frameH, 144)) {
+    return { ...pos, frameW: defW, frameH: defH };
+  }
+  const phoneSideBySide =
+    pos.anchor === "bc" &&
+    shipped(pos.y, 48) &&
+    (shipped(pos.x, 28) || shipped(pos.x, 72));
+  if (!phoneSideBySide) return pos;
+  return {
+    ...pos,
+    x: typeof def.x === "number" ? def.x : pos.x,
+    y: typeof def.y === "number" ? def.y : pos.y,
+    anchor: def.anchor || "bc",
+    frameW: defW,
+    frameH: defH,
+  };
 }
 
 /** Compact instance shells: 360×288, 400×320, then 560×400 before taller cards. */

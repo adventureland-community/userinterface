@@ -91,6 +91,14 @@ export async function ensureBankSnapshot(opts?: {
       cached = res.snapshot;
       schedulePersistBankSnapshot(res.snapshot);
       emit();
+      return res;
+    }
+    // Overlay harness seeds memory cache without a hub login — keep fixtures.
+    if (
+      (window as { __ecuOverlayPreview?: boolean }).__ecuOverlayPreview &&
+      cached
+    ) {
+      return { ok: true as const, snapshot: cached };
     }
     return res;
   });

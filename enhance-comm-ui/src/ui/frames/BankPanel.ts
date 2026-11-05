@@ -66,7 +66,6 @@ import { formatRelativeAge } from "../../lib/format";
 import { formatTradeGold } from "../../lib/tradeHelpers";
 import { ItemInstance } from "../chrome/ItemInstance";
 import { PanelExpandButton } from "../chrome/panelExpandControl";
-import { PeerPageDots } from "../chrome/PeerPageDots";
 import { installPeerPageGestures } from "../chrome/peerPageGestures";
 import { usePhoneShellExpand } from "../chrome/usePhoneShellExpand";
 import { QuerySearchField } from "../chrome/QuerySearchField";
@@ -97,6 +96,22 @@ const BANK_VIEW_PAGES: Array<{ key: BankViewMode; label: string }> = [
   { key: "ready", label: "Ready" },
 ];
 const BANK_VIEW_KEYS = BANK_VIEW_PAGES.map((p) => p.key);
+
+type BankPhoneTab = "items" | "ready" | "almost";
+const BANK_PHONE_TABS: Array<{ key: BankPhoneTab; label: string }> = [
+  { key: "items", label: "Items" },
+  { key: "ready", label: "Ready" },
+  { key: "almost", label: "Almost" },
+];
+const BANK_PHONE_TAB_KEYS = BANK_PHONE_TABS.map((p) => p.key);
+
+function bankPhoneTab(
+  view: BankViewMode,
+  readySection: ReadySection,
+): BankPhoneTab {
+  if (view !== "ready") return "items";
+  return readySection === "almost" ? "almost" : "ready";
+}
 
 const MISSING_Q = "#ff6b5a";
 
@@ -379,8 +394,12 @@ export function BankPanel(props: BankPanelProps): any {
   snapRef.current = snap;
   const viewRef = React.useRef(view);
   viewRef.current = view;
+  const readySectionRef = React.useRef(readySection);
+  readySectionRef.current = readySection;
   const setViewRef = React.useRef(setView);
   setViewRef.current = setView;
+  const setReadySectionRef = React.useRef(setReadySection);
+  setReadySectionRef.current = setReadySection;
 
   usePhoneShellExpand({
     panelId: "bank",
@@ -399,10 +418,17 @@ export function BankPanel(props: BankPanelProps): any {
     if (!panelEl) return;
     return installPeerPageGestures(panelEl, {
       onPageSwipe: (dir) => {
-        const next = stepPeerPage(BANK_VIEW_KEYS, viewRef.current, dir);
-        if (next && next !== viewRef.current) {
-          setViewRef.current(next as BankViewMode);
+        const tab = bankPhoneTab(viewRef.current, readySectionRef.current);
+        const nextTab = stepPeerPage(BANK_PHONE_TAB_KEYS, tab, dir);
+        if (!nextTab || nextTab === tab) return;
+        if (nextTab === "items") {
+          setViewRef.current("all");
+          return;
         }
+        setViewRef.current("ready");
+        setReadySectionRef.current(
+          nextTab === "almost" ? "almost" : "ready",
+        );
       },
       allowStart: (target) => {
         if (!(target instanceof Element)) return false;
@@ -454,7 +480,14 @@ export function BankPanel(props: BankPanelProps): any {
       const fromIdb = await hydrateBankCacheFromIdb();
       if (cancelled) return;
       if (fromIdb) setSnap(fromIdb);
-      refresh({ force: true, baseline: fromIdb });
+      // Overlay fixtures live in memory — soft refresh first so seeded packs
+      // show even when hub login / load_bank is unavailable.
+      const soft =
+        !!(window as { __ecuOverlayPreview?: boolean }).__ecuOverlayPreview;
+      refresh({
+        force: !soft,
+        baseline: fromIdb,
+      });
     })();
     return () => {
       cancelled = true;
@@ -1118,17 +1151,19 @@ export function BankPanel(props: BankPanelProps): any {
         restoreTitle: "Restore bank size",
         className: "BankPanel-expand",
       }),
-      e(
-        "button",
-        {
-          type: "button",
-          className: "BankPanel-btn",
-          disabled: loading,
-          onClick: () => refresh(),
-          "data-ecu-tour": "bank-refresh",
-        },
-        loading ? "Loading…" : "Refresh",
-      ),
+      phoneUi
+        ? null
+        : e(
+            "button",
+            {
+              type: "button",
+              className: "BankPanel-btn",
+              disabled: loading,
+              onClick: () => refresh(),
+              "data-ecu-tour": "bank-refresh",
+            },
+            loading ? "Loading…" : "Refresh",
+          ),
     ),
     refreshSummary
       ? e(
@@ -1268,9 +1303,8 @@ export function BankPanel(props: BankPanelProps): any {
           trailingOps: BANK_TRAILING_OPS,
         }),
       ),
-      phoneUi
-        ? null
-        : e(
+      !phoneUi
+        ? e(
             "div",
             {
               className: "BankPanel-seg",
@@ -1290,7 +1324,8 @@ export function BankPanel(props: BankPanelProps): any {
                 p.label,
               ),
             ),
-          ),
+          )
+        : null,
       view === "all" || view === "types"
         ? e(
             "div",
@@ -1316,15 +1351,6 @@ export function BankPanel(props: BankPanelProps): any {
           )
         : null,
     ),
-    phoneUi
-      ? e(PeerPageDots, {
-          pages: BANK_VIEW_PAGES,
-          activeKey: view,
-          onSelect: (key: string) => setView(key as BankViewMode),
-          ariaLabel: "Bank views",
-          className: "BankPanel-pageDots",
-        })
-      : null,
     e(
       "div",
       {
@@ -1334,5 +1360,73 @@ export function BankPanel(props: BankPanelProps): any {
       },
       body,
     ),
+    phoneUi
+      ? e(
+          "div",
+          {
+            className: "BankPanel-phoneFoot",
+            "data-ecu-tour": "bank-views",
+          },
+          e(
+            "div",
+            {
+              className: "BankPanel-seg BankPanel-phoneTabs BankPanel-phoneTabs--foot",
+              role: "group",
+              "aria-label": "Bank view",
+            },
+            BANK_PHONE_TABS.map((p) => {
+              const active = bankPhoneTab(view, readySection) === p.key;
+              return e(
+                "button",
+                {
+                  type: "button",
+                  key: p.key,
+                  className: active ? "is-on" : "",
+                  onClick: () => {
+                    if (p.key === "items") {
+                      if (view === "ready") setView("all");
+                      return;
+                    }
+                    setView("ready");
+                    setReadySection(p.key === "almost" ? "almost" : "ready");
+                  },
+                },
+                p.label,
+              );
+            }),
+          ),
+          e(
+            "div",
+            { className: "BankPanel-phoneFootActs" },
+            e(
+              "button",
+              {
+                type: "button",
+                className: "BankPanel-phoneAct",
+                disabled: loading,
+                onClick: () =>
+                  refresh({
+                    force: !(window as { __ecuOverlayPreview?: boolean })
+                      .__ecuOverlayPreview,
+                  }),
+                "data-ecu-tour": "bank-refresh",
+              },
+              loading ? "Loading…" : "Refresh",
+            ),
+            props.onRequestClose
+              ? e(
+                  "button",
+                  {
+                    type: "button",
+                    className: "BankPanel-phoneDone",
+                    onClick: () =>
+                      props.onRequestClose && props.onRequestClose(),
+                  },
+                  "Done",
+                )
+              : null,
+          ),
+        )
+      : null
   );
 }

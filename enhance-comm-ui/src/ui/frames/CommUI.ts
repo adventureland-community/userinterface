@@ -179,6 +179,7 @@ export function CommUI(props: CommUIProps): any {
     setPanelPos,
     hudDensity,
     setHudDensity,
+    applyPhoneHudPreset,
   } = layoutState;
 
   const { bagOpen, bagRefreshing } = useBagBridge((open) =>
@@ -872,6 +873,7 @@ export function CommUI(props: CommUIProps): any {
           setPhoneHomePage,
           phoneHomeScreens,
           setPhoneHomeScreens,
+          applyPhoneHudPreset,
         })
       : renderCommTogglesPanel(
           panelDeps,
