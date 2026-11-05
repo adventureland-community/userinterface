@@ -24,6 +24,7 @@ import {
   setNameBandFillAlpha,
   softenNameBandGraphics,
   softPlateFill,
+  softTextStylePatch,
   srgbLuminance,
   STOCK_NAME_BORDER,
   STOCK_NAME_FILL,
@@ -176,6 +177,18 @@ describe("softenNameBandGraphics", () => {
   });
 });
 
+describe("softTextStylePatch", () => {
+  it("uses heavy Consolas stroke on desktop and stock pixel face on phone", () => {
+    const desk = softTextStylePatch("#ffffff", "desktop");
+    const phone = softTextStylePatch("#ffffff", "phone");
+    assert.equal(desk.strokeThickness, 7);
+    assert.equal(desk.dropShadow, true);
+    assert.equal(phone.strokeThickness, 0);
+    assert.equal(phone.dropShadow, false);
+    assert.equal(phone.fontFamily, "pixel");
+  });
+});
+
 describe("applySoftTextStyle", () => {
   it("forces Consolas (or first installed mono) over stock pixel", () => {
     assert.equal(NAMEPLATE_FONT_FAMILIES[0], "Consolas");
@@ -189,8 +202,9 @@ describe("applySoftTextStyle", () => {
     assert.equal(style.fontFamily, face);
     assert.equal(style.fill, "#ffffff");
     assert.equal(style.stroke, "#000000");
-    assert.equal(style.strokeThickness, 7);
-    assert.equal(style.dropShadow, true);
+    // Default profile in node tests is desktop-sized (or no window → desktop).
+    assert.equal(style.strokeThickness, softTextStylePatch("#ffffff").strokeThickness);
+    assert.equal(style.dropShadow, softTextStylePatch("#ffffff").dropShadow);
     assert.equal(applySoftTextStyle(node, "#ffffff"), false);
 
     // Re-assert if somehow still on pixel after a soft pass.

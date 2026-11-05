@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ECU overlay harness</title>
+    <style>
+      :root {
+        --dock-h: 44px;
+        --bg: #0c0e12;
+        --panel: #161a22;
+        --line: #3a3a44;
+        --text: #e8e8ec;
+        --muted: #888;
+        --accent: #d4b;
+        --on: #2a1830;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.3 ui-sans-serif, system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #harness-dock {
+        position: fixed;
+        inset: 0 0 auto 0;
+        height: var(--dock-h);
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        background: rgba(10, 12, 16, 0.96);
+        border-bottom: 1px solid var(--line);
+      }
+      #harness-dock .title {
+        color: var(--accent);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        margin-right: 6px;
+      }
+      #harness-dock .group {
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+        padding: 2px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+      }
+      #harness-dock .label {
+        color: var(--muted);
+        font-size: 11px;
+        margin: 0 4px 0 8px;
+      }
+      #harness-dock button,
+      #harness-dock select {
+        appearance: none;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      #harness-dock button:hover {
+        background: #222833;
+      }
+      #harness-dock button.is-on {
+        background: var(--on);
+        border-color: #c8a;
+        color: #e8c8ff;
+      }
+      #harness-dock .meta {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+      #stage {
+        position: absolute;
+        inset: var(--dock-h) 0 0 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #07080b
+          radial-gradient(ellipse at center, #12151c 0%, #07080b 70%);
+      }
+      #device {
+        position: relative;
+        background: #000;
+        border: 1px solid #333;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+        overflow: hidden;
+      }
+      #device.is-phone {
+        width: 390px;
+        height: 844px;
+        border-radius: 18px;
+      }
+      #device.is-desktop {
+        width: min(1280px, calc(100vw - 48px));
+        height: min(800px, calc(100vh - var(--dock-h) - 48px));
+        border-radius: 6px;
+      }
+      #frame {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #000;
+      }
+      #device .badge {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        z-index: 2;
+        pointer-events: none;
+        font: 600 11px/1 ui-sans-serif, system-ui, sans-serif;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 4px 8px;
+        border-radius: 4px;
+      }
+      #status {
+        position: fixed;
+        bottom: 10px;
+        right: 12px;
+        color: var(--muted);
+        font-size: 11px;
+        pointer-events: none;
+      }
+      #status.is-err {
+        color: #f88;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="harness-dock">
+      <span class="title">ECU harness</span>
+      <span class="label">View</span>
+      <div class="group" role="group" aria-label="Viewport">
+        <button type="button" data-view="phone" id="btn-phone">Phone</button>
+        <button type="button" data-view="desktop" id="btn-desktop">Desktop</button>
+      </div>
+      <div class="group" role="group" aria-label="Screenshot">
+        <button type="button" id="btn-shot" title="Screenshot current viewport">Shot</button>
+      </div>
+      <span class="meta" id="meta">phone · 390×844</span>
+    </div>
+    <div id="stage">
+      <div id="device" class="is-phone">
+        <div class="badge" id="device-badge">PHONE</div>
+        <iframe id="frame" title="overlay frame"></iframe>
+      </div>
+    </div>
+    <div id="status"></div>
+    <script>
+      (function () {
+        var VIEWS = {
+          phone: { w: 390, h: 844, label: "PHONE" },
+          desktop: { w: 1280, h: 800, label: "DESKTOP" },
+        };
+        var params = new URLSearchParams(location.search);
+        var view = params.get("view") === "desktop" ? "desktop" : "phone";
+        var device = document.getElementById("device");
+        var frame = document.getElementById("frame");
+        var meta = document.getElementById("meta");
+        var badge = document.getElementById("device-badge");
+        var statusEl = document.getElementById("status");
+        var btnPhone = document.getElementById("btn-phone");
+        var btnDesktop = document.getElementById("btn-desktop");
+
+        function frameSrc(v) {
+          var q = new URLSearchParams();
+          q.set("embed", "1");
+          q.set("view", v);
+          q.set("engine_mode", "canvas");
+          // Bust cache when switching so layoutProfileMode seeds cleanly.
+          q.set("t", String(Date.now()));
+          return "/overlay/frame?" + q.toString();
+        }
+
+        function setStatus(msg, err) {
+          statusEl.textContent = msg || "";
+          statusEl.classList.toggle("is-err", !!err);
+        }
+
+        function applyView(v, reload) {
+          view = v === "desktop" ? "desktop" : "phone";
+          var cfg = VIEWS[view];
+          device.classList.toggle("is-phone", view === "phone");
+          device.classList.toggle("is-desktop", view === "desktop");
+          badge.textContent = cfg.label;
+          meta.textContent = view + " · " + cfg.w + "×" + cfg.h;
+          btnPhone.classList.toggle("is-on", view === "phone");
+          btnDesktop.classList.toggle("is-on", view === "desktop");
+          var next = new URL(location.href);
+          next.searchParams.set("view", view);
+          history.replaceState(null, "", next.pathname + "?" + next.searchParams.toString());
+          if (reload || !frame.src || frame.src === "about:blank") {
+            frame.src = frameSrc(view);
+          }
+        }
+
+        async function shot() {
+          setStatus("Capturing " + view + "…");
+          try {
+            var res = await fetch("/overlay/api/shot", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ view: view }),
+            });
+            if (!res.ok) {
+              var errText = await res.text();
+              throw new Error(errText || res.statusText);
+            }
+            var blob = await res.blob();
+            var name =
+              "overlay-" +
+              view +
+              "-" +
+              new Date().toISOString().replace(/[:.]/g, "-") +
+              ".png";
+            var a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = name;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            setStatus("Saved " + name);
+          } catch (err) {
+            setStatus(String(err && err.message ? err.message : err), true);
+          }
+        }
+
+        btnPhone.addEventListener("click", function () {
+          applyView("phone", true);
+        });
+        btnDesktop.addEventListener("click", function () {
+          applyView("desktop", true);
+        });
+        document.getElementById("btn-shot").addEventListener("click", shot);
+
+        applyView(view, true);
+      })();
+    </script>
+  </body>
+</html>

@@ -718,7 +718,9 @@ const CSS = `
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 2px 6px;
-  padding: 2px 8px 4px;
+  /* Leave room for the camera stick on either thumb side. */
+  padding: 2px max(88px, env(safe-area-inset-right, 0px)) 4px
+    max(88px, env(safe-area-inset-left, 0px));
 }
 .ecu-phone-home-dots__side {
   pointer-events: auto;
@@ -726,10 +728,10 @@ const CSS = `
   align-items: center;
   gap: 4px;
   min-width: 0;
-  min-height: 36px;
-  max-width: 100%;
+  min-height: 32px;
+  max-width: min(36vw, 112px);
   margin: 0;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: rgba(28, 27, 31, 0.72);

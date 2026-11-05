@@ -7,6 +7,11 @@
   "realEcu": true,
   "steps": [
     {
+      "name": "stock host game_loaded",
+      "pass": true,
+      "detail": "renderer+observing.drawn"
+    },
+    {
       "name": "real #comm-ui mounted",
       "pass": true,
       "detail": "count=1"

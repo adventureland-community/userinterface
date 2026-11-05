@@ -13,6 +13,7 @@ import {
 import { setCachedBankSnapshot } from "../host/bank";
 import { commit as commitMail } from "../host/mail/mailState";
 import { setCachedMarketMerchants } from "../host/market/marketMemory";
+import { defaultPhoneHomeScreens } from "../lib/phoneHomePages";
 import { patchSettings } from "../lib/settings";
 import type { BankSnapshot } from "../lib/bank/bankTypes";
 import type { CachedMarketMerchant } from "../lib/market/marketPersistLogic";
@@ -358,8 +359,8 @@ function seedMarket(): void {
 
 function seedCommandDraft(): void {
   patchSettings({
-    // Single home page — hide page-dot chrome for cleaner map-first shots.
-    phoneHomeScreens: [{ id: "home", label: "Home", panels: [], meters: [] }],
+    // Production Home / Players / Coop so stick+FOV vs pager can be scored.
+    phoneHomeScreens: defaultPhoneHomeScreens(),
     commandDraft:
       "// Preview — phone Command sheet\n" +
       "loot();\n" +

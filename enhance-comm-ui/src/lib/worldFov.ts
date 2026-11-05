@@ -8,8 +8,14 @@
  * fov=1 → stock. fov>1 → zoomed out (see more). fov<1 → zoomed in.
  *
  * CSS-fitting softens linear-filtered PIXI.Text; nameplateSharpness raises
- * text resolution and forces NEAREST so glyphs stay crisp like sprites.
+ * text resolution. Phone keeps CSS `image-rendering: auto` so soft strokes
+ * do not become black salt-and-pepper under pixelated downscale.
  */
+
+import {
+  detectViewportProfile,
+  type ViewportProfile,
+} from "./viewport";
 
 export const WORLD_FOV_MIN = 0.5;
 /** Wide zoom-out — phone needs more headroom than desktop; buffer grows with FOV. */
@@ -207,9 +213,28 @@ export function cameraRealAfterFovTowardCursor(opts: {
 type HostMap = { last_max_y?: number; last_max_x?: number };
 
 /**
+ * CSS `image-rendering` for the PIXI view.
+ * FOV ≤1: pixelated (auto upscale mush; phone 1× also stays nearest-crisp).
+ * Phone zoom-out: auto so soft CSS shrink doesn't salt pixel glyphs.
+ * Desktop zoom-out: pixelated for nearest sprites.
+ */
+export function worldViewImageRendering(
+  fov?: number,
+  profile?: ViewportProfile,
+): "pixelated" | "auto" {
+  const p =
+    profile ||
+    (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+  const f =
+    typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+  if (f <= 1) return "pixelated";
+  if (p === "phone") return "auto";
+  return "pixelated";
+}
+
+/**
  * CSS-fit the PIXI view to the window. Only used when FOV ≠ 1.
- * Zoom-out (FOV>1): pixelated so sprites stay nearest-crisp while CSS shrinks.
- * Zoom-in (FOV<1): auto — pixelated CSS upscale turns nameplate text into noise.
+ * See {@link worldViewImageRendering} for sampling mode.
  */
 export function fitRendererView(
   cssW: number,
@@ -230,10 +255,10 @@ export function fitRendererView(
   view.style.display = "block";
   const f =
     typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-  const pixelated = !(f < 1);
-  view.style.imageRendering = pixelated ? "pixelated" : "auto";
+  const mode = worldViewImageRendering(f);
+  view.style.imageRendering = mode;
   (view.style as CSSStyleDeclaration & { webkitImageRendering?: string })
-    .webkitImageRendering = pixelated ? "pixelated" : "auto";
+    .webkitImageRendering = mode;
 }
 
 /** Clear FOV CSS size overrides (keep pixelated snap). */
@@ -264,9 +289,10 @@ export function applyRendererPixelSnap(): void {
   renderer.roundPixels = true;
   const view = renderer.view;
   if (!view || !view.style) return;
-  view.style.imageRendering = "pixelated";
+  const mode = worldViewImageRendering(readAppliedWorldFov() || 1);
+  view.style.imageRendering = mode;
   (view.style as CSSStyleDeclaration & { webkitImageRendering?: string })
-    .webkitImageRendering = "pixelated";
+    .webkitImageRendering = mode;
 }
 
 /**
@@ -364,10 +390,12 @@ export function formatWorldFov(fov: number): string {
 }
 
 /**
- * Extra PIXI.Text resolution so glyphs stay dense after CSS FOV fit.
+ * Glyph denseness after CSS FOV fit (fontSize×d / scale÷d in nameplateSharpness).
  * Zoom-out (f>1): CSS shrinks → densify by f.
  * Zoom-in (f<1): CSS enlarges → densify by 1/f (was wrongly using f and going soft).
- * Cap so phone DPR × extreme FOV does not balloon stroked textures.
+ *
+ * Cap + DPR clamp keep 64×d faces canvas-safe. Phone DPR 3 × FOV 2 used to ask
+ * for d=6 (384px Text) every add_name_tag and the plates vanished.
  */
 export function nameplateTextResolution(fov?: number): number {
   const f =
@@ -379,6 +407,7 @@ export function nameplateTextResolution(fov?: number): number {
       ? window.devicePixelRatio
       : 1;
   const denseness = f >= 1 ? f : 1 / f;
-  // Cap 6 — wide phone FOV × boost needs denser glyphs than 4 before CSS shrink.
-  return Math.max(1, Math.min(6, Math.ceil(denseness * dpr)));
+  const dprBit = Math.min(dpr, 2);
+  // Cap 4 — enough for CSS FOV shrink without thrashing Text atlases.
+  return Math.max(1, Math.min(4, Math.ceil(denseness * dprBit)));
 }

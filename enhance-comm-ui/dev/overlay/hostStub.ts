@@ -4,6 +4,7 @@
 
 import { latestChangelogId } from "../../src/lib/changelog";
 import type { EntityLike } from "../../src/host/globals";
+import { isStockHostReady } from "./bootStockHost";
 import { buildPreviewG } from "./gStub";
 import { setHostMapName } from "./fakePixi";
 import {
@@ -14,7 +15,8 @@ import {
   type GameDataSource,
 } from "./spriteApis";
 
-export const PREVIEW_PLAYER_ID = "ecu-sim-player";
+/** Stock sets sprite.name = sprite.id — use the display name as id. */
+export const PREVIEW_PLAYER_ID = "Preview";
 export const PREVIEW_PARTY = "Preview";
 
 const SETTINGS_KEY = "al-comm-ui-settings-v1";
@@ -233,17 +235,20 @@ export function installPreviewHost(): {
   (window as any).user_id = "ecu-overlay-preview";
   (window as any).user_auth = "ecu-overlay-preview";
   window.character = null;
-  window.observing = player;
-  window.entities = { [player.id]: player };
-  window.xtarget = null;
   // Phone overlay shots: keep Spike target frame off the map / sheets.
   (window as { __ecuFreezeTarget?: boolean }).__ecuFreezeTarget = true;
-  window.current_map = "main";
-  window.current_in = "main";
-  setHostMapName("main");
   window.server_region = "EU";
   window.server_identifier = "I";
-  window.S = {};
+  if (!window.S) window.S = {};
+  // Stock game.js owns entities/map/observing after boot — don't wipe sprites.
+  if (!isStockHostReady()) {
+    window.observing = player;
+    window.entities = { [player.id]: player };
+    window.xtarget = null;
+    window.current_map = "main";
+    window.current_in = "main";
+    setHostMapName("main");
+  }
   // Inventory painter so Bag panel shows real item sprites in overlay.
   if (typeof window.render_inventory !== "function") {
     window.render_inventory = function previewRenderInventory() {

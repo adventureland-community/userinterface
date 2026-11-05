@@ -12,7 +12,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT = join(__dirname, "tours");
-const URL = process.env.ECU_OVERLAY_URL || "http://127.0.0.1:3927/overlay";
+const URL =
+  process.env.ECU_OVERLAY_URL ||
+  "http://127.0.0.1:3927/overlay/frame?view=phone&engine_mode=canvas";
 const VW = 390;
 const VH = 844;
 

@@ -11,7 +11,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT = join(__dirname, "shots");
-const URL = process.env.ECU_OVERLAY_URL || "http://127.0.0.1:3927/overlay";
+const URL =
+  process.env.ECU_OVERLAY_URL ||
+  "http://127.0.0.1:3927/overlay/frame?view=phone&engine_mode=canvas";
 const VW = 390;
 const VH = 844;
 
@@ -306,9 +308,25 @@ async function main() {
     process.exit(1);
   }
 
-  await page.waitForTimeout(2500);
+  // Stock /comm host: wait for PIXI + create_map before ECU chrome asserts.
+  try {
+    await page.waitForFunction(
+      () =>
+        !!(
+          window.game_loaded &&
+          window.renderer &&
+          window.observing &&
+          window.observing.drawn
+        ),
+      { timeout: 90000 },
+    );
+    ok("stock host game_loaded", true, "renderer+observing.drawn");
+  } catch (err) {
+    ok("stock host game_loaded", false, String(err));
+  }
+  await page.waitForTimeout(800);
   await dismissOverlays(page);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(400);
 
   if (!(await assertCommUi(page))) {
     writeFileSync(join(OUT, "drive-report.json"), JSON.stringify(report, null, 2));

@@ -60,24 +60,25 @@ function ensureCss(): void {
   }
   style.textContent = `
 .ecu-cam-chrome {
+  /* Clear the home pager strip (Players › / dots) so FOV never stacks on it. */
   position: fixed;
-  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 8px);
+  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 48px);
   z-index: 236;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   pointer-events: none;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 .ecu-cam-chrome.is-left {
-  left: max(8px, env(safe-area-inset-left, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
   right: auto;
 }
 .ecu-cam-chrome.is-right {
-  right: max(8px, env(safe-area-inset-right, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
   left: auto;
 }
 .ecu-cam-chrome > * {
@@ -88,47 +89,66 @@ function ensureCss(): void {
   left: 0;
   bottom: 0;
   z-index: 1;
-  width: ${JOYSTICK_RADIUS_PX * 2 + 16}px;
-  height: ${JOYSTICK_RADIUS_PX * 2 + 16}px;
+  width: ${JOYSTICK_RADIUS_PX * 2 + 12}px;
+  height: ${JOYSTICK_RADIUS_PX * 2 + 12}px;
   touch-action: none;
 }
 .ecu-cam-stick__base {
   position: absolute;
-  inset: 8px;
+  inset: 6px;
   border-radius: 50%;
-  background: rgba(28, 27, 31, 0.38);
-  border: 1px solid rgba(230, 225, 229, 0.32);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
-  opacity: 0.82;
+  background:
+    radial-gradient(
+      circle at 50% 42%,
+      rgba(60, 58, 68, 0.55) 0%,
+      rgba(28, 27, 31, 0.62) 70%
+    );
+  border: 1.5px solid rgba(230, 225, 229, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.28),
+    0 2px 10px rgba(0, 0, 0, 0.28);
+  opacity: 0.9;
   transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 .ecu-cam-stick__knob {
   position: absolute;
-  width: 32px;
-  height: 32px;
-  margin-left: -16px;
-  margin-top: -16px;
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
+  margin-top: -17px;
   left: 50%;
   top: 50%;
   border-radius: 50%;
-  background: rgba(157, 212, 236, 0.42);
-  border: 1px solid rgba(157, 212, 236, 0.58);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
+  background:
+    radial-gradient(
+      circle at 38% 32%,
+      rgba(190, 230, 248, 0.95) 0%,
+      rgba(157, 212, 236, 0.72) 45%,
+      rgba(90, 140, 170, 0.75) 100%
+    );
+  border: 1.5px solid rgba(220, 240, 250, 0.75);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
   pointer-events: none;
-  opacity: 0.9;
+  opacity: 0.95;
   transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 .ecu-cam-stick.is-active .ecu-cam-stick__base {
   opacity: 1;
-  background: rgba(28, 27, 31, 0.42);
-  border-color: rgba(230, 225, 229, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+  border-color: rgba(157, 212, 236, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 2px 12px rgba(0, 0, 0, 0.35);
 }
 .ecu-cam-stick.is-active .ecu-cam-stick__knob {
   opacity: 1;
-  background: rgba(157, 212, 236, 0.55);
-  border-color: rgba(157, 212, 236, 0.85);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    0 3px 12px rgba(0, 0, 0, 0.45),
+    0 0 0 2px rgba(157, 212, 236, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .ecu-cam-chrome__fov {
   display: flex;
@@ -136,24 +156,24 @@ function ensureCss(): void {
   justify-content: space-between;
   gap: 0;
   width: ${JOYSTICK_RADIUS_PX * 2 + 8}px;
-  min-height: 24px;
-  padding: 0;
-  border-radius: 12px;
-  border: 1px solid rgba(230, 225, 229, 0.14);
-  background: rgba(28, 27, 31, 0.42);
-  box-shadow: none;
-  opacity: 0.78;
+  min-height: 26px;
+  padding: 0 2px;
+  border-radius: 13px;
+  border: 1px solid rgba(230, 225, 229, 0.2);
+  background: rgba(28, 27, 31, 0.78);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+  opacity: 0.94;
 }
 .ecu-cam-chrome__fov-btn {
-  min-width: 28px;
-  min-height: 24px;
+  min-width: 30px;
+  min-height: 26px;
   margin: 0;
-  padding: 0 5px;
+  padding: 0 6px;
   border: none;
   border-radius: 10px;
   background: transparent;
-  color: rgba(230, 225, 229, 0.85);
-  font: 500 10px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  color: rgba(230, 225, 229, 0.9);
+  font: 600 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -168,14 +188,14 @@ function ensureCss(): void {
 .ecu-cam-chrome__fov-label {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 24px;
+  min-height: 26px;
   margin: 0;
   padding: 0 2px;
   border: none;
   border-radius: 10px;
   background: transparent;
-  color: rgba(157, 212, 236, 0.9);
-  font: 500 10px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  color: rgba(157, 212, 236, 0.95);
+  font: 600 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -362,6 +382,7 @@ export function CameraJoystick(): any {
     patchSettings({ cameraJoystickSide: next });
   };
 
+  // Track → FOV → stick: thumb stays on the stick; FOV clears the home pager.
   return e(
     "div",
     {
@@ -438,16 +459,6 @@ export function CameraJoystick(): any {
     e(
       "div",
       {
-        className: "ecu-cam-stick",
-        ref: rootRef,
-        "aria-label": "Camera pan joystick",
-      },
-      e("div", { className: "ecu-cam-stick__base" }),
-      e("div", { className: "ecu-cam-stick__knob", ref: knobRef }),
-    ),
-    e(
-      "div",
-      {
         className: "ecu-cam-chrome__fov",
         title:
           "Camera FOV — out sees more, in sees less. Pinch the map also works.",
@@ -506,6 +517,16 @@ export function CameraJoystick(): any {
         },
         "in",
       ),
+    ),
+    e(
+      "div",
+      {
+        className: "ecu-cam-stick",
+        ref: rootRef,
+        "aria-label": "Camera pan joystick",
+      },
+      e("div", { className: "ecu-cam-stick__base" }),
+      e("div", { className: "ecu-cam-stick__knob", ref: knobRef }),
     ),
   );
 }

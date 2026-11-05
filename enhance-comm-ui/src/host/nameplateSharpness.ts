@@ -7,9 +7,11 @@
  *   2. Pivot at the plate's bottom (head attachment) so scale grows upward —
  *      stock places the Graphics at y=-(barH+aheight) inside a (0,0) container;
  *      scaling that container without a bottom pivot floats tags off heads
- *   3. Raise Text.resolution × FOV×DPR (capped); NEAREST on sprites only —
- *      Text stays LINEAR so soft stroke does not become salt-and-pepper
- *   4. Bust caches on FOV change so tags re-rasterize
+ *   3. Densify glyphs via fontSize↑ / scale↓ (AL PIXI stomps Text.resolution
+ *      back to renderer.resolution every render — resolution bumps never stick)
+ *   4. NEAREST on plate sprites only; Text stays LINEAR so soft stroke does not
+ *      become salt-and-pepper
+ *   5. Bust caches on FOV change so tags re-rasterize
  */
 
 import {
@@ -29,17 +31,17 @@ import { installNameplateContrast } from "./nameplateContrast";
 
 /**
  * Profile size multiplier on top of FOV counter-scale.
- * Phone/tablet still need a boost — stock tags are sized for desktop canvas
- * distance — but ghost plates stay a bit smaller than the old soft-plate
- * ×2.25 wall. Desktop shrinks slightly so town crowds feel less busy.
+ * Readability first: near-full cancel of CSS FOV shrink. Phone also has a
+ * hard min scale (see {@link NAMEPLATE_PHONE_MIN_SCALE}) so 1× FOV on a
+ * 390px handset is still legible Consolas.
  */
 export function nameplatePhoneBoost(profile?: ViewportProfile): number {
   const p =
     profile ||
     (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
-  if (p === "phone") return 1.85;
-  if (p === "tablet") return 1.25;
-  return 0.88;
+  if (p === "phone") return 1;
+  if (p === "tablet") return 1.1;
+  return 0.95;
 }
 
 type PixiLike = {
@@ -199,15 +201,32 @@ function setNodePivot(node: SpriteLike, px: number, py: number): void {
 }
 
 /**
- * How hard desktop counter-scales on FOV zoom-out (f&gt;1).
- * 1 = full cancel (constant screen size — giants over tiny sprites at 5×).
- * ~0.68 keeps labels readable on desert zoom-out without HUD-huge plates at 5×.
+ * Soft-curve exponents kept for tests / callers that still reference them.
+ * Live sizing uses linear FOV cancel ({@link nameplateScreenScale}) — the
+ * shallow curves left mid-FOV labels unreadable mush under CSS fit.
  */
-export const NAMEPLATE_DESKTOP_ZOOM_OUT_EXP = 0.68;
+export const NAMEPLATE_DESKTOP_ZOOM_OUT_EXP = 1;
+export const NAMEPLATE_PHONE_ZOOM_OUT_EXP = 1;
+
+/**
+ * Phone: always ≥2× at FOV≥1. Stock 8px Pixel on a 390 CSS-px view is a
+ * white smudge; FOV 1.5× with 2× counter was the first step that read as
+ * Brick / Preview / Ember in harness shots.
+ */
+export const NAMEPLATE_PHONE_MIN_SCALE = 2;
+export const NAMEPLATE_PHONE_MAX_SCALE = 5;
+/** Desktop mid zoom-out floor so FOV 1.5–2 stay legible. */
+export const NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE = 2;
+export const NAMEPLATE_DESKTOP_MAX_SCALE = 4;
+
+/** Stock add_name_tag face size before our denseness multiply. */
+export const NAMEPLATE_STOCK_FONT_SIZE = 64;
+/** Stock PIXI.Text scale (64 × 0.125 → 8px on the plate). */
+export const NAMEPLATE_STOCK_TEXT_SCALE = 0.125;
 
 /**
  * Snap a raw screen scale to an integer step.
- * Fractional PIXI.Text scales go soft under CSS FOV fit; 1×/2×/3× stay crisp.
+ * Fractional container scales go soft under CSS FOV fit; 1×/2×/3× stay crisp.
  */
 export function snapNameplateScreenScale(raw: number): number {
   if (!(typeof raw === "number") || !Number.isFinite(raw)) return 1;
@@ -216,11 +235,9 @@ export function snapNameplateScreenScale(raw: number): number {
 
 /**
  * Screen-compensated FOV for nameplate size.
- * CSS fit shrinks/grows the canvas by 1/f; PIXI scale ≈ f × boost cancels that
- * so on-screen size stays ~boost × stock.
- * Desktop zoom-out uses a softer curve so plates do not stay HUD-huge at 5×
- * while characters shrink. Phone/tablet keep full cancel for thumb readability.
- * Result is snapped to integers (1…8) so glyphs stay crisp.
+ * Zoom-in: grow with 1/f so CSS enlarge doesn't leave 8px mush.
+ * Zoom-out: cancel CSS shrink, easing past 2× so FOV 5 doesn't glue plates.
+ * Phone floors at 2× on FOV≥1.
  */
 export function nameplateScreenScale(
   fov?: number,
@@ -232,11 +249,68 @@ export function nameplateScreenScale(
     profile ||
     (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
   const boost = nameplatePhoneBoost(p);
-  const compensated =
-    p === "desktop" && f > 1
-      ? Math.pow(f, NAMEPLATE_DESKTOP_ZOOM_OUT_EXP) * boost
-      : f * boost;
-  return snapNameplateScreenScale(Math.max(1 / 3, Math.min(8, compensated)));
+
+  if (f < 1) {
+    const grow = snapNameplateScreenScale(1 / f);
+    if (p === "phone") {
+      return Math.min(3, Math.max(NAMEPLATE_PHONE_MIN_SCALE, grow));
+    }
+    return Math.min(3, Math.max(1, grow));
+  }
+
+  // Full cancel to 2×, then ease so extreme FOV doesn't become one mega-bar.
+  const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
+  let s = snapNameplateScreenScale(Math.max(1 / 3, Math.min(8, eased * boost)));
+  if (p === "phone") {
+    s = Math.max(NAMEPLATE_PHONE_MIN_SCALE, s);
+    return Math.min(NAMEPLATE_PHONE_MAX_SCALE, s);
+  }
+  if (p === "tablet") {
+    if (f >= 1.25) s = Math.max(2, s);
+    return Math.min(4, s);
+  }
+  if (f >= 1.5) s = Math.max(NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE, s);
+  return Math.min(NAMEPLATE_DESKTOP_MAX_SCALE, s);
+}
+
+/**
+ * Bake denser glyphs without Text.resolution (AL PIXI resets that every render).
+ * fontSize × d and scale ÷ d keep layout size while CSS FOV shrink stays sharp.
+ */
+export function applyNameplateGlyphDenseness(
+  node: SpriteLike,
+  dense: number,
+): boolean {
+  const d = Math.max(1, Math.min(6, Math.round(dense)));
+  const style = node.style as
+    | {
+        fontSize?: number;
+        __ecuDense?: number;
+        __ecuSoft?: boolean;
+      }
+    | undefined
+    | null;
+  if (!style || typeof style !== "object") return false;
+  const wantFont = NAMEPLATE_STOCK_FONT_SIZE * d;
+  const wantScale = NAMEPLATE_STOCK_TEXT_SCALE / d;
+  if (style.__ecuDense === d && style.fontSize === wantFont) {
+    return false;
+  }
+  style.fontSize = wantFont;
+  style.__ecuDense = d;
+  // Stroke weight is denseness-scaled in softTextStylePatch — force re-assert.
+  if (style.__ecuSoft) style.__ecuSoft = false;
+  setNodeScale(node, wantScale, wantScale);
+  if (typeof node.updateText === "function") {
+    try {
+      node.updateText();
+    } catch {
+      node.dirty = true;
+    }
+  } else {
+    node.dirty = true;
+  }
+  return true;
 }
 
 /**
@@ -402,18 +476,21 @@ export function sharpenNameTagTextures(
     if (ok) root.__ecuNameplateFov = appliedFov;
   }
 
+  const profile = detectViewportProfile();
+  const phonePixel = profile === "phone";
   const visit = (node: SpriteLike | null | undefined) => {
     if (!node) return;
     const isText = looksLikePixiText(node);
-    // Sprites stay NEAREST; stroked PIXI.Text must stay LINEAR — NEAREST + soft
-    // stroke + FOV CSS pixelated turns glyphs into white salt-and-pepper on phone.
+    // Phone pixel face → NEAREST + roundPixels. Desktop Consolas stroke stays
+    // LINEAR (NEAREST + soft stroke salts under CSS pixelated).
     if (typeof node.roundPixels !== "undefined") {
-      node.roundPixels = !isText;
+      node.roundPixels = phonePixel ? true : !isText;
     }
     const bt = node.texture && node.texture.baseTexture;
     if (bt) {
       if (isText) {
-        if (modes.linear != null) bt.scaleMode = modes.linear;
+        const mode = phonePixel ? modes.nearest : modes.linear;
+        if (mode != null) bt.scaleMode = mode;
       } else if (modes.nearest != null) {
         bt.scaleMode = modes.nearest;
       }
@@ -421,26 +498,20 @@ export function sharpenNameTagTextures(
     if (isText) {
       if (typeof node.resolution === "number" && node.resolution !== res) {
         node.resolution = res;
-        if (typeof node.updateText === "function") {
-          try {
-            node.updateText();
-          } catch {
-            node.dirty = true;
-          }
-        } else {
-          node.dirty = true;
-        }
       } else if (typeof node.resolution !== "number") {
         try {
           (node as { resolution: number }).resolution = res;
-          if (typeof node.updateText === "function") node.updateText();
-          else node.dirty = true;
         } catch {
           /* older PIXI */
         }
       }
+      // Denseness is for Consolas under CSS fit — pixel face stays stock 64/0.125.
+      if (!phonePixel) applyNameplateGlyphDenseness(node, res);
       const bt2 = node.texture && node.texture.baseTexture;
-      if (bt2 && modes.linear != null) bt2.scaleMode = modes.linear;
+      if (bt2) {
+        const mode = phonePixel ? modes.nearest : modes.linear;
+        if (mode != null) bt2.scaleMode = mode;
+      }
     }
     const kids = node.children;
     if (!kids || !kids.length) return;
@@ -449,6 +520,22 @@ export function sharpenNameTagTextures(
   visit(root);
   // Soft plate after FOV Text.resolution so stroke rasterizes at the final DPI.
   beautifyNameTag(root, { ctype: root.__ecuNameplateCtype || ctype });
+  // beautify → updateText() rebuilds the atlas with default LINEAR; phone pixel
+  // face must be NEAREST again or glyphs go soft mush at stock 8px.
+  if (phonePixel && modes.nearest != null) {
+    const forceNearest = (node: SpriteLike | null | undefined) => {
+      if (!node) return;
+      if (looksLikePixiText(node)) {
+        const bt = node.texture && node.texture.baseTexture;
+        if (bt) bt.scaleMode = modes.nearest!;
+        if (typeof node.roundPixels !== "undefined") node.roundPixels = true;
+      }
+      const kids = node.children;
+      if (!kids) return;
+      for (let i = 0; i < kids.length; i++) forceNearest(kids[i]);
+    };
+    forceNearest(root);
+  }
 }
 
 /** Force name tags to rebuild on next draw (after FOV / scale changes). */

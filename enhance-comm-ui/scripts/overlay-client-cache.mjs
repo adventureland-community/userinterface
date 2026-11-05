@@ -2,8 +2,14 @@
  * Overlay preview cache: live adventure.land data.js, stock client functions,
  * fonts, and /images|/css assets. All of this lives under dev/overlay/cache/
  * (gitignored) — the overlay is a simulation harness, not a game dump in git.
+ *
+ * Stock host scripts (PIXI/game.js/…) come from adventureland_mongodb
+ * `upstream/main` via `git show` — never the local worktree (personal branches
+ * / dirty checkouts). Override with ECU_AL_MONGODB_REF; opt into worktree with
+ * ECU_AL_MONGODB_WORKDIR=1. Falls back to https://adventure.land.
  */
 
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -28,7 +34,83 @@ export const REL = {
   font: "css/fonts/m5x7.ttf",
   kit: "client-kit.js",
   manifest: "manifest.json",
+  // Stock /comm client stack (real PIXI + game.js — not FakePIXI).
+  jquery: "js/jquery/jquery-3.2.0.min.js",
+  pixi: "js/pixi/4.8.2-roundpixels/pixi.min.js",
+  pixiLayers: "js/pixi-layers/0.1.7.2/pixi-layers.js",
+  pixiFilters: "js/pixi-filters/2.6.0c0/pixi-filters.js",
+  bowser: "js/libraries/bowser/bowser.16.08.16.js",
+  functions: "js/functions.js",
+  generatedZones: "js/generated_zones.js",
+  eventSchedule: "js/event_schedule.js",
+  witchCipher: "js/witch_cipher.js",
+  entityAnimations: "js/entity_animations.js",
+  game: "js/game.js",
+  pixelFonts: "js/pixel_fonts.js",
 };
+
+/** Paths copied/fetched for the stock host (relative to cache + adventure.land). */
+export const STOCK_HOST_RELS = [
+  REL.jquery,
+  REL.pixi,
+  REL.pixiLayers,
+  REL.pixiFilters,
+  REL.bowser,
+  REL.common,
+  REL.functions,
+  REL.generatedZones,
+  REL.eventSchedule,
+  REL.witchCipher,
+  REL.entityAnimations,
+  REL.game,
+  REL.html,
+  REL.pixelFonts,
+];
+
+/** Sibling adventureland_mongodb (or ECU_AL_MONGODB) for offline stock sync. */
+export function resolveMongodbRoot() {
+  if (process.env.ECU_AL_MONGODB) return resolve(process.env.ECU_AL_MONGODB);
+  return resolve(ROOT, "..", "..", "adventureland_mongodb");
+}
+
+/** Git ref for stock host files. Default: upstream main (kaansoral), not HEAD. */
+export function resolveMongodbGitRef() {
+  const fromEnv = process.env.ECU_AL_MONGODB_REF;
+  if (typeof fromEnv === "string" && fromEnv.trim()) return fromEnv.trim();
+  return "upstream/main";
+}
+
+/** True only when ECU_AL_MONGODB_WORKDIR=1 — copy dirty personal checkouts. */
+export function allowMongodbWorktree() {
+  const v = String(process.env.ECU_AL_MONGODB_WORKDIR || "")
+    .trim()
+    .toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+/**
+ * Read a file from adventureland_mongodb at the pinned git ref (no worktree).
+ * @returns {{ buf: Buffer, sha: string, ref: string } | null}
+ */
+export function readMongodbGitFile(rel) {
+  const root = resolveMongodbRoot();
+  if (!existsSync(root)) return null;
+  const ref = resolveMongodbGitRef();
+  const gitPath = rel.replace(/\\/g, "/");
+  try {
+    const sha = execFileSync("git", ["-C", root, "rev-parse", ref], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+    const buf = execFileSync("git", ["-C", root, "show", `${ref}:${gitPath}`], {
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { buf: Buffer.from(buf), sha, ref };
+  } catch {
+    return null;
+  }
+}
 
 const HTML_FNS = [
   "precompute_image_positions",
@@ -69,7 +151,11 @@ export function isAllowedAssetPath(pathname) {
   if (decoded.includes("\0")) return false;
   const n = decoded.replace(/\\/g, "/");
   if (n.includes("..")) return false;
-  return n.startsWith("/images/") || n.startsWith("/css/");
+  return (
+    n.startsWith("/images/") ||
+    n.startsWith("/css/") ||
+    n.startsWith("/js/")
+  );
 }
 
 export function assetCacheRel(pathname) {
@@ -78,8 +164,49 @@ export function assetCacheRel(pathname) {
   return n.replace(/^\//, "");
 }
 
+export function isStockHostReady() {
+  for (let i = 0; i < STOCK_HOST_RELS.length; i++) {
+    if (!existsSync(cachePath(STOCK_HOST_RELS[i]))) return false;
+  }
+  return true;
+}
+
 export function isCacheReady() {
-  return existsSync(cachePath(REL.data)) && existsSync(cachePath(REL.kit));
+  return (
+    existsSync(cachePath(REL.data)) &&
+    existsSync(cachePath(REL.kit)) &&
+    isStockHostReady()
+  );
+}
+
+async function syncStockOne(rel, force) {
+  const dest = cachePath(rel);
+  if (!force && existsSync(dest)) {
+    return { rel, bytes: statSync(dest).size, cached: true, source: "cache" };
+  }
+  // Prefer git ref (upstream/main) — never a dirty personal worktree by default.
+  const fromGit = readMongodbGitFile(rel);
+  if (fromGit) {
+    writeFileEnsured(dest, fromGit.buf);
+    return {
+      rel,
+      bytes: fromGit.buf.length,
+      cached: false,
+      source: "mongodb-git",
+      ref: fromGit.ref,
+      sha: fromGit.sha,
+    };
+  }
+  if (allowMongodbWorktree()) {
+    const local = resolve(resolveMongodbRoot(), rel);
+    if (existsSync(local)) {
+      const buf = readFileSync(local);
+      writeFileEnsured(dest, buf);
+      return { rel, bytes: buf.length, cached: false, source: "mongodb-workdir" };
+    }
+  }
+  const fetched = await syncOne(rel, "/" + rel.replace(/\\/g, "/"), true);
+  return { ...fetched, source: "origin" };
 }
 
 export function readManifest() {
@@ -98,6 +225,9 @@ export function cacheStatus() {
     ready: isCacheReady(),
     origin: ORIGIN,
     dir: CACHE_DIR,
+    mongodbRef: (manifest && manifest.mongodbRef) || resolveMongodbGitRef(),
+    mongodbSha: manifest && manifest.mongodbSha,
+    mongodbWorktree: !!(manifest && manifest.mongodbWorktree),
     fetchedAt: manifest && manifest.fetchedAt,
     files: manifest && manifest.files,
   };
@@ -264,6 +394,9 @@ export async function syncOverlayCache(opts) {
   files.push(await syncOne(REL.common, "/js/old_common_functions.js", force));
   files.push(await syncOne(REL.html, "/js/html.js", force));
   files.push(await syncOne(REL.font, "/css/fonts/m5x7.ttf", force));
+  for (let i = 0; i < STOCK_HOST_RELS.length; i++) {
+    files.push(await syncStockOne(STOCK_HOST_RELS[i], force));
+  }
 
   const kitPath = cachePath(REL.kit);
   if (force || !existsSync(kitPath)) {
@@ -280,8 +413,23 @@ export async function syncOverlayCache(opts) {
     });
   }
 
+  const mongodbRef = resolveMongodbGitRef();
+  let mongodbSha = null;
+  try {
+    mongodbSha = execFileSync(
+      "git",
+      ["-C", resolveMongodbRoot(), "rev-parse", mongodbRef],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    ).trim();
+  } catch {
+    mongodbSha = null;
+  }
   const manifest = {
     origin: ORIGIN,
+    mongodbRoot: resolveMongodbRoot(),
+    mongodbRef,
+    mongodbSha,
+    mongodbWorktree: allowMongodbWorktree(),
     fetchedAt: new Date().toISOString(),
     files,
   };

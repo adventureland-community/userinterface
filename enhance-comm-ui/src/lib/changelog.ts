@@ -145,7 +145,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "Ghost nameplates",
         detail:
-          "One denser class-tinted band under white Consolas text with a heavier black stroke so names hold on desert sand and light stone. On bright ground the plate densifies further. Name scale snaps to whole steps when you zoom so glyphs stay crisp. Desktop zoom-out keeps plates readable without going HUD-huge. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
+          "One denser class-tinted band under white Consolas text so names hold on desert sand and light stone. Desktop keeps a heavy black stroke; phone relies on the plate (no speckled stroke over the letters). On bright ground the plate densifies further. Name scale snaps to whole steps when you zoom so glyphs stay crisp. Phone keeps plates near stock size; desktop zoom-out stays readable without covering the map. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
         kind: "ui",
       },
       {
@@ -235,7 +235,7 @@ export const CHANGELOG: ChangelogEntry[] = [
           {
             label: "Stick and Center / Follow",
             detail:
-              "Phone stick defaults to the right for a right thumb; flip side on the compact track row or in Settings → Controls. Light nudges crawl, rim is full speed. Center is a one-shot snap; Follow tracks until you pan.",
+              "Phone stick defaults to the right for a right thumb; flip side on the compact track row or in Settings → Controls. Light nudges crawl, rim is full speed. Center / Follow and FOV sit above the stick so they clear the Home / Players pager. Center is a one-shot snap; Follow tracks until you pan.",
             kind: "feature",
           },
           {

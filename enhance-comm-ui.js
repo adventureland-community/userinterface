@@ -748,6 +748,11 @@ var EnhanceCommUI = (() => {
     if (obj.success === false) return true;
     return false;
   }
+  function apiFailedReason(json) {
+    if (!json || typeof json !== "object") return void 0;
+    const reason = json.reason;
+    return typeof reason === "string" && reason.trim() ? reason.trim() : void 0;
+  }
   function readUnreadFromInfs(infs) {
     for (let i = 0; i < infs.length; i++) {
       const info2 = infs[i];
@@ -802,7 +807,10 @@ var EnhanceCommUI = (() => {
       if (!res) return null;
       if (!res.ok) return { ok: false, reason: "http_error" };
       if (apiResponseFailed(res.json)) {
-        return { ok: false, reason: "api_failed" };
+        return {
+          ok: false,
+          reason: apiFailedReason(res.json) || "api_failed"
+        };
       }
       return { ok: true, infs: extractInfs(res.json) };
     } finally {
@@ -829,7 +837,11 @@ var EnhanceCommUI = (() => {
       const accept = (ct) => {
         window.clearTimeout(timer);
         if (apiResponseFailed(ct)) {
-          finish({ ok: false, infs: [], reason: "api_failed" });
+          finish({
+            ok: false,
+            infs: [],
+            reason: apiFailedReason(ct) || "api_failed"
+          });
           return;
         }
         finish({ ok: true, infs: extractInfs(ct) });
@@ -851,7 +863,11 @@ var EnhanceCommUI = (() => {
           }).catch((data) => {
             if (apiResponseFailed(data)) {
               window.clearTimeout(timer);
-              finish({ ok: false, infs: [], reason: "api_failed" });
+              finish({
+                ok: false,
+                infs: [],
+                reason: apiFailedReason(data) || "api_failed"
+              });
               return;
             }
             accept(data);
@@ -899,13 +915,16 @@ var EnhanceCommUI = (() => {
       data: []
     };
   }
-  async function pullMailPage(cursor) {
+  async function pullMailPage(cursor2) {
     const args = {};
-    if (cursor) args.cursor = cursor;
+    if (cursor2) args.cursor = cursor2;
     const infs = await callApi("pull_mail", args);
+    const unreadCount = readUnreadFromInfs(infs);
     const info2 = findMailInfo(infs);
-    if (info2) return { ok: true, data: normalizeMailPage(info2) };
-    return { ok: false, reason: "no_mail_payload" };
+    if (info2) {
+      return { ok: true, data: normalizeMailPage(info2), unreadCount };
+    }
+    return { ok: false, reason: "no_mail_payload", unreadCount };
   }
   async function readMail(mailId) {
     const res = await callApiResult("read_mail", { mail: mailId });
@@ -929,7 +948,12 @@ var EnhanceCommUI = (() => {
         message = info2.message;
       }
     }
-    return { ok: true, data: true, message };
+    return {
+      ok: true,
+      data: true,
+      message,
+      unreadCount: readUnreadFromInfs(infs)
+    };
   }
   async function readMailMany(ids) {
     let unreadCount;
@@ -9212,183 +9236,114 @@ ${fightHoverTip(src)}`
     {
       id: "0.18.0",
       title: "0.18.0",
-      date: "2026-11-04",
-      summary: "Phone-first Comm UI: Material dock, Samsung-style shade/back/drawer gestures, meter home pages, and sheets that clear the dock \u2014 built for Tampermonkey on handsets.",
+      date: "2026-11-05",
+      summary: "Play Comm UI on a phone: Material dock, home pages, thumb-sized app sheets, free camera with FOV zoom, and denser class-tinted nameplates. Desktop also gets sell-to-vendor, batch shrine buys with a lucky upgrade slot, and richer new-mail alerts.",
       highlights: [
         {
-          label: "Center + Follow camera",
-          detail: "Crosshair Center snaps once onto the observed character (keeps free-cam). Person Follow toggles continuous tracking so the observer stays framed; pan/joystick clears Follow. Stick defaults to the right for right-thumb pan \u2014 flip with \u2190 / \u2192 on the compact track row, or Settings \u2192 Controls.",
+          label: "Phone dock and home pages",
+          detail: "Character and Server sit on the bar. Swipe the center band between Home, Players, and Coop. Apps opens from the center button or a swipe up. Character shows level, class, RIP, and realm; Server shows players and ping. Unread mail shows on Apps and the Mail tile.",
           kind: "feature"
         },
         {
-          label: "Compact joystick chrome",
-          detail: "Phone camera cluster is tighter: Center, Follow, and side flip share one 30px row above a slightly smaller stick; FOV strip is thinner so more map stays visible.",
-          kind: "ui"
-        },
-        {
-          label: "Phone panel densify",
-          detail: "Expanded panels fill as bottom sheets (dock-clear, camera chrome hidden). Command Run/Save + Code|Quick + Done sit in the foot; Bank/Bag/Chat/Mail/Settings dismiss from a foot Done; Market row Buy/Open CTAs are thumb-sized.",
-          kind: "improve"
-        },
-        {
-          label: "Phone Players page",
-          detail: "Party roster scrolls in a ~42vh cap with two narrower chip columns and an in-flow Show/Buffs row. Player + target frames stack full-width above the dock (no mid-band side-by-side clash).",
-          kind: "fix"
-        },
-        {
-          label: "Material phone dock",
-          detail: "Character + Server on the bar (clear Not observing). Apps via center button or swipe-up. Shade settings cog; Chat/Cmd/Mail/Bag/Bank live in Apps.",
+          label: "Phone gestures and shade",
+          detail: "Edge swipe goes back. Pull down the shade for quick HUD toggles plus Mail and Chat rows. Stock topleft frost and the old action icon row stay hidden so the map stays clear.",
           kind: "feature"
         },
         {
-          label: "Samsung-learned gestures",
-          detail: "Edge in = back. Top shade with settings cog. Swipe up from the slim dock (including the bar) opens Apps. Center swipe flips configurable home screens.",
+          label: "App sheets for thumbs",
+          detail: "Command, Mail, Bag, Bank, Market, Chat, and Settings open as bottom sheets above the dock. Swipe the title or tap Done to close. Corner expand matches the dark window chrome and toggles full sheet vs restored size. Lists keep the sheet: Mail is list-first, Market puts the catalog first, Bank and Market swipe between pages with labeled prev/current/next. Chat swipes between server conversations; PMs stay in the Chats drawer. Bag asks you to observe first and keeps a full 7-column grid.",
           kind: "feature"
         },
         {
-          label: "Configurable home screens",
-          detail: "Default: empty Home \u2192 Players \u2192 Coop with page dots above chrome. Apps is an icon grid (swipe up). Stock topleft frost + action icon row hidden on phone.",
-          kind: "feature"
-        },
-        {
-          label: "Chat \xB7 Settings \xB7 zoom",
-          detail: "Chat stays single-pane with a Chats drawer when expanded. Settings/Cmd/Chat dock toggles work under lite HUD. Phone Ctrl+wheel (DevTools pinch) zooms the world.",
-          kind: "fix"
-        },
-        {
-          label: "Phone Server \xB7 Character parity",
-          detail: "Dock Server chip puts players on the left and ping bars+ms on the right (desktop-style). Server sheet banner mirrors that; realm rows use a wide name/events column and a clear online count. Character dock/sheet show level, class, RIP, and realm.",
-          kind: "fix"
-        },
-        {
-          label: "Disable wheel zoom",
-          detail: "Desktop Settings \u2192 Comm UI \u2192 Controls: turn off mouse-wheel / trackpad FOV zoom when a laptop trackpad zooms by accident. Hidden on phone (pinch / Map out\xB7in).",
-          kind: "feature"
-        },
-        {
-          label: "Settings categories",
-          detail: "Dropped the catch-all Performance pane. HUD density + hide meters \u2192 Comm HUD; world overlay master \u2192 Drawings; Tampermonkey mobile FAQ \u2192 Comm UI.",
-          kind: "improve"
-        },
-        {
-          label: "Phone camera + dock P0 polish",
-          detail: "Home-page dots no longer steal stick hits. Always-on FOV out/\xD7/in plus Center (crosshair) and Follow (person) icon toggles above the stick. Observe Stop/empty banner wrap correctly. Apps overlays mutually dismiss peers (incl. market). Edge gestures ignore full sheets. Desktop Settings \u2192 Comm UI shows Tampermonkey iOS/Edge/Firefox QR cards.",
-          kind: "fix"
-        },
-        {
-          label: "Chat server pages",
-          detail: "Phone Chat: swipe left/right on the main pane (same feel as home pages) to flip between server conversations; dots under the title show and select the active server. PMs and party stay in the Chats drawer.",
-          kind: "feature"
-        },
-        {
-          label: "Phone Apps sheets",
-          detail: "Command / Mail / Bag join Bank / Market / Chat: auto-expand above the Material dock, expand control, swipe title to close. Command uses Code|Snippets tabs with 44px targets; Market collapses filters behind a Filters button; Bank/Mail/Bag bump touch sizing.",
+          label: "Free camera and FOV zoom",
+          detail: "Look around without changing sprite scale. Desktop: WASD or arrows, drag on the map, mouse wheel or Map out\xB7in. Phone: on-screen stick, pinch, and always-on FOV out/\xD7/in. Wheel and pinch zoom toward the cursor (or pinch midpoint) so the view does not drift once you are zoomed out. Zoom-out stops when the map buffer cannot grow further instead of sliding sideways. Center snaps once onto the watched character; Follow keeps them framed until you pan or zoom. Vision fog marks the server entity window around who you are watching (or yourself), or the static spectator when nobody is watched \u2014 it follows that subject, not the free camera. Map or realm hops re-home the camera.",
           kind: "feature"
         },
         {
           label: "Ghost nameplates",
-          detail: "Single ghost name band: white Consolas text (Menlo / Monaco / Courier New fallback \u2014 one concrete face) centered with even padding inside a light class-tinted ghost (~28% alpha so town art stays primary; band grows upward when the face is taller than stock m5x7) and a soft darker-class rim. Class from live entity `ctype` only (`type` is kind: character/monster/npc \u2014 never class; roster `X.characters[].type` is the class fallback). NPCs / unknown stay white on charcoal. Black text stroke for crowded overlaps. HP/MP/stand untouched. Desktop ~0.88\xD7; phone boost ~1.85\xD7.",
+          detail: "One denser class-tinted band under white Consolas text so names hold on desert sand and light stone. Desktop keeps a heavy black stroke; phone relies on the plate (no speckled stroke over the letters). On bright ground the plate densifies further. Name scale snaps to whole steps when you zoom so glyphs stay crisp. Phone keeps plates near stock size; desktop zoom-out stays readable without covering the map. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
           kind: "ui"
         },
         {
-          label: "Phone nameplates readable",
-          detail: "Name text keeps LINEAR filtering (NEAREST stays on plate sprites only). Edge Android no longer turns labels into white static under FOV CSS pixelated + high DPR. Phone counter-scales ghost plates ~1.85\xD7 at every FOV (incl. zoom-in); scale is FOV\xD7boost capped at 8, text resolution denseness capped at 6.",
+          label: "Touch item actions",
+          detail: "Long-press bag, gear, bank, or trade slots for the same action sheet as a desktop right-click. Tap still opens item info.",
+          kind: "feature"
+        },
+        {
+          label: "Sell to vendor",
+          detail: "From the bag menu, Sell to vendor\u2026 sells for NPC gold with quantity and confirm. Computers sell in place; otherwise you walk to the nearest gold merchant on the map (for example Gabriel). Locked items and shells stay disabled.",
+          kind: "feature"
+        },
+        {
+          label: "Batch upgrade / compound",
+          detail: "In the shrine dialog, turn on Batch to run every matching bag copy one by one (Upgrade all N, or Compound all sets of 3). Matches name, level, and title (shiny / glitched / plain). Shows how many scrolls and offerings the batch will use versus what you have. Optionally buy more of the selected scroll/offering from an NPC after bag stock runs out (capped by gold). The inventory highlights those peers while batch is on. Failures skip to the next copy instead of closing the dialog.",
+          kind: "feature"
+        },
+        {
+          label: "Lucky upgrade slot",
+          detail: "Per character in Upgrade: turn on Use lucky slot and pick a bag index. Single and batch upgrade swap the target into that slot first. Compound ignores lucky slots. The bag cell keeps a green outline and clover while you watch the character.",
+          kind: "feature"
+        },
+        {
+          label: "New-mail toast with who and what",
+          detail: "When Mail is closed, new-mail toasts list who sent what to whom with attachment icons. The unread badge stays on the mail control (and on phone Apps). The in-panel banner shows the same preview.",
+          kind: "improve"
+        },
+        {
+          label: "Shrine outcomes and Mass Production",
+          detail: "Upgrade and Compound wait through Rolling\u2026 instead of treating a bag placeholder as a fail. Higher level means success; an empty slot means fail. Merchants can auto-cast Mass Production / Mass Production PP before the shrine action when the buff is missing (on by default).",
           kind: "fix"
         },
         {
-          label: "Nameplates on zoom-in",
-          detail: "FOV 0.5\xD7 densifies text resolution by 1/fov, keeps the phone boost while counter-scaling (so zoom-in matches FOV=1 size instead of dropping to stock), drops drop-shadow stroke noise, and uses CSS image-rendering:auto instead of pixelated upscale.",
+          label: "Wheel zoom stays on the map",
+          detail: "Desktop wheel or trackpad FOV zoom only when the cursor is on the game world. Scrolling Mail, Attach caps, and other lists no longer zooms the map. Turn wheel zoom off entirely under Settings \u2192 Comm UI \u2192 Controls if a laptop trackpad fights you.",
           kind: "fix"
+        },
+        {
+          label: "Install on phone from desktop",
+          detail: "Settings \u2192 Comm UI on desktop: copy or scan the userscript URL, Tampermonkey store QR cards for iOS / Edge / Firefox, and optional LAN install while developing. That section hides when ECU is already running on the phone.",
+          kind: "feature"
         },
         {
           label: "Phone fullscreen",
-          detail: "Apps \u2192 Full toggles the document Fullscreen API with navigationUI:hide so Edge/Chrome Android can drop the address and tab bars. Exit FS to leave. Hidden when the browser does not support it. Enter/exit re-runs stock on_resize + FOV canvas fit (and listens for visualViewport) so the world fills the taller screen instead of leaving a black bar under a short canvas.",
-          kind: "feature"
-        },
-        {
-          label: "Chat dots + keyboard",
-          detail: "Server page dots stay 8px circles (phone button min-height no longer stretches them into tall ovals). Soft keyboard lifts the expanded chat shell via visualViewport instead of leaving a dead pad under compose.",
-          kind: "fix"
-        },
-        {
-          label: "Phone Mail sheet",
-          detail: "List-first sheet: Filters lives in the search row; Msgs|Items + Compose + More on one line (Stack / Select / Mark read / Refresh behind More or when selecting). Info status folds into the strip \u2014 progress / undo / warn still card. Message list keeps most of the sheet.",
-          kind: "fix"
-        },
-        {
-          label: "Bag needs observe",
-          detail: "Opening Bag without a watched character toasts and opens the Character picker (phone). Apps Bag tile dims when not observing. Phone bag keeps a full 7-column grid (no 6+1 wrap) and centers it in the expanded sheet.",
-          kind: "fix"
-        },
-        {
-          label: "Bank page swipe + dots",
-          detail: "Phone Bank/Market peer swipes work over item tiles (slots are buttons \u2014 they no longer block the gesture). Page dots are spans so phone button min-height cannot stretch them into tall ovals.",
-          kind: "fix"
-        },
-        {
-          label: "Peer page labels",
-          detail: "Bank / Market / Chat page chrome shows the current name, 1/N, and labeled prev/next (not anonymous dots). Swipe flash highlights the page you landed on.",
-          kind: "fix"
-        },
-        {
-          label: "Mobile install \xB7 desktop only",
-          detail: "Settings \u2192 Comm UI hides Mobile install on phone \u2014 QR / LAN handoff is for desktop \u2192 phone, not when ECU is already running on the handset.",
-          kind: "fix"
-        },
-        {
-          label: "Phone sheet density pass",
-          detail: "Home pages show labeled prev/current/next. Bank packs use larger 4-col slots. Bag zooms the board and pins Sort/Refresh as a foot. Market search+Filters share one row. Apps Bag shows Observe first when locked.",
-          kind: "fix"
-        },
-        {
-          label: "Phone Market sheet",
-          detail: "Catalog fills the sheet first. Bag & stand collapse behind a one-line toggle (closed by default). Focus only appears after you pick an item \u2014 no more empty Bag syncing / Stand chrome eating the viewport.",
-          kind: "fix"
-        },
-        {
-          label: "App peer pages",
-          detail: "Shared swipe language with Chat servers: Bank All/Packs/Types/Ready and Market Selling/Buying/\u2026 flip with swipe + dots. Market Filters keeps Near/Afford/Have/Fav only. Mail gets \u2190 Back and swipe-right to return to the list on phone.",
-          kind: "feature"
-        },
-        {
-          label: "Touch item actions",
-          detail: "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
-          kind: "feature"
-        },
-        {
-          label: "Sharp FOV + free camera",
-          detail: "FOV zoom kept (buffer grow + CSS fit, scale unchanged); zoom-out cap raised to 6\xD7 for phone headroom. Nameplates counter-scale with FOV and force NEAREST + Text.resolution\xD7FOV; bottom-pivot (from the stock Graphics child) keeps plates glued to heads when zooming out. Joystick uses radial deadzone + expo curve (crawl on a light nudge, full speed at the rim). Free-cam RAF dt fixed so pan works. Vision fog gates on FOV>1 (not only legacy scale below 2) so the entity window shade returns. Vision hole stays on the observer. Chrome cleanup uses pagehide.",
-          kind: "fix"
-        },
-        {
-          label: "Camera FOV zoom",
-          detail: "Wheel / pinch / Map out\xB7in change camera FOV via a larger logical canvas (CSS-fitted). Stock sprite `scale` stays put \u2014 desktop and phone.",
-          kind: "feature"
-        },
-        {
-          label: "Free camera pan",
-          detail: "WASD / arrows on desktop, middle-drag or left-drag on the canvas, and an on-screen joystick on phone detach the view from the observed character. Stick uses a small deadzone + steep expo so near-center crawls; map/server hops clear free-cam so vision and Follow re-home on live coords. Idle stick stays readable on sand. Center snaps once; Follow toggles continuous track (pan clears it).",
+          detail: "Apps \u2192 Full drops the browser chrome on supported Android browsers so the world can use the taller screen. Exit Fullscreen to leave.",
           kind: "feature"
         }
       ],
       features: [
         {
           title: "Phone chrome",
-          summary: "Dock, shade, sheets, and safe insets.",
+          summary: "Dock, shade, sheets, and first-run guidance.",
           items: [
             {
-              label: "App panel sheets",
-              detail: "Shared phoneShellExpandCss + usePhoneShellExpand: Command / Mail / Bag / Bank / Market / Chat lift above the dock with swipe-down close.",
-              kind: "feature"
-            },
-            {
               label: "Notification shade",
-              detail: "Pull down for Quick HUD toggles (meters/layout/settings) plus Mail/Chat notification rows; More expands the QS band.",
+              detail: "Pull down for meters, layout, and settings shortcuts, plus Mail and Chat notification rows. More expands the quick-settings band.",
               kind: "feature"
             },
             {
-              label: "Mobile install",
-              detail: "Settings \u2192 Comm UI: scan/copy the GitHub raw userscript; ECU_DEV builds fold out a LAN /enhance-comm-ui.user.js install (full script + @updateURL; mobile TM cannot rely on the thin GM.xhr loader). Plus iOS/Edge/Firefox Tampermonkey QR cards (official /qr/s|e|f) and FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+              label: "Lite HUD on phone",
+              detail: "Phone boots with a quieter HUD: timelines, minimap, paperdoll, events, bag, and unit frames stay closed until you reopen them from Menu.",
+              kind: "improve"
+            },
+            {
+              label: "Guided tours on phone",
+              detail: "First-run welcome and Observe / Apps / Server / Layout tours fit the handset. Character pick opens the Character sheet so you can tap a name without a giant card in the way.",
+              kind: "fix"
+            }
+          ]
+        },
+        {
+          title: "Camera and map",
+          summary: "Look around and zoom without breaking sprites or vision.",
+          items: [
+            {
+              label: "Stick and Center / Follow",
+              detail: "Phone stick defaults to the right for a right thumb; flip side on the compact track row or in Settings \u2192 Controls. Light nudges crawl, rim is full speed. Center / Follow and FOV sit above the stick so they clear the Home / Players pager. Center is a one-shot snap; Follow tracks until you pan.",
+              kind: "feature"
+            },
+            {
+              label: "Players page",
+              detail: "Party roster scrolls in a capped band with narrower chips and Show / Buffs in flow. Player and target frames stack full width above the dock.",
               kind: "ui"
             }
           ]
@@ -9396,48 +9351,23 @@ ${fightHoverTip(src)}`
       ],
       items: [
         {
-          label: "Sell to vendor",
-          detail: "Bag item menu (desktop right-click / phone long-press): Sell to vendor\u2026 for NPC gold \u2014 quantity + confirm. Computer/supercomputer sells in place (no travel); otherwise smart_move to the nearest G gold merchant (role merchant with stock, same map first; e.g. Gabriel / basics \u2014 not citizens like Angel). Locked and shells/cash items stay disabled.",
-          kind: "feature"
-        },
-        {
-          label: "Shrine outcome + merchant skills",
-          detail: "Upgrade/Compound no longer treat a bag placeholder as \u201Citem gone\u201D \u2014 Rolling\u2026 until the slot clears; higher level = success, empty = fail. Merchants get Mass Production / Mass Production PP checkboxes (default on) that use_skill before the shrine action when the buff is missing.",
-          kind: "fix"
-        },
-        {
-          label: "Lite HUD defaults",
-          detail: "Auto lite on phone hides timelines, minimap, paperdoll, events, bag, and unit frames until reopened from Menu.",
+          label: "Settings layout",
+          detail: "Performance pane is gone. HUD density and hide meters live under Comm HUD; world overlays under Drawings; mobile install FAQ under Comm UI. Left-nav categories fold out jump links.",
           kind: "improve"
         },
         {
-          label: "Settings subsections",
-          detail: "Active left-nav category folds out jump links (Updates, Mobile install, \u2026). Comm UI Guided tours sit last.",
-          kind: "ui"
-        },
-        {
-          label: "Phone intro sheet",
-          detail: "First-run Comm UI welcome fits the viewport: scroll the overview, Skip / Next stay pinned \u2014 no more clipped giant popup.",
+          label: "Soft keyboard and chat chrome",
+          detail: "Expanded chat lifts with the on-screen keyboard instead of leaving a dead pad under compose. Server page dots stay small circles.",
           kind: "fix"
         },
         {
-          label: "Phone tour \xB7 pick character",
-          detail: "Observe tour steps open the Character sheet and spotlight the list with a compact top callout \u2014 the huge guide card no longer blocks tapping a name.",
+          label: "Phone paperdoll close",
+          detail: "Locked panels on phone keep a corner \xD7 so paperdoll, bag, and tips stay dismissible without arrange hover chrome.",
           kind: "fix"
         },
         {
-          label: "Phone tours \xB7 Apps / Server / Layout",
-          detail: "Intro retargets Server, Apps, Bag, Cmd, Layout, and Add meter to phone sheets/dock; coverage test + overlay harness walk every tour at phone size.",
-          kind: "fix"
-        },
-        {
-          label: "Vision stays on the observer",
-          detail: "Free-cam / Follow no longer drag the vision fog hole with the camera \u2014 the hole tracks the watched character (live entity, then observe snap), not map.real_*.",
-          kind: "fix"
-        },
-        {
-          label: "Phone paperdoll \xD7",
-          detail: "Locked panels on phone no longer hide the dismiss \xD7 inside hover-only arrange chrome \u2014 paperdoll (and bag / tips) keep a corner close control.",
+          label: "Take before delete on received mail",
+          detail: "Received mail with an untaken attachment cannot be deleted until you take it. Sender copies can still be hidden.",
           kind: "fix"
         }
       ]
@@ -11774,6 +11704,39 @@ ${fightHoverTip(src)}`
       Math.min(WORLD_FOV_MAX, Math.round(stepped * 100) / 100)
     );
   }
+  var WORLD_FOV_DEFAULT_MAX_TEXTURE = 4096;
+  function readMaxTextureSize() {
+    try {
+      const host2 = window;
+      const gl = host2.renderer && host2.renderer.gl || host2.renderer && host2.renderer.context && host2.renderer.context.gl || null;
+      if (gl && typeof gl.getParameter === "function") {
+        const n = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+        if (typeof n === "number" && Number.isFinite(n) && n >= 256) {
+          return Math.floor(n);
+        }
+      }
+    } catch (e2) {
+    }
+    return WORLD_FOV_DEFAULT_MAX_TEXTURE;
+  }
+  function maxWorldFovForWindow(cssW, cssH, maxTex = WORLD_FOV_DEFAULT_MAX_TEXTURE) {
+    const w = Math.max(1, cssW);
+    const h = Math.max(1, cssH);
+    const cap = Math.max(256, Math.floor(maxTex) - 1);
+    const raw = Math.min(cap / w, cap / h, WORLD_FOV_MAX);
+    if (!(raw > 0) || !Number.isFinite(raw)) return WORLD_FOV_DEFAULT;
+    const stepped = Math.floor(raw / WORLD_FOV_STEP + 1e-9) * WORLD_FOV_STEP;
+    return Math.max(
+      WORLD_FOV_MIN,
+      Math.min(WORLD_FOV_MAX, Math.round(stepped * 100) / 100)
+    );
+  }
+  function clampWorldFovForDisplay(n, cssW, cssH, maxTex) {
+    const css = cssW != null && cssH != null ? { w: cssW, h: cssH } : typeof window !== "undefined" ? readWindowCssSize() : { w: 1280, h: 720 };
+    const tex = maxTex != null && maxTex > 0 ? maxTex : readMaxTextureSize();
+    const maxFov = maxWorldFovForWindow(css.w, css.h, tex);
+    return Math.min(clampWorldFov(n), maxFov);
+  }
   function readAppliedWorldFov() {
     return appliedFov;
   }
@@ -11789,12 +11752,37 @@ ${fightHoverTip(src)}`
     }
     return { w: Math.max(1, w), h: Math.max(1, h) };
   }
-  function logicalSizeForFov(cssW, cssH, fov) {
+  function logicalSizeForFov(cssW, cssH, fov, maxTex = WORLD_FOV_DEFAULT_MAX_TEXTURE) {
     const f = clampWorldFov(fov);
+    let w = Math.max(1, Math.round(cssW * f));
+    let h = Math.max(1, Math.round(cssH * f));
+    const cap = Math.max(256, Math.floor(maxTex) - 1);
+    if (w > cap || h > cap) {
+      const s = Math.min(cap / w, cap / h);
+      w = Math.max(1, Math.floor(w * s));
+      h = Math.max(1, Math.floor(h * s));
+    }
+    return { w, h };
+  }
+  function cameraRealAfterFovTowardCursor(opts) {
+    const s = typeof opts.scale === "number" && opts.scale > 0 ? opts.scale : 1;
+    const fx2 = typeof opts.fracX === "number" && Number.isFinite(opts.fracX) ? opts.fracX : 0.5;
+    const fy = typeof opts.fracY === "number" && Number.isFinite(opts.fracY) ? opts.fracY : 0.5;
+    const w0 = Math.max(1, opts.widthBefore);
+    const h0 = Math.max(1, opts.heightBefore);
+    const w1 = Math.max(1, opts.widthAfter);
+    const h1 = Math.max(1, opts.heightAfter);
     return {
-      w: Math.max(1, Math.round(cssW * f)),
-      h: Math.max(1, Math.round(cssH * f))
+      x: opts.realX + (fx2 - 0.5) * (w0 - w1) / s,
+      y: opts.realY + (fy - 0.5) * (h0 - h1) / s
     };
+  }
+  function worldViewImageRendering(fov, profile) {
+    const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+    if (f <= 1) return "pixelated";
+    if (p === "phone") return "auto";
+    return "pixelated";
   }
   function fitRendererView(cssW, cssH, fov) {
     const renderer = window.renderer;
@@ -11806,9 +11794,9 @@ ${fightHoverTip(src)}`
     view.style.maxHeight = "100%";
     view.style.display = "block";
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-    const pixelated = !(f < 1);
-    view.style.imageRendering = pixelated ? "pixelated" : "auto";
-    view.style.webkitImageRendering = pixelated ? "pixelated" : "auto";
+    const mode = worldViewImageRendering(f);
+    view.style.imageRendering = mode;
+    view.style.webkitImageRendering = mode;
   }
   function clearRendererViewFit() {
     const renderer = window.renderer;
@@ -11825,13 +11813,15 @@ ${fightHoverTip(src)}`
     renderer.roundPixels = true;
     const view = renderer.view;
     if (!view || !view.style) return;
-    view.style.imageRendering = "pixelated";
-    view.style.webkitImageRendering = "pixelated";
+    const mode = worldViewImageRendering(readAppliedWorldFov() || 1);
+    view.style.imageRendering = mode;
+    view.style.webkitImageRendering = mode;
   }
   function applyWorldFov(next) {
-    const fov = clampWorldFov(next);
     const { w: cssW, h: cssH } = readWindowCssSize();
-    const logical = logicalSizeForFov(cssW, cssH, fov);
+    const maxTex = readMaxTextureSize();
+    const fov = clampWorldFovForDisplay(next, cssW, cssH, maxTex);
+    const logical = logicalSizeForFov(cssW, cssH, fov, maxTex);
     const host2 = window;
     const changed = appliedFov !== fov || host2.width !== logical.w || host2.height !== logical.h;
     appliedFov = fov;
@@ -11839,6 +11829,14 @@ ${fightHoverTip(src)}`
     host2.height = logical.h;
     if (host2.renderer && typeof host2.renderer.resize === "function") {
       host2.renderer.resize(logical.w, logical.h);
+    }
+    if (host2.renderer) {
+      const aw = typeof host2.renderer.width === "number" && host2.renderer.width > 0 ? Math.round(host2.renderer.width) : 0;
+      const ah = typeof host2.renderer.height === "number" && host2.renderer.height > 0 ? Math.round(host2.renderer.height) : 0;
+      if (aw > 0 && ah > 0) {
+        host2.width = aw;
+        host2.height = ah;
+      }
     }
     if (changed && host2.map) {
       host2.map.last_max_y = void 0;
@@ -11875,7 +11873,8 @@ ${fightHoverTip(src)}`
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
     const dpr = typeof window !== "undefined" && typeof window.devicePixelRatio === "number" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
     const denseness = f >= 1 ? f : 1 / f;
-    return Math.max(1, Math.min(6, Math.ceil(denseness * dpr)));
+    const dprBit = Math.min(dpr, 2);
+    return Math.max(1, Math.min(4, Math.ceil(denseness * dprBit)));
   }
 
   // src/lib/worldZoom.ts
@@ -16035,23 +16034,60 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   // src/host/commToast.ts
   var TOAST_CLASS = "ecu-mail-toast";
   var hideTimer = null;
+  function unmountToastReact(el) {
+    try {
+      const ReactDOM = getReactDOM();
+      if (typeof ReactDOM.unmountComponentAtNode === "function") {
+        ReactDOM.unmountComponentAtNode(el);
+      }
+    } catch (e2) {
+    }
+  }
   function showCommToast(message, ms = 3200) {
     if (typeof document === "undefined") return;
-    const text = String(message || "").trim();
-    if (!text) return;
+    let text = "";
+    let html = null;
+    let node = null;
+    let duration = ms;
+    if (typeof message === "string") {
+      text = String(message || "").trim();
+    } else if (message && typeof message === "object") {
+      text = String(message.text || "").trim();
+      if (message.html) html = String(message.html);
+      if (message.node != null) node = message.node;
+      if (message.durationMs != null && Number.isFinite(message.durationMs)) {
+        duration = Math.max(800, Number(message.durationMs));
+      }
+    }
+    if (!text && !html && node == null) return;
     let el = document.querySelector("." + TOAST_CLASS);
     if (!el) {
       el = document.createElement("div");
       el.className = TOAST_CLASS;
       document.body.appendChild(el);
     }
-    el.textContent = text;
+    unmountToastReact(el);
+    if (node != null) {
+      el.textContent = "";
+      try {
+        getReactDOM().render(node, el);
+      } catch (e2) {
+        el.textContent = text || "New mail";
+      }
+    } else if (html) {
+      el.innerHTML = html;
+    } else {
+      el.textContent = text;
+    }
     el.classList.add("is-on");
     if (hideTimer != null) clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
-      el && el.classList.remove("is-on");
+      if (el) {
+        el.classList.remove("is-on");
+        unmountToastReact(el);
+      }
       hideTimer = null;
-    }, Math.max(800, ms));
+    }, Math.max(800, duration));
   }
 
   // src/host/phoneTourChrome.ts
@@ -16244,6 +16280,26 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       lockY = map.real_y;
     }
   }
+  function syncLockFromMapAfterObserveClear() {
+    syncLockFromMap();
+  }
+  function setCameraWorldXY(x, y) {
+    if (!Number.isFinite(x + y)) return;
+    unlockCamera();
+    const map = hostMap();
+    if (!map) return;
+    lockX = x;
+    lockY = y;
+    map.real_x = x;
+    map.real_y = y;
+    const pos = window.position_map;
+    if (typeof pos === "function") {
+      try {
+        pos();
+      } catch (e2) {
+      }
+    }
+  }
   function readCameraRealmKey() {
     const w = window;
     const mapName = (w.current_map != null && String(w.current_map) !== "" ? String(w.current_map) : w.map && w.map.map_name != null ? String(w.map.map_name) : "") || "";
@@ -16317,11 +16373,17 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     }
     ensureRaf();
   }
+  function clearObserverCameraAnchor() {
+    hasObserverAnchor = false;
+    observerAnchorX = 0;
+    observerAnchorY = 0;
+  }
   function lockCamera() {
     freeCamera = false;
     stickPan = { x: 0, y: 0 };
     keyUp = keyDown = keyLeft = keyRight = false;
     freeCamRealmKey = "";
+    hasObserverAnchor = false;
     endMousePan();
     stopRafIfIdle();
     notifyFree();
@@ -16793,11 +16855,11 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     const seen = /* @__PURE__ */ new Set();
     for (let i = 0; i < mails.length; i++) {
       if (!want.has(mails[i].id)) continue;
-      const cursor = mailPageCursorForIndex(i, pageSize);
-      if (cursor == null) continue;
-      if (seen.has(cursor)) continue;
-      seen.add(cursor);
-      cursors.push(cursor);
+      const cursor2 = mailPageCursorForIndex(i, pageSize);
+      if (cursor2 == null) continue;
+      if (seen.has(cursor2)) continue;
+      seen.add(cursor2);
+      cursors.push(cursor2);
     }
     return cursors;
   }
@@ -17446,6 +17508,15 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
 
   // src/host/mail/mailUnreadLogic.ts
+  function shouldHoldUnreadUntilVerified(p) {
+    return !p.quiet && p.prevSeen >= 0 && p.reported < p.prevSeen;
+  }
+  function mailBlocksHardDelete(m) {
+    if (!m.item) return false;
+    if (m.taken && !m.takenPending) return false;
+    if (m.canTake === false) return false;
+    return true;
+  }
   function assignLocalReadFlags(rows, prevIds, bootstrap2, unreadBudget, locallyReadIds2) {
     void unreadBudget;
     const out = [];
@@ -17658,7 +17729,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       void loadOlderMail({ background: true });
     }, prefetchDelayMs());
   }
-  async function runPull(mode, reason, cursor) {
+  async function runPull(mode, reason, cursor2) {
     if (activePull) {
       try {
         await activePull;
@@ -17676,7 +17747,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       );
       try {
         const res = await pullMailPage(
-          mode === "head" ? null : cursor != null ? cursor : null
+          mode === "head" ? null : cursor2 != null ? cursor2 : null
         );
         if (!res.ok || !res.data) {
           setStatus(
@@ -17686,6 +17757,9 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
           return null;
         }
         const page = res.data;
+        if (res.unreadCount != null) {
+          applyXUnread(res.unreadCount, { quiet: true });
+        }
         const mails = getMails();
         const prevIds = /* @__PURE__ */ new Set();
         for (let i = 0; i < mails.length; i++) prevIds.add(mails[i].id);
@@ -17792,8 +17866,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       statusKind: progress ? "warn" : ""
     });
   }
-  async function fetchMailPage(cursor) {
-    const res = await pullMailPage(cursor);
+  async function fetchMailPage(cursor2) {
+    const res = await pullMailPage(cursor2);
     if (!res.ok || !res.data) return null;
     return res.data;
   }
@@ -17862,7 +17936,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       if (seq2 !== refreshSeq) return;
       const batch = batches[b];
       const pages = await Promise.all(
-        batch.map((cursor) => fetchMailPage(cursor))
+        batch.map((cursor2) => fetchMailPage(cursor2))
       );
       if (seq2 !== refreshSeq) return;
       let failed = false;
@@ -17879,7 +17953,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
         for (let r = 0; r < retryBatches.length; r++) {
           if (seq2 !== refreshSeq) return;
           const retryPages = await Promise.all(
-            retryBatches[r].map((cursor) => fetchMailPage(cursor))
+            retryBatches[r].map((cursor2) => fetchMailPage(cursor2))
           );
           if (seq2 !== refreshSeq) return;
           for (let i = 0; i < retryPages.length; i++) {
@@ -17975,6 +18049,1056 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     commit({ newMailCount: 0 });
   }
 
+  // src/host/mail/mailNewNotify.ts
+  function pickNewMailRows(mails, want) {
+    const n = Math.max(0, Math.floor(Number(want) || 0));
+    if (!n || !mails.length) return [];
+    const unread2 = [];
+    for (let i = 0; i < mails.length && unread2.length < n; i++) {
+      if (mails[i].read === false) unread2.push(mails[i]);
+    }
+    if (unread2.length) return unread2;
+    const out = [];
+    for (let i = 0; i < mails.length && out.length < n; i++) {
+      out.push(mails[i]);
+    }
+    return out;
+  }
+  function formatMailRoute(m) {
+    const fro = String(m.fro || "?").trim() || "?";
+    const to = String(m.to || "?").trim() || "?";
+    return fro + " \u2192 " + to;
+  }
+  function formatMailWhat(m) {
+    if (m.item && m.item.name) {
+      const name = String(m.item.name);
+      let label = name;
+      try {
+        label = itemInstanceLabel(name, {
+          p: typeof m.item.p === "string" ? m.item.p : void 0,
+          level: m.item.level
+        }) || name;
+      } catch (e2) {
+      }
+      const q = typeof m.item.q === "number" && m.item.q > 1 ? " \xD7" + m.item.q : "";
+      return label + q;
+    }
+    const sub = String(m.subject || "").trim();
+    return sub || "(no subject)";
+  }
+  function formatNewMailPlainLine(m) {
+    return formatMailRoute(m) + " \xB7 " + formatMailWhat(m);
+  }
+  function buildNewMailToast(rows, deltaHint) {
+    const count = Math.max(rows.length, Math.max(0, deltaHint | 0));
+    const head = count === 1 ? "1 new mail" : count + " new mails";
+    if (!rows.length) {
+      return {
+        text: head,
+        head,
+        rows: [],
+        durationMs: 3200
+      };
+    }
+    const textLines = [head];
+    for (let i = 0; i < rows.length; i++) {
+      textLines.push(formatNewMailPlainLine(rows[i]));
+    }
+    return {
+      text: textLines.join("\n"),
+      head,
+      rows: rows.slice(),
+      durationMs: Math.min(9e3, 2800 + rows.length * 1100)
+    };
+  }
+
+  // src/lib/itemInstanceData.ts
+  function getItemData(item) {
+    if (!item || !("data" in item)) return void 0;
+    const raw = item.data;
+    if (typeof raw !== "string") return void 0;
+    const trimmed = raw.trim();
+    return trimmed || void 0;
+  }
+  function isCxJarName(name) {
+    return name === "cxjar";
+  }
+  function cxJarData(item) {
+    if (!item || !isCxJarName(item.name)) return void 0;
+    return getItemData(item);
+  }
+  function itemStackIdentityKey(item) {
+    const base = String(item.name) + "\0" + (item.level != null && item.level !== "" ? String(item.level) : "") + "\0" + (item.p != null && String(item.p) !== "" ? String(item.p) : "");
+    const data = getItemData(item);
+    return data ? base + "\0" + data : base;
+  }
+  function cxJarContentSkin(data) {
+    if (!data) return void 0;
+    const G = getG();
+    if (!G) return void 0;
+    const skill = G.skills && G.skills[data];
+    if (skill && skill.emote && typeof skill.skin === "string" && skill.skin) {
+      return skill.skin;
+    }
+    if (G.positions && G.positions[data] != null) return data;
+    return void 0;
+  }
+
+  // src/lib/commTouchUi.ts
+  function isCommTouchUi() {
+    if (typeof document !== "undefined") {
+      const root = document.getElementById("comm-ui");
+      if (root && root.classList.contains("comm-ui-touch")) return true;
+    }
+    return isTouchishProfile(detectViewportProfile());
+  }
+
+  // src/host/infoDialog/types.ts
+  var BUFF_DIALOG_ID = "ecu-buff-dialog";
+  var ITEM_DIALOG_ID = "ecu-item-dialog";
+  var STOCK_DIALOG_ID = "topleftcornerdialog";
+  var INFO_SOURCE_ATTR = "data-ecu-info-source";
+  var CLOSE_CLASS = "ecu-dialog-close";
+  var ADOPTED_CLASS = "ecu-info-dialog-adopted";
+  var BUFF_SEL = "#" + BUFF_DIALOG_ID;
+  var ITEM_SEL = "#" + ITEM_DIALOG_ID;
+  var STOCK_SEL = "#" + STOCK_DIALOG_ID;
+  function dialogIdFor(kind) {
+    return kind === "buff" ? BUFF_DIALOG_ID : ITEM_DIALOG_ID;
+  }
+  function panelAttrFor(kind) {
+    return kind === "buff" ? "buffInfo" : "itemInfo";
+  }
+
+  // src/host/infoDialog/css.ts
+  var STYLE_ID2 = "comm-ui-dialog-host-css";
+  function injectDialogHostCss() {
+    let style = document.getElementById(STYLE_ID2);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = STYLE_ID2;
+      document.head.append(style);
+    }
+    style.textContent = `
+/* Fallback host when not yet adopted into CommUI layout panel. */
+#topleftcorner:not(.ecu-info-slot-host) {
+  position: fixed !important;
+  top: 8px !important;
+  left: 8px !important;
+  z-index: 230 !important;
+  pointer-events: none !important;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
+}
+#topleftcornerui {
+  pointer-events: auto !important;
+  vertical-align: top;
+  display: inline-block;
+}
+/* Stub: leftover stock selectors still target this id; content lives in ecu-* hosts. */
+#${STOCK_DIALOG_ID} {
+  display: none !important;
+}
+#${BUFF_DIALOG_ID},
+#${ITEM_DIALOG_ID} {
+  /* Idle hosts must not eat clicks \u2014 parent panels can be pointer-events:none
+   * while this child still had auto !important and a leftover frame box. */
+  pointer-events: none !important;
+  vertical-align: top;
+  display: none;
+  position: relative;
+}
+#${BUFF_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty),
+#${ITEM_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty) {
+  display: block;
+  pointer-events: auto !important;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
+}
+#${BUFF_DIALOG_ID} .${CLOSE_CLASS},
+#${ITEM_DIALOG_ID} .${CLOSE_CLASS} {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  cursor: pointer;
+  border: 1px solid #555;
+  background: #1c1c1c;
+  color: #ddd;
+  width: 28px;
+  height: 28px;
+  line-height: 24px;
+  padding: 0;
+  font-size: 18px;
+  text-align: center;
+  box-sizing: border-box;
+}
+#${BUFF_DIALOG_ID} .${CLOSE_CLASS}:hover,
+#${ITEM_DIALOG_ID} .${CLOSE_CLASS}:hover {
+  border-color: #888;
+  color: #fff;
+}
+`;
+  }
+
+  // src/host/infoDialog/hosts.ts
+  function dialogEl(kind) {
+    return document.getElementById(dialogIdFor(kind));
+  }
+  function hasContent(el) {
+    if (!el) return false;
+    if (el.querySelector(".buyitem, .cccx, img, canvas, table, svg")) return true;
+    const walk = (node) => {
+      if (node.nodeType === 3) return node.textContent || "";
+      if (node.nodeType !== 1) return "";
+      const he = node;
+      if (he.classList && he.classList.contains(CLOSE_CLASS)) return "";
+      let out = "";
+      const kids = he.childNodes;
+      for (let i = 0; i < kids.length; i++) out += walk(kids[i]);
+      return out;
+    };
+    return walk(el).replace(/\s+/g, "").length > 0;
+  }
+  function ensureNamedDialog(id, parent) {
+    let dialog = document.getElementById(id);
+    if (!dialog) {
+      dialog = document.createElement("div");
+      dialog.id = id;
+      dialog.className = "bpclicks enableclicks";
+      parent.append(dialog);
+    }
+    return dialog;
+  }
+  function ensureDialogElements() {
+    injectDialogHostCss();
+    const body = document.body;
+    if (!body) {
+      throw new Error("ensureDialogElements: document.body is not ready");
+    }
+    let corner = document.getElementById("topleftcorner");
+    if (!corner) {
+      corner = document.createElement("div");
+      corner.id = "topleftcorner";
+      corner.className = "bpclicks";
+      body.append(corner);
+    }
+    if (!document.getElementById("topleftcornerui")) {
+      const ui = document.createElement("div");
+      ui.id = "topleftcornerui";
+      ui.className = "bpclicks";
+      corner.append(ui);
+    }
+    const stock = ensureNamedDialog(STOCK_DIALOG_ID, corner);
+    const buff = ensureNamedDialog(BUFF_DIALOG_ID, corner);
+    const item = ensureNamedDialog(ITEM_DIALOG_ID, corner);
+    return { buff, item, stock };
+  }
+  function adoptInfoDialog(kind, slot) {
+    const { buff, item } = ensureDialogElements();
+    const dialog = kind === "buff" ? buff : item;
+    if (dialog.parentElement !== slot) {
+      slot.appendChild(dialog);
+    }
+    dialog.classList.add(ADOPTED_CLASS);
+    dialog.setAttribute("data-ecu-kind", kind);
+    dialog.setAttribute("data-panel-host", panelAttrFor(kind));
+    const corner = document.getElementById("topleftcorner");
+    if (corner) corner.classList.add("ecu-info-slot-host");
+    return dialog;
+  }
+  function ensureAdoptedHost(kind) {
+    const { buff, item } = ensureDialogElements();
+    const slotSel = kind === "item" ? ".comm-item-info-slot" : ".comm-buff-info-slot";
+    const slot = document.querySelector(slotSel);
+    if (slot) return adoptInfoDialog(kind, slot);
+    return kind === "buff" ? buff : item;
+  }
+
+  // src/host/infoDialog/write.ts
+  var listeners8 = /* @__PURE__ */ new Set();
+  var pendingWriteKind = "item";
+  function setPendingWriteKind(kind) {
+    pendingWriteKind = kind;
+  }
+  function getPendingWriteKind() {
+    return pendingWriteKind;
+  }
+  function subscribeInfoDialogChange(listener) {
+    listeners8.add(listener);
+    return () => {
+      listeners8.delete(listener);
+    };
+  }
+  function emitInfoDialogChange(kind, open) {
+    for (const listener of Array.from(listeners8)) {
+      try {
+        listener(kind, open);
+      } catch (e2) {
+      }
+    }
+  }
+  function clearDialogOnlyXTarget() {
+    if (window.__ecuDialogOnlyXTarget) {
+      window.__ecuDialogOnlyXTarget = false;
+      window.xtarget = null;
+    }
+  }
+  function clearDialogsTarget() {
+    try {
+      window.dialogs_target = null;
+    } catch (e2) {
+    }
+  }
+  function ensureCloseButton(dialog, kind, closeFn) {
+    if (!hasContent(dialog)) return;
+    if (dialog.querySelector("." + CLOSE_CLASS)) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = CLOSE_CLASS;
+    btn.title = "Close";
+    btn.setAttribute("aria-label", "Close");
+    btn.textContent = "\xD7";
+    btn.addEventListener("click", (ev) => {
+      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      closeFn(kind);
+    });
+    const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
+    if (panel) {
+      const pos = window.getComputedStyle(panel).position;
+      if (!pos || pos === "static") panel.style.position = "relative";
+      panel.appendChild(btn);
+    } else {
+      dialog.appendChild(btn);
+    }
+  }
+  var FN_ORIG = "__ecuInfoOrig";
+  function buildItemHtml(args) {
+    const w = window;
+    const renderItem = typeof w.render_item === "function" && w.render_item[FN_ORIG] || w.render_item;
+    if (typeof renderItem !== "function") return "";
+    try {
+      const html = renderItem.call(w, "html", args);
+      return typeof html === "string" ? html : "";
+    } catch (e2) {
+      return "";
+    }
+  }
+  function buildConditionHtml(name) {
+    const w = window;
+    const G = w.G;
+    if (!G || !G.conditions) return "";
+    let def = G.conditions[name];
+    let minutes = 0;
+    let condition;
+    const target = w.xtarget || w.ctarget;
+    if (target && target.s && target.s[name] && target.s[name].ms) {
+      minutes = target.s[name].ms / 6e3 / 10;
+    }
+    if (target && target.s && target.s[name]) {
+      const clone = typeof w.clone === "function" ? w.clone : null;
+      def = !def ? {} : clone ? clone(def) : { ...def };
+      condition = target.s[name];
+      const keys = Object.keys(condition);
+      for (let i = 0; i < keys.length; i++) {
+        def[keys[i]] = condition[keys[i]];
+      }
+    }
+    return buildItemHtml({
+      skin: condition && condition.skin || def && def.skin,
+      item: def,
+      prop: def,
+      minutes,
+      condition
+    });
+  }
+  var closeKindImpl = () => false;
+  function bindCloseImpl(fn) {
+    closeKindImpl = fn;
+  }
+  function writeInfoHtml(kind, html) {
+    const host2 = ensureAdoptedHost(kind);
+    host2.innerHTML = html || "";
+    if (hasContent(host2)) {
+      ensureCloseButton(host2, kind, (k) => {
+        closeKindImpl(k);
+      });
+      emitInfoDialogChange(kind, true);
+      return;
+    }
+    if (host2.innerHTML) host2.innerHTML = "";
+    emitInfoDialogChange(kind, false);
+  }
+  function clearInfoHost(kind) {
+    const el = dialogEl(kind);
+    if (!el) return false;
+    const had = hasContent(el) || !!String(el.innerHTML || "").trim();
+    if (!had) return false;
+    el.innerHTML = "";
+    if (kind === "buff") clearDialogOnlyXTarget();
+    clearDialogsTarget();
+    emitInfoDialogChange(kind, false);
+    return true;
+  }
+
+  // src/ui/chrome/cooltip.ts
+  var PAD = 8;
+  var CURSOR = 14;
+  var STYLE_ID3 = "ecu-cooltip-css";
+  var HOST_ID = "ecu-cooltip";
+  var COOLTIP_ICON = 22;
+  var COOLTIP_MONSTER_ICON = 40;
+  var tipEl = null;
+  var hoverKey = null;
+  var tipX = 0;
+  var tipY = 0;
+  var tipRebuild = null;
+  var tipOpts = {};
+  var tipPinned = false;
+  var pinDocHandler = null;
+  var cssInjected = false;
+  var crossHideMeter = null;
+  function bindCooltipCrossHide(hideMeter) {
+    crossHideMeter = hideMeter;
+  }
+  function escapeCooltipHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function ensureCooltipCss() {
+    if (typeof document === "undefined") return;
+    if (cssInjected && document.getElementById(STYLE_ID3)) return;
+    let el = document.getElementById(STYLE_ID3);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = STYLE_ID3;
+      document.head.appendChild(el);
+    }
+    el.textContent = COOLTIP_CSS;
+    cssInjected = true;
+  }
+  function ensureHost() {
+    ensureCooltipCss();
+    if (tipEl && tipEl.isConnected) return tipEl;
+    tipEl = document.createElement("div");
+    tipEl.id = HOST_ID;
+    tipEl.className = "ecu-cooltip";
+    tipEl.setAttribute("role", "tooltip");
+    document.body.appendChild(tipEl);
+    return tipEl;
+  }
+  function placeTip(tip, clientX, clientY) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const rect = tip.getBoundingClientRect();
+    const tw = Math.max(1, rect.width);
+    const th2 = Math.max(1, rect.height);
+    let x = clientX + CURSOR;
+    let y = clientY + CURSOR;
+    if (x + tw > vw - PAD) x = clientX - tw - CURSOR;
+    if (y + th2 > vh - PAD) y = clientY - th2 - CURSOR;
+    x = Math.max(PAD, Math.min(vw - tw - PAD, x));
+    y = Math.max(PAD, Math.min(vh - th2 - PAD, y));
+    tip.style.left = Math.round(x) + "px";
+    tip.style.top = Math.round(y) + "px";
+  }
+  function paintTip(html, clientX, clientY, opts) {
+    if (crossHideMeter) {
+      try {
+        crossHideMeter();
+      } catch (e2) {
+      }
+    }
+    const tip = ensureHost();
+    tip.innerHTML = html || "";
+    tip.classList.toggle("is-item-tip", !!(opts && opts.itemTip));
+    tip.classList.add("is-open");
+    tip.style.left = "-9999px";
+    tip.style.top = "0px";
+    placeTip(tip, clientX, clientY);
+  }
+  function showCooltipAt(html, clientX, clientY, opts) {
+    tipX = clientX;
+    tipY = clientY;
+    if (opts) tipOpts = opts;
+    paintTip(html, clientX, clientY, tipOpts);
+  }
+  function clearPinListener() {
+    if (pinDocHandler) {
+      document.removeEventListener("mousedown", pinDocHandler, true);
+      pinDocHandler = null;
+    }
+  }
+  function hideCooltip(opts) {
+    if (tipPinned && !(opts && opts.force)) return;
+    tipPinned = false;
+    clearPinListener();
+    hoverKey = null;
+    tipRebuild = null;
+    tipOpts = {};
+    if (!tipEl) return;
+    tipEl.classList.remove("is-open", "is-item-tip", "is-pinned");
+    tipEl.innerHTML = "";
+  }
+  function cooltipHandlers(key, rebuild, opts) {
+    return {
+      onMouseEnter: (ev) => {
+        hoverKey = key;
+        tipRebuild = rebuild;
+        tipOpts = opts || {};
+        tipX = ev.clientX;
+        tipY = ev.clientY;
+        showCooltipAt(rebuild(), tipX, tipY, tipOpts);
+      },
+      onMouseMove: (ev) => {
+        if (hoverKey !== key) return;
+        tipX = ev.clientX;
+        tipY = ev.clientY;
+        if (tipRebuild) showCooltipAt(tipRebuild(), tipX, tipY, tipOpts);
+      },
+      onMouseLeave: () => {
+        if (hoverKey !== key) return;
+        if (tipPinned) return;
+        hideCooltip();
+      }
+    };
+  }
+  function refreshCooltip(key) {
+    if (hoverKey !== key || !tipRebuild) return;
+    showCooltipAt(tipRebuild(), tipX, tipY, tipOpts);
+  }
+  function dismissCooltip(key) {
+    if (key != null && hoverKey !== key) return;
+    if (!hoverKey && key != null) return;
+    hideCooltip({ force: true });
+  }
+  function isCooltipHovering(key) {
+    return hoverKey === key;
+  }
+
+  // src/ui/chrome/itemCooltip.ts
+  var tipSeq = 0;
+  function nextItemCooltipKey(name) {
+    tipSeq += 1;
+    return `item:${name}:${tipSeq}`;
+  }
+  function itemCooltipKeyFoot(name) {
+    const key = String(name || "").trim();
+    if (!key) return "";
+    return `<div class="ecu-cooltip-foot ecu-cooltip-item-key"><span>Key</span> <b>${escapeCooltipHtml(key)}</b></div>`;
+  }
+  function itemCooltipHtml(args) {
+    var _a;
+    const G = getG();
+    const def = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[args.name];
+    const actual = {
+      name: args.name,
+      ...args.actual || {}
+    };
+    if (actual.level == null && args.level != null) actual.level = args.level;
+    if (actual.q == null && args.q != null) actual.q = args.q;
+    if (actual.p == null && args.p != null) actual.p = args.p;
+    if (!actual.name) actual.name = args.name;
+    const keyFoot = itemCooltipKeyFoot(args.name);
+    if (def) {
+      const html = buildItemHtml({
+        item: def,
+        name: args.name,
+        actual,
+        readonly: true
+      });
+      if (html && String(html).trim()) return html + keyFoot;
+    }
+    const label = itemInstanceLabel(args.name, {
+      p: actual.p != null ? String(actual.p) : void 0,
+      level: actual.level
+    }) || args.name;
+    return `<h4>${escapeCooltipHtml(label)}</h4>${keyFoot}`;
+  }
+  function itemCooltipHandlers(key, rebuild) {
+    return cooltipHandlers(key, rebuild, { itemTip: true });
+  }
+  function dismissItemCooltip(key) {
+    dismissCooltip(key);
+  }
+
+  // src/ui/chrome/stripNativeTitles.ts
+  function stripNativeTitles(root) {
+    if (!root) return;
+    root.removeAttribute("title");
+    const titled = root.querySelectorAll("[title]");
+    for (let i = 0; i < titled.length; i++) {
+      titled[i].removeAttribute("title");
+    }
+  }
+
+  // src/ui/chrome/wrapIconHtml.ts
+  function wrapIconHtml(html) {
+    return e("div", {
+      className: "ecu-icon-html",
+      style: {
+        display: "inline-block",
+        lineHeight: 0,
+        fontSize: 0,
+        flexShrink: 0
+      },
+      // Keep for React builds that honor it; ref is the source of truth.
+      dangerouslySetInnerHTML: { __html: html || "" },
+      ref: (node) => {
+        if (!node) return;
+        if (html && node.innerHTML !== html) {
+          node.innerHTML = html;
+        }
+        const root = node.firstElementChild;
+        if (!root) return;
+        root.style.margin = "0";
+        root.removeAttribute("onmousedown");
+        root.removeAttribute("ontouchstart");
+        root.removeAttribute("onclick");
+      }
+    });
+  }
+
+  // src/ui/chrome/ItemInstance.ts
+  function formatQty(q, forceShowQ) {
+    if (q == null || !Number.isFinite(q)) return null;
+    if (!forceShowQ && q <= 1) return null;
+    if (q >= 1e6) return Math.floor(q / 1e6) + "m";
+    if (q >= 1e4) return Math.floor(q / 1e3) + "k";
+    return String(Math.floor(q));
+  }
+  function ItemInstance(props) {
+    const React = getReact();
+    ensureItemInstanceBadgeCss();
+    const ref = React.useRef(null);
+    const tipKeyRef = React.useRef("");
+    const {
+      name,
+      skin,
+      level,
+      q,
+      p,
+      data,
+      size = 40,
+      className,
+      title,
+      stockChrome = true,
+      forceShowQ,
+      qtyColor,
+      bankQ,
+      cooltip = true,
+      actual
+    } = props;
+    const levelNum = coerceItemLevel(level);
+    const resolvedData = getItemData({ data }) || getItemData(actual) || void 0;
+    const sealedCx = cxJarData({ name, data: resolvedData });
+    const sealedSkin = sealedCx ? cxJarContentSkin(sealedCx) : void 0;
+    const effectiveSkin = sealedSkin || skin;
+    const jarBadgePx = sealedCx ? Math.max(14, Math.round(size * 0.45)) : 0;
+    const jarBadgeHtml = sealedCx && jarBadgePx ? itemIconHtml("cxjar", {
+      size: jarBadgePx,
+      nativeTitle: false
+    }) : "";
+    const tipActual = {
+      name,
+      ...actual || {}
+    };
+    if (tipActual.level == null && level != null) tipActual.level = level;
+    if (tipActual.q == null && q != null) tipActual.q = q;
+    if (tipActual.p == null && p != null) tipActual.p = p;
+    if (resolvedData && tipActual.data == null) tipActual.data = resolvedData;
+    const tip = title || itemInstanceLabel(name, { p, level: levelNum }) || name;
+    const qtyLabel = formatQty(q, forceShowQ);
+    const levelBadge = resolveItemLevelBadge(name, level);
+    const bankLabel = bankQ != null && Number.isFinite(bankQ) && bankQ > 0 ? formatQty(bankQ, true) : null;
+    if (!tipKeyRef.current) tipKeyRef.current = nextItemCooltipKey(name);
+    const nameRef = React.useRef(name);
+    nameRef.current = name;
+    const levelRef = React.useRef(level);
+    levelRef.current = level;
+    const qRef = React.useRef(q);
+    qRef.current = q;
+    const pRef = React.useRef(p);
+    pRef.current = p;
+    const actualRef = React.useRef(tipActual);
+    actualRef.current = tipActual;
+    const tipLabelRef = React.useRef(tip);
+    tipLabelRef.current = tip;
+    const rebuildTip = React.useCallback(() => {
+      return itemCooltipHtml({
+        name: nameRef.current,
+        level: levelRef.current,
+        q: qRef.current,
+        p: pRef.current,
+        actual: actualRef.current
+      });
+    }, []);
+    const tipHandlers = cooltip && !isCommTouchUi() ? itemCooltipHandlers(tipKeyRef.current, rebuildTip) : null;
+    React.useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      const html = stockChrome ? itemInstanceHtml(name, {
+        skin: effectiveSkin,
+        level: levelNum,
+        q,
+        p,
+        size,
+        title: tip,
+        nativeTitle: false
+      }) : itemIconHtml(name, {
+        skin: effectiveSkin,
+        size,
+        title: tip,
+        nativeTitle: false,
+        p
+      });
+      el.innerHTML = html || "";
+      const stockBadges = el.querySelectorAll(".iqui, .iuui");
+      for (let i = 0; i < stockBadges.length; i++) {
+        const node = stockBadges[i];
+        node.style.display = "none";
+      }
+      const root = el.querySelector(
+        ".ecu-item-instance > div, .ecu-item-title-frame, .ecu-meter-icon"
+      );
+      if (root) {
+        root.style.margin = "0";
+        root.removeAttribute("onmousedown");
+        root.removeAttribute("ontouchstart");
+        root.removeAttribute("onclick");
+        if (p) stampNativeItemTitleBorder(root, p);
+      }
+      if (cooltip) {
+        stripNativeTitles(el);
+        const host2 = el.parentElement;
+        if (host2) host2.removeAttribute("title");
+      }
+      return () => {
+        if (el) el.innerHTML = "";
+      };
+    }, [name, effectiveSkin, levelNum, q, p, size, tip, stockChrome, cooltip]);
+    React.useEffect(() => {
+      if (!cooltip) return;
+      const key = tipKeyRef.current;
+      return () => {
+        dismissItemCooltip(key);
+      };
+    }, [cooltip]);
+    return e(
+      "span",
+      {
+        className: ["ecu-item-instance-host", className].filter(Boolean).join(" "),
+        style: {
+          position: "relative",
+          display: "inline-flex",
+          width: size + 6,
+          height: size + 6,
+          flex: "0 0 auto",
+          alignItems: "center",
+          justifyContent: "center",
+          lineHeight: 0,
+          verticalAlign: "middle",
+          cursor: cooltip ? "help" : void 0
+        },
+        title: cooltip ? void 0 : tip,
+        onMouseEnter: tipHandlers ? tipHandlers.onMouseEnter : void 0,
+        onMouseMove: tipHandlers ? tipHandlers.onMouseMove : void 0,
+        onMouseLeave: tipHandlers ? tipHandlers.onMouseLeave : void 0
+      },
+      e("span", {
+        ref,
+        className: "ecu-item-instance-art",
+        style: {
+          display: "inline-flex",
+          width: size + 6,
+          height: size + 6,
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "visible",
+          lineHeight: 0
+        }
+      }),
+      jarBadgeHtml ? e(
+        "span",
+        {
+          className: "ecu-item-badge ecu-item-badge--cxjar",
+          "aria-hidden": true,
+          style: {
+            width: jarBadgePx,
+            height: jarBadgePx
+          }
+        },
+        wrapIconHtml(jarBadgeHtml)
+      ) : null,
+      levelBadge && !sealedCx ? e(
+        "span",
+        {
+          className: "ecu-item-badge ecu-item-badge--level",
+          // Skip native titles when Comm cooltip is on — they stack on hover.
+          title: cooltip ? void 0 : "Level " + levelBadge.text,
+          style: { color: levelBadge.color, borderColor: levelBadge.color }
+        },
+        levelBadge.text
+      ) : null,
+      qtyLabel ? e(
+        "span",
+        {
+          className: "ecu-item-badge ecu-item-badge--qty",
+          title: cooltip ? void 0 : "Quantity " + (q != null ? q : qtyLabel),
+          style: qtyColor ? { color: qtyColor, borderColor: qtyColor } : void 0
+        },
+        qtyLabel
+      ) : null,
+      bankLabel ? e(
+        "span",
+        {
+          className: "ecu-item-badge ecu-item-badge--bank",
+          title: cooltip ? void 0 : "Bank \xD7" + (bankQ != null ? bankQ : bankLabel)
+        },
+        bankLabel
+      ) : null
+    );
+  }
+  var ITEM_INSTANCE_BADGE_CSS = `
+.ecu-item-instance-host {
+  position: relative;
+  overflow: visible;
+}
+.ecu-item-badge {
+  position: absolute;
+  z-index: 2;
+  min-width: 14px;
+  padding: 0 4px;
+  border: 1px solid #666;
+  background: rgba(0, 0, 0, 0.92);
+  color: #fff;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 700;
+  line-height: 14px !important;
+  height: 14px;
+  text-align: center;
+  box-sizing: border-box !important;
+  pointer-events: none;
+  letter-spacing: 0;
+}
+.ecu-item-badge--qty {
+  right: -2px;
+  bottom: -2px;
+  color: #fff;
+}
+.ecu-item-badge--level {
+  left: -2px;
+  bottom: -2px;
+  color: #cfcfcf;
+}
+.ecu-item-badge--cxjar {
+  left: 0;
+  bottom: 0;
+  z-index: 3;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 2px;
+  background: rgba(18, 18, 22, 0.94);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  line-height: 0 !important;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ecu-item-badge--cxjar .ecu-icon-html,
+.ecu-item-badge--cxjar .ecu-item-instance,
+.ecu-item-badge--cxjar .ecu-meter-icon {
+  display: block !important;
+  margin: 0 !important;
+}
+.ecu-item-badge--bank {
+  right: -2px;
+  top: -2px;
+  color: #e8c96a;
+  border-color: #8a7340;
+}
+`;
+  var BADGE_STYLE_ID = "ecu-item-instance-badge-css";
+  var itemInstanceBadgeCssInjected = false;
+  function ensureItemInstanceBadgeCss() {
+    if (typeof document === "undefined") return;
+    if (itemInstanceBadgeCssInjected) {
+      if (document.getElementById(BADGE_STYLE_ID)) return;
+      itemInstanceBadgeCssInjected = false;
+    }
+    let el = document.getElementById(BADGE_STYLE_ID);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = BADGE_STYLE_ID;
+      document.head.appendChild(el);
+    }
+    el.textContent = ITEM_INSTANCE_BADGE_CSS;
+    itemInstanceBadgeCssInjected = true;
+  }
+
+  // src/ui/frames/mail/mailFormat.ts
+  function formatMailDate(sent, now = Date.now()) {
+    const t = Date.parse(sent);
+    if (!Number.isFinite(t)) return String(sent || "");
+    const d = new Date(t);
+    const n = new Date(now);
+    try {
+      if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) {
+        return d.toLocaleTimeString(void 0, {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        });
+      }
+      if (d.getFullYear() === n.getFullYear()) {
+        return d.toLocaleDateString(void 0, {
+          day: "2-digit",
+          month: "2-digit"
+        });
+      }
+      return d.toLocaleDateString(void 0, {
+        day: "2-digit",
+        month: "2-digit",
+        year: "2-digit"
+      });
+    } catch (e2) {
+      return String(sent);
+    }
+  }
+  function formatMailDateTime(sent) {
+    const t = Date.parse(sent);
+    if (!Number.isFinite(t)) return String(sent || "");
+    try {
+      return new Date(t).toLocaleString();
+    } catch (e2) {
+      return String(sent);
+    }
+  }
+  function formatMailRelative(sent, now = Date.now()) {
+    const t = Date.parse(sent);
+    if (!Number.isFinite(t)) return String(sent || "");
+    return formatRelativeAge(t, now);
+  }
+  function selfCharacterNames() {
+    const out = [];
+    const chars = window.X && window.X.characters || [];
+    for (let i = 0; i < chars.length; i++) {
+      const n = chars[i] && chars[i].name;
+      if (n) out.push(String(n));
+    }
+    return out;
+  }
+  function visiblePlayerNames() {
+    const out = [];
+    const raw = window.entities;
+    if (!raw) return out;
+    const list = Array.isArray(raw) ? raw : Object.values(raw);
+    for (let i = 0; i < list.length; i++) {
+      const ent = list[i];
+      if (!ent || !ent.name) continue;
+      if (ent.npc) continue;
+      if (ent.player || ent.type === "character") out.push(String(ent.name));
+    }
+    return out;
+  }
+
+  // src/ui/frames/mail/mailRowShared.ts
+  function rowMeta(m) {
+    const bits = [m.fro + " \u2192 " + m.to];
+    if (m.item && typeof m.item.q === "number" && m.item.q > 1) {
+      bits.push("\xD7" + m.item.q);
+    }
+    return bits.join(" \xB7 ");
+  }
+  function stackMeta(g) {
+    return g.head.fro + " \u2192 " + g.head.to;
+  }
+  function mailWhenColumn(sent) {
+    return e(
+      "div",
+      {
+        className: "comm-mail__when",
+        title: formatMailDateTime(sent)
+      },
+      e("div", { className: "comm-mail__when-date" }, formatMailDate(sent)),
+      e("div", { className: "comm-mail__when-ago" }, formatMailRelative(sent))
+    );
+  }
+  function mailItemIcon(m, size = 32, qtyOverride) {
+    if (!m.item || !m.item.name) {
+      return e("div", {
+        className: "comm-mail__item is-empty",
+        "aria-hidden": "true",
+        style: { width: size, height: size }
+      });
+    }
+    const q = qtyOverride != null ? qtyOverride : typeof m.item.q === "number" ? m.item.q : void 0;
+    const taken = !!m.taken;
+    const name = String(m.item.name);
+    const level = m.item.level;
+    const p = typeof m.item.p === "string" ? m.item.p : void 0;
+    const label = itemInstanceLabel(name, { p, level });
+    return e(
+      "div",
+      {
+        className: "comm-mail__item" + (taken ? " is-taken" : ""),
+        // ItemInstance cooltip owns hover — no native title stack.
+        "aria-label": taken ? label + " (taken)" : label,
+        onClick: (ev) => ev.stopPropagation(),
+        style: { width: size, height: size }
+      },
+      e(ItemInstance, {
+        name,
+        skin: typeof m.item.skin === "string" ? m.item.skin : void 0,
+        level,
+        q,
+        p,
+        size,
+        actual: m.item
+      })
+    );
+  }
+
+  // src/ui/frames/mail/mailNewToastView.ts
+  function buildNewMailToastNode(rows, head) {
+    return e(
+      "div",
+      { className: "ecu-mail-toast__body" },
+      e("div", { className: "ecu-mail-toast__head" }, head),
+      rows.length ? e(
+        "div",
+        { className: "ecu-mail-toast__list" },
+        ...rows.map(
+          (m) => e(
+            "div",
+            { key: m.id, className: "ecu-mail-toast__row" },
+            mailItemIcon(m, 28),
+            e(
+              "div",
+              { className: "ecu-mail-toast__meta" },
+              e(
+                "div",
+                { className: "ecu-mail-toast__route" },
+                formatMailRoute(m)
+              ),
+              e(
+                "div",
+                { className: "ecu-mail-toast__what" },
+                formatMailWhat(m)
+              )
+            )
+          )
+        )
+      ) : null
+    );
+  }
+
   // src/host/mail/mailUnread.ts
   var SERVER_UNREAD_CAP = 100;
   function getXUnread() {
@@ -17986,20 +19110,21 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (c >= SERVER_UNREAD_CAP) return SERVER_UNREAD_CAP + "+";
     return String(c);
   }
-  function syncMailBadge() {
-    if (typeof document === "undefined") return;
-    const badge = document.querySelector(
-      "[data-ecu-mail-badge]"
-    );
-    if (!badge) return;
-    const n = getXUnread();
+  function paintMailBadge(badge, n) {
     badge.textContent = formatUnreadBadgeLabel(n);
     badge.hidden = n === 0;
     badge.title = n >= SERVER_UNREAD_CAP ? "Unread mail (server reports at most 100)" : n ? n + " unread" : "";
   }
-  function applyXUnread(count, opts) {
-    const n = Math.max(0, Number(count) || 0);
-    const prevSeen = getLastSeenUnread();
+  function syncMailBadge() {
+    if (typeof document === "undefined") return;
+    const badges = document.querySelectorAll("[data-ecu-mail-badge]");
+    if (!badges.length) return;
+    const n = getXUnread();
+    for (let i = 0; i < badges.length; i++) {
+      paintMailBadge(badges[i], n);
+    }
+  }
+  function writeXUnread(n) {
     if (typeof window !== "undefined" && window.X) {
       window.X.unread = n;
     }
@@ -18007,8 +19132,34 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       syncMailBadge();
     } catch (e2) {
     }
+  }
+  var pendingUnreadVerify = null;
+  async function verifyUnreadDecrease() {
+    try {
+      await requestMailHead("X.unread\u2193 (verify)", { force: true });
+    } catch (e2) {
+    } finally {
+      pendingUnreadVerify = null;
+    }
+  }
+  function applyXUnread(count, opts) {
+    const n = Math.max(0, Number(count) || 0);
+    const prevSeen = getLastSeenUnread();
+    const quiet = !!(opts && opts.quiet);
+    if (shouldHoldUnreadUntilVerified({
+      prevSeen,
+      reported: n,
+      quiet
+    })) {
+      writeXUnread(prevSeen);
+      if (!pendingUnreadVerify) {
+        pendingUnreadVerify = verifyUnreadDecrease();
+      }
+      return;
+    }
+    writeXUnread(n);
     if (prevSeen >= 0 && n === prevSeen) return;
-    if (opts && opts.quiet) {
+    if (quiet) {
       commit({ lastSeenUnread: n });
       return;
     }
@@ -18022,12 +19173,32 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       if (getPanelOpen()) {
         void requestMailHead("X.unread\u2191 (new mail)");
       } else {
-        emitToast(delta === 1 ? "1 new mail" : delta + " new mails");
+        void announceNewMailToast(delta);
       }
       return;
     }
     commit({ lastSeenUnread: n });
     if (getPanelOpen()) void requestMailHead("X.unread\u2193 (external read)");
+  }
+  async function announceNewMailToast(delta) {
+    const want = Math.max(1, delta | 0);
+    const pinned = Math.max(want, getXUnread());
+    try {
+      await requestMailHead("X.unread\u2191 (new mail toast)");
+    } catch (e2) {
+    }
+    if (pinned > 0 && getXUnread() < pinned) {
+      applyXUnread(pinned, { quiet: true });
+    } else {
+      syncMailBadge();
+    }
+    const rows = pickNewMailRows(getMails(), want);
+    const payload = buildNewMailToast(rows, want);
+    emitToast({
+      text: payload.text,
+      durationMs: payload.durationMs,
+      node: buildNewMailToastNode(payload.rows, payload.head)
+    });
   }
   function findNewestUnreadId() {
     const mails = getMails();
@@ -18123,6 +19294,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (getLastSeenUnread() < 0) {
       commit({ lastSeenUnread: getXUnread() });
     }
+    syncMailBadge();
   }
   var unreadWatchInstalled = false;
   var unreadWatchTimer = 0;
@@ -18249,7 +19421,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     }
     return { batch, patch };
   }
-  async function deleteMailRows(ids, opts) {
+  async function deleteMailRows(ids, _opts) {
+    void _opts;
     if (finalizeInFlight) {
       setStatus("Delete already in progress\u2026", "warn");
       return "busy";
@@ -18263,7 +19436,6 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     }
     if (!unique.length) return "ok";
     const mails = getMails();
-    let hasUntaken = false;
     for (let i = 0; i < unique.length; i++) {
       let m = null;
       for (let j = 0; j < mails.length; j++) {
@@ -18272,9 +19444,11 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
           break;
         }
       }
-      if (m && m.item && (!m.taken || m.takenPending)) hasUntaken = true;
+      if (m && mailBlocksHardDelete(m)) {
+        setStatus("Take the attachment before deleting received mail", "warn");
+        return "blocked-untaken";
+      }
     }
-    if (hasUntaken && !(opts && opts.confirmed)) return "need-confirm";
     const priorIds = takePendingFinalizeIds();
     if (priorIds.length) {
       await finalizeDeletes(priorIds);
@@ -18343,6 +19517,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       });
     };
     paint(true);
+    let lastFailReason = "";
     try {
       for (let i = 0; i < ids.length; i++) {
         const gap = deleteGapMs(i);
@@ -18351,7 +19526,12 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
         const res = await deleteMail(ids[i]);
         const sample = Date.now() - t0;
         avgApiMs = done === 0 ? sample : Math.round(avgApiMs * 0.65 + sample * 0.35);
-        if (!res.ok) failed += 1;
+        if (!res.ok) {
+          failed += 1;
+          if (res.reason) lastFailReason = res.reason;
+        } else if (res.unreadCount != null) {
+          applyXUnread(res.unreadCount, { quiet: true });
+        }
         done += 1;
         paint();
       }
@@ -18364,8 +19544,9 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       void requestMailHead("Refresh", { force: true });
     }
     if (failed) {
+      const hint = lastFailReason === "mail_item_untaken" ? " \xB7 take attachment first" : lastFailReason ? " \xB7 " + lastFailReason : "";
       setStatus(
-        "Deleted " + (total - failed) + " / " + total + " \xB7 " + failed + " failed",
+        "Deleted " + (total - failed) + " / " + total + " \xB7 " + failed + " failed" + hint,
         "err"
       );
       return;
@@ -19311,38 +20492,6 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     });
   }
 
-  // src/lib/itemInstanceData.ts
-  function getItemData(item) {
-    if (!item || !("data" in item)) return void 0;
-    const raw = item.data;
-    if (typeof raw !== "string") return void 0;
-    const trimmed = raw.trim();
-    return trimmed || void 0;
-  }
-  function isCxJarName(name) {
-    return name === "cxjar";
-  }
-  function cxJarData(item) {
-    if (!item || !isCxJarName(item.name)) return void 0;
-    return getItemData(item);
-  }
-  function itemStackIdentityKey(item) {
-    const base = String(item.name) + "\0" + (item.level != null && item.level !== "" ? String(item.level) : "") + "\0" + (item.p != null && String(item.p) !== "" ? String(item.p) : "");
-    const data = getItemData(item);
-    return data ? base + "\0" + data : base;
-  }
-  function cxJarContentSkin(data) {
-    if (!data) return void 0;
-    const G = getG();
-    if (!G) return void 0;
-    const skill = G.skills && G.skills[data];
-    if (skill && skill.emote && typeof skill.skin === "string" && skill.skin) {
-      return skill.skin;
-    }
-    if (G.positions && G.positions[data] != null) return data;
-    return void 0;
-  }
-
   // src/host/mail/itemFingerprint.ts
   function titleKey(p) {
     return p != null && String(p).trim() !== "" ? String(p) : "";
@@ -19645,14 +20794,14 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
 
   // src/ui/bag/bagBuyOrderIndicator.ts
-  var HOST_ID = "bottomleftcorner";
+  var HOST_ID2 = "bottomleftcorner";
   var BADGE_CLASS = "ecu-bag-buy-badge";
   var MARK_CLASS = "ecu-bag-buy-order";
   var BAG_BUY_ORDER_CSS = `
-#${HOST_ID} [data-cnum].${MARK_CLASS} {
+#${HOST_ID2} [data-cnum].${MARK_CLASS} {
   position: relative;
 }
-#${HOST_ID} .${BADGE_CLASS} {
+#${HOST_ID2} .${BADGE_CLASS} {
   position: absolute;
   top: 1px;
   right: 1px;
@@ -19671,10 +20820,10 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   pointer-events: none;
 }
 `;
-  var cssInjected = false;
+  var cssInjected2 = false;
   function ensureCss() {
-    if (cssInjected) return;
-    cssInjected = true;
+    if (cssInjected2) return;
+    cssInjected2 = true;
     const el = document.createElement("style");
     el.setAttribute("data-ecu-bag-buy-css", "1");
     el.textContent = BAG_BUY_ORDER_CSS;
@@ -19687,7 +20836,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function refreshBagBuyOrderIndicators() {
     if (!window.inventory) return;
-    const host2 = document.getElementById(HOST_ID);
+    const host2 = document.getElementById(HOST_ID2);
     if (!host2) return;
     const obs = window.observing;
     const items = obs && Array.isArray(obs.items) ? obs.items : null;
@@ -19735,7 +20884,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
 
   // src/ui/bag/composeBagHighlight.ts
-  var HOST_ID2 = "bottomleftcorner";
+  var HOST_ID3 = "bottomleftcorner";
   var COMPOSE_BAG_QUEUE_CLASS = "is-ecu-compose-queue";
   var activeSlots = [];
   var installed2 = false;
@@ -19760,7 +20909,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     return uniqueSlots(slots);
   }
   function applyComposeBagHighlights() {
-    const host2 = document.getElementById(HOST_ID2);
+    const host2 = document.getElementById(HOST_ID3);
     if (!host2) return;
     const want = new Set(activeSlots);
     const nodes = host2.querySelectorAll("[data-cnum]");
@@ -19802,10 +20951,114 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     };
   }
 
+  // src/lib/luckyUpgradePrefs.ts
+  var STORAGE_KEY = "al-comm-ui-lucky-upgrade-v1";
+  var LUCKY_SLOT_MAX_DEFAULT = 41;
+  function normalizeLuckySlot(raw, maxSlot = LUCKY_SLOT_MAX_DEFAULT) {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(n)) return 0;
+    const slot = Math.floor(n);
+    if (slot < 0) return 0;
+    const max = Math.max(0, maxSlot | 0);
+    return slot > max ? max : slot;
+  }
+  function normalizeLuckyUpgradePref(raw) {
+    if (!raw || typeof raw !== "object") {
+      return { enabled: false, slot: 0 };
+    }
+    const o = raw;
+    return {
+      enabled: !!o.enabled,
+      slot: normalizeLuckySlot(o.slot)
+    };
+  }
+  function luckyUpgradeCharKey() {
+    try {
+      const obs = window.observing;
+      const obsName = obs && obs.name != null ? String(obs.name).trim() : "";
+      if (obsName) return obsName;
+      const ch = window.character;
+      const chName = ch && ch.name != null ? String(ch.name).trim() : "";
+      return chName || null;
+    } catch (e2) {
+      return null;
+    }
+  }
+  function readStore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return /* @__PURE__ */ Object.create(null);
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return /* @__PURE__ */ Object.create(null);
+      }
+      const out = /* @__PURE__ */ Object.create(null);
+      const keys = Object.keys(parsed);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        out[k] = normalizeLuckyUpgradePref(
+          parsed[k]
+        );
+      }
+      return out;
+    } catch (e2) {
+      return /* @__PURE__ */ Object.create(null);
+    }
+  }
+  function writeStore(store) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    } catch (e2) {
+    }
+  }
+  function getLuckyUpgradePref(charKey) {
+    const key = charKey != null && String(charKey).trim() ? String(charKey).trim() : luckyUpgradeCharKey();
+    if (!key) return { enabled: false, slot: 0 };
+    const store = readStore();
+    return store[key] ? normalizeLuckyUpgradePref(store[key]) : { enabled: false, slot: 0 };
+  }
+  function setLuckyUpgradePref(partial, charKey) {
+    const key = charKey != null && String(charKey).trim() ? String(charKey).trim() : luckyUpgradeCharKey();
+    if (!key) {
+      return normalizeLuckyUpgradePref({
+        enabled: !!partial.enabled,
+        slot: partial.slot
+      });
+    }
+    const prev = getLuckyUpgradePref(key);
+    const next = normalizeLuckyUpgradePref({
+      enabled: partial.enabled != null ? partial.enabled : prev.enabled,
+      slot: partial.slot != null ? partial.slot : prev.slot
+    });
+    const store = readStore();
+    store[key] = next;
+    writeStore(store);
+    return next;
+  }
+  function resolveLuckySlotForShrine(charKey) {
+    const pref = getLuckyUpgradePref(charKey);
+    if (!pref.enabled) return null;
+    return normalizeLuckySlot(pref.slot);
+  }
+
   // src/ui/bag/shrineBagHighlight.ts
-  var HOST_ID3 = "bottomleftcorner";
+  var HOST_ID4 = "bottomleftcorner";
   var SHRINE_BAG_PICK_CLASS = "is-ecu-shrine-pick";
+  var SHRINE_BAG_LUCKY_CLASS = "is-ecu-shrine-lucky";
+  var SHRINE_BAG_LUCKY_EMPTY_CLASS = "is-ecu-shrine-lucky-empty";
   var activeSlots2 = [];
+  var luckyOverride = void 0;
+  function bagSlotIsEmpty(slot) {
+    try {
+      const obs = window.observing;
+      const items = obs && Array.isArray(obs.items) ? obs.items : null;
+      if (!items || slot < 0 || slot >= items.length) return true;
+      const it = items[slot];
+      return !it || !it.name || it.name === "placeholder";
+    } catch (e2) {
+      return true;
+    }
+  }
   function uniqueSlots2(slots) {
     const seen = /* @__PURE__ */ new Set();
     const out = [];
@@ -19819,40 +21072,59 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     }
     return out;
   }
+  function resolvedLuckySlot() {
+    if (luckyOverride !== void 0) {
+      if (luckyOverride == null || !Number.isFinite(luckyOverride) || luckyOverride < 0) {
+        return null;
+      }
+      return luckyOverride | 0;
+    }
+    return resolveLuckySlotForShrine();
+  }
   function applyShrineBagHighlights() {
-    const host2 = document.getElementById(HOST_ID3);
+    const host2 = document.getElementById(HOST_ID4);
     if (!host2) return;
     const want = new Set(activeSlots2);
+    const luckySlot = resolvedLuckySlot();
     const nodes = host2.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       const raw = node.getAttribute("data-cnum");
       if (raw == null || raw === "") {
         node.classList.remove(SHRINE_BAG_PICK_CLASS);
+        node.classList.remove(SHRINE_BAG_LUCKY_CLASS);
+        node.classList.remove(SHRINE_BAG_LUCKY_EMPTY_CLASS);
         continue;
       }
       const num = parseInt(raw, 10);
       if (want.has(num)) node.classList.add(SHRINE_BAG_PICK_CLASS);
       else node.classList.remove(SHRINE_BAG_PICK_CLASS);
+      if (luckySlot != null && num === luckySlot) {
+        node.classList.add(SHRINE_BAG_LUCKY_CLASS);
+        if (bagSlotIsEmpty(num)) node.classList.add(SHRINE_BAG_LUCKY_EMPTY_CLASS);
+        else node.classList.remove(SHRINE_BAG_LUCKY_EMPTY_CLASS);
+      } else {
+        node.classList.remove(SHRINE_BAG_LUCKY_CLASS);
+        node.classList.remove(SHRINE_BAG_LUCKY_EMPTY_CLASS);
+      }
     }
   }
   function setShrineBagHighlights(slots) {
     activeSlots2 = uniqueSlots2(slots);
     applyShrineBagHighlights();
   }
-  function clearShrineBagHighlights() {
-    activeSlots2 = [];
+  function setShrineLuckySlotHighlight(slot) {
+    if (slot == null || !Number.isFinite(slot) || slot < 0) {
+      luckyOverride = null;
+    } else {
+      luckyOverride = slot | 0;
+    }
     applyShrineBagHighlights();
   }
-
-  // src/ui/chrome/stripNativeTitles.ts
-  function stripNativeTitles(root) {
-    if (!root) return;
-    root.removeAttribute("title");
-    const titled = root.querySelectorAll("[title]");
-    for (let i = 0; i < titled.length; i++) {
-      titled[i].removeAttribute("title");
-    }
+  function clearShrineBagHighlights() {
+    activeSlots2 = [];
+    luckyOverride = void 0;
+    applyShrineBagHighlights();
   }
 
   // src/host/infoDialog/bindings.ts
@@ -19867,297 +21139,6 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function callOpenCondition(entity, conditionName) {
     if (openConditionFn) openConditionFn(entity, conditionName);
-  }
-
-  // src/host/infoDialog/types.ts
-  var BUFF_DIALOG_ID = "ecu-buff-dialog";
-  var ITEM_DIALOG_ID = "ecu-item-dialog";
-  var STOCK_DIALOG_ID = "topleftcornerdialog";
-  var INFO_SOURCE_ATTR = "data-ecu-info-source";
-  var CLOSE_CLASS = "ecu-dialog-close";
-  var ADOPTED_CLASS = "ecu-info-dialog-adopted";
-  var BUFF_SEL = "#" + BUFF_DIALOG_ID;
-  var ITEM_SEL = "#" + ITEM_DIALOG_ID;
-  var STOCK_SEL = "#" + STOCK_DIALOG_ID;
-  function dialogIdFor(kind) {
-    return kind === "buff" ? BUFF_DIALOG_ID : ITEM_DIALOG_ID;
-  }
-  function panelAttrFor(kind) {
-    return kind === "buff" ? "buffInfo" : "itemInfo";
-  }
-
-  // src/host/infoDialog/css.ts
-  var STYLE_ID2 = "comm-ui-dialog-host-css";
-  function injectDialogHostCss() {
-    let style = document.getElementById(STYLE_ID2);
-    if (!style) {
-      style = document.createElement("style");
-      style.id = STYLE_ID2;
-      document.head.append(style);
-    }
-    style.textContent = `
-/* Fallback host when not yet adopted into CommUI layout panel. */
-#topleftcorner:not(.ecu-info-slot-host) {
-  position: fixed !important;
-  top: 8px !important;
-  left: 8px !important;
-  z-index: 230 !important;
-  pointer-events: none !important;
-  max-width: min(96vw, 520px);
-  max-height: min(80vh, calc(100vh - 96px));
-  overflow: auto;
-}
-#topleftcornerui {
-  pointer-events: auto !important;
-  vertical-align: top;
-  display: inline-block;
-}
-/* Stub: leftover stock selectors still target this id; content lives in ecu-* hosts. */
-#${STOCK_DIALOG_ID} {
-  display: none !important;
-}
-#${BUFF_DIALOG_ID},
-#${ITEM_DIALOG_ID} {
-  /* Idle hosts must not eat clicks \u2014 parent panels can be pointer-events:none
-   * while this child still had auto !important and a leftover frame box. */
-  pointer-events: none !important;
-  vertical-align: top;
-  display: none;
-  position: relative;
-}
-#${BUFF_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty),
-#${ITEM_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty) {
-  display: block;
-  pointer-events: auto !important;
-  max-width: min(96vw, 520px);
-  max-height: min(80vh, calc(100vh - 96px));
-  overflow: auto;
-}
-#${BUFF_DIALOG_ID} .${CLOSE_CLASS},
-#${ITEM_DIALOG_ID} .${CLOSE_CLASS} {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 2;
-  cursor: pointer;
-  border: 1px solid #555;
-  background: #1c1c1c;
-  color: #ddd;
-  width: 28px;
-  height: 28px;
-  line-height: 24px;
-  padding: 0;
-  font-size: 18px;
-  text-align: center;
-  box-sizing: border-box;
-}
-#${BUFF_DIALOG_ID} .${CLOSE_CLASS}:hover,
-#${ITEM_DIALOG_ID} .${CLOSE_CLASS}:hover {
-  border-color: #888;
-  color: #fff;
-}
-`;
-  }
-
-  // src/host/infoDialog/hosts.ts
-  function dialogEl(kind) {
-    return document.getElementById(dialogIdFor(kind));
-  }
-  function hasContent(el) {
-    if (!el) return false;
-    if (el.querySelector(".buyitem, .cccx, img, canvas, table, svg")) return true;
-    const walk = (node) => {
-      if (node.nodeType === 3) return node.textContent || "";
-      if (node.nodeType !== 1) return "";
-      const he = node;
-      if (he.classList && he.classList.contains(CLOSE_CLASS)) return "";
-      let out = "";
-      const kids = he.childNodes;
-      for (let i = 0; i < kids.length; i++) out += walk(kids[i]);
-      return out;
-    };
-    return walk(el).replace(/\s+/g, "").length > 0;
-  }
-  function ensureNamedDialog(id, parent) {
-    let dialog = document.getElementById(id);
-    if (!dialog) {
-      dialog = document.createElement("div");
-      dialog.id = id;
-      dialog.className = "bpclicks enableclicks";
-      parent.append(dialog);
-    }
-    return dialog;
-  }
-  function ensureDialogElements() {
-    injectDialogHostCss();
-    const body = document.body;
-    if (!body) {
-      throw new Error("ensureDialogElements: document.body is not ready");
-    }
-    let corner = document.getElementById("topleftcorner");
-    if (!corner) {
-      corner = document.createElement("div");
-      corner.id = "topleftcorner";
-      corner.className = "bpclicks";
-      body.append(corner);
-    }
-    if (!document.getElementById("topleftcornerui")) {
-      const ui = document.createElement("div");
-      ui.id = "topleftcornerui";
-      ui.className = "bpclicks";
-      corner.append(ui);
-    }
-    const stock = ensureNamedDialog(STOCK_DIALOG_ID, corner);
-    const buff = ensureNamedDialog(BUFF_DIALOG_ID, corner);
-    const item = ensureNamedDialog(ITEM_DIALOG_ID, corner);
-    return { buff, item, stock };
-  }
-  function adoptInfoDialog(kind, slot) {
-    const { buff, item } = ensureDialogElements();
-    const dialog = kind === "buff" ? buff : item;
-    if (dialog.parentElement !== slot) {
-      slot.appendChild(dialog);
-    }
-    dialog.classList.add(ADOPTED_CLASS);
-    dialog.setAttribute("data-ecu-kind", kind);
-    dialog.setAttribute("data-panel-host", panelAttrFor(kind));
-    const corner = document.getElementById("topleftcorner");
-    if (corner) corner.classList.add("ecu-info-slot-host");
-    return dialog;
-  }
-  function ensureAdoptedHost(kind) {
-    const { buff, item } = ensureDialogElements();
-    const slotSel = kind === "item" ? ".comm-item-info-slot" : ".comm-buff-info-slot";
-    const slot = document.querySelector(slotSel);
-    if (slot) return adoptInfoDialog(kind, slot);
-    return kind === "buff" ? buff : item;
-  }
-
-  // src/host/infoDialog/write.ts
-  var listeners8 = /* @__PURE__ */ new Set();
-  var pendingWriteKind = "item";
-  function setPendingWriteKind(kind) {
-    pendingWriteKind = kind;
-  }
-  function getPendingWriteKind() {
-    return pendingWriteKind;
-  }
-  function subscribeInfoDialogChange(listener) {
-    listeners8.add(listener);
-    return () => {
-      listeners8.delete(listener);
-    };
-  }
-  function emitInfoDialogChange(kind, open) {
-    for (const listener of Array.from(listeners8)) {
-      try {
-        listener(kind, open);
-      } catch (e2) {
-      }
-    }
-  }
-  function clearDialogOnlyXTarget() {
-    if (window.__ecuDialogOnlyXTarget) {
-      window.__ecuDialogOnlyXTarget = false;
-      window.xtarget = null;
-    }
-  }
-  function clearDialogsTarget() {
-    try {
-      window.dialogs_target = null;
-    } catch (e2) {
-    }
-  }
-  function ensureCloseButton(dialog, kind, closeFn) {
-    if (!hasContent(dialog)) return;
-    if (dialog.querySelector("." + CLOSE_CLASS)) return;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = CLOSE_CLASS;
-    btn.title = "Close";
-    btn.setAttribute("aria-label", "Close");
-    btn.textContent = "\xD7";
-    btn.addEventListener("click", (ev) => {
-      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
-      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      closeFn(kind);
-    });
-    const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
-    if (panel) {
-      const pos = window.getComputedStyle(panel).position;
-      if (!pos || pos === "static") panel.style.position = "relative";
-      panel.appendChild(btn);
-    } else {
-      dialog.appendChild(btn);
-    }
-  }
-  var FN_ORIG = "__ecuInfoOrig";
-  function buildItemHtml(args) {
-    const w = window;
-    const renderItem = typeof w.render_item === "function" && w.render_item[FN_ORIG] || w.render_item;
-    if (typeof renderItem !== "function") return "";
-    try {
-      const html = renderItem.call(w, "html", args);
-      return typeof html === "string" ? html : "";
-    } catch (e2) {
-      return "";
-    }
-  }
-  function buildConditionHtml(name) {
-    const w = window;
-    const G = w.G;
-    if (!G || !G.conditions) return "";
-    let def = G.conditions[name];
-    let minutes = 0;
-    let condition;
-    const target = w.xtarget || w.ctarget;
-    if (target && target.s && target.s[name] && target.s[name].ms) {
-      minutes = target.s[name].ms / 6e3 / 10;
-    }
-    if (target && target.s && target.s[name]) {
-      const clone = typeof w.clone === "function" ? w.clone : null;
-      def = !def ? {} : clone ? clone(def) : { ...def };
-      condition = target.s[name];
-      const keys = Object.keys(condition);
-      for (let i = 0; i < keys.length; i++) {
-        def[keys[i]] = condition[keys[i]];
-      }
-    }
-    return buildItemHtml({
-      skin: condition && condition.skin || def && def.skin,
-      item: def,
-      prop: def,
-      minutes,
-      condition
-    });
-  }
-  var closeKindImpl = () => false;
-  function bindCloseImpl(fn) {
-    closeKindImpl = fn;
-  }
-  function writeInfoHtml(kind, html) {
-    const host2 = ensureAdoptedHost(kind);
-    host2.innerHTML = html || "";
-    if (hasContent(host2)) {
-      ensureCloseButton(host2, kind, (k) => {
-        closeKindImpl(k);
-      });
-      emitInfoDialogChange(kind, true);
-      return;
-    }
-    if (host2.innerHTML) host2.innerHTML = "";
-    emitInfoDialogChange(kind, false);
-  }
-  function clearInfoHost(kind) {
-    const el = dialogEl(kind);
-    if (!el) return false;
-    const had = hasContent(el) || !!String(el.innerHTML || "").trim();
-    if (!had) return false;
-    el.innerHTML = "";
-    if (kind === "buff") clearDialogOnlyXTarget();
-    clearDialogsTarget();
-    emitInfoDialogChange(kind, false);
-    return true;
   }
 
   // src/host/infoDialog/dismiss.ts
@@ -20437,8 +21418,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   };
 
   // src/host/inventory.ts
-  var HOST_ID4 = "bottomleftcorner";
-  var STYLE_ID3 = "comm-ui-inventory-host-css";
+  var HOST_ID5 = "bottomleftcorner";
+  var STYLE_ID4 = "comm-ui-inventory-host-css";
   var MOUNT_ID = "comm-bag-mount";
   var SAVED_CHAR = "__ecuInvSavedChar";
   var HOLD_CHAR = "__ecuInvHoldChar";
@@ -20455,11 +21436,11 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var bagSyncSocketPoll = null;
   var bagRefreshKind = null;
   function injectHostCss() {
-    if (document.getElementById(STYLE_ID3)) return;
+    if (document.getElementById(STYLE_ID4)) return;
     const style = document.createElement("style");
-    style.id = STYLE_ID3;
+    style.id = STYLE_ID4;
     style.textContent = `
-#${HOST_ID4} {
+#${HOST_ID5} {
   position: relative;
   left: auto;
   bottom: auto;
@@ -20473,10 +21454,10 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   overflow: auto;
   box-sizing: border-box;
 }
-html.ecu-phone-dock-on #${HOST_ID4} {
+html.ecu-phone-dock-on #${HOST_ID5} {
   max-height: none;
 }
-#${HOST_ID4} .theinventory {
+#${HOST_ID5} .theinventory {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
@@ -20484,20 +21465,54 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
-#${HOST_ID4}.is-trade-delist-target {
+#${HOST_ID5}.is-trade-delist-target {
   outline: 2px solid #6ab04c;
   outline-offset: 2px;
 }
-#${HOST_ID4} [data-cnum].is-bag-swap-target {
+#${HOST_ID5} [data-cnum].is-bag-swap-target {
   outline: 2px solid #6ab04c;
   outline-offset: 1px;
 }
-#${HOST_ID4} [data-cnum].is-ecu-shrine-pick {
+#${HOST_ID5} [data-cnum].is-ecu-shrine-pick {
   outline: 2px solid #e8c96a;
   outline-offset: 1px;
   box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.45), inset 0 0 10px rgba(232, 201, 106, 0.12);
 }
-#${HOST_ID4} [data-cnum].is-ecu-compose-queue {
+#${HOST_ID5} [data-cnum].is-ecu-shrine-lucky {
+  position: relative;
+  outline: 2px solid #3dba5f;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(61, 186, 95, 0.55), inset 0 0 10px rgba(61, 186, 95, 0.18);
+}
+/* Occupied: small clover tucked top-left over the item. */
+#${HOST_ID5} [data-cnum].is-ecu-shrine-lucky::after {
+  content: "\u{1F340}";
+  position: absolute;
+  left: 0;
+  top: -1px;
+  z-index: 2;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(0, 0, 0, 0.75);
+  opacity: 0.95;
+}
+/* Empty: large clover centered in the cell. */
+#${HOST_ID5} [data-cnum].is-ecu-shrine-lucky.is-ecu-shrine-lucky-empty::after {
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  opacity: 0.88;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.85);
+}
+#${HOST_ID5} [data-cnum].is-ecu-shrine-pick.is-ecu-shrine-lucky {
+  outline: 2px solid #4fd06a;
+  box-shadow: 0 0 0 1px rgba(79, 208, 106, 0.65), inset 0 0 12px rgba(232, 201, 106, 0.16);
+}
+#${HOST_ID5} [data-cnum].is-ecu-compose-queue {
   outline: 2px solid #6a9ae8;
   outline-offset: 1px;
   box-shadow: 0 0 0 1px rgba(106, 154, 232, 0.5), inset 0 0 10px rgba(106, 154, 232, 0.14);
@@ -20653,7 +21668,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     closeInventoryHost();
   }
   function closeInventoryHost() {
-    const host2 = document.getElementById(HOST_ID4);
+    const host2 = document.getElementById(HOST_ID5);
     if (host2) host2.innerHTML = "";
     window.inventory = false;
     bagRenderedForName = null;
@@ -20726,7 +21741,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     }, 250);
   }
   function applyBagLayoutPos(pos) {
-    const host2 = document.getElementById(HOST_ID4);
+    const host2 = document.getElementById(HOST_ID5);
     if (!host2) return;
     if (host2.parentElement && host2.parentElement.id === MOUNT_ID) {
       host2.style.position = "relative";
@@ -20751,10 +21766,10 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
   function ensureInventoryHost() {
     injectHostCss();
-    let el = document.getElementById(HOST_ID4);
+    let el = document.getElementById(HOST_ID5);
     if (!el) {
       el = document.createElement("div");
-      el.id = HOST_ID4;
+      el.id = HOST_ID5;
       el.className = "bpclicks enableclicks";
       document.body.append(el);
     }
@@ -20785,7 +21800,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
   function stripObservedBagNativeDropHandlers() {
     if (!window.is_comm || !window.observing) return;
-    const host2 = document.getElementById(HOST_ID4);
+    const host2 = document.getElementById(HOST_ID5);
     if (!host2) return;
     const nodes = host2.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
@@ -20796,7 +21811,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
   function refreshInventoryItemTitles() {
     if (!window.inventory) return;
-    const host2 = document.getElementById(HOST_ID4);
+    const host2 = document.getElementById(HOST_ID5);
     if (!host2) return;
     const obs = window.observing;
     const items = obs && Array.isArray(obs.items) ? obs.items : null;
@@ -20897,7 +21912,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       window.render_inventory = function patchedRenderInventory(reset) {
         ensureInventoryHost();
         if (window.inventory && !reset) {
-          const host2 = document.getElementById(HOST_ID4);
+          const host2 = document.getElementById(HOST_ID5);
           if (host2) host2.innerHTML = "";
           window.inventory = false;
           bagRenderedForName = null;
@@ -23050,10 +24065,10 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
 
   // src/lib/tradePriceMemory.ts
-  var STORAGE_KEY = "ecu-trade-price-memory";
+  var STORAGE_KEY2 = "ecu-trade-price-memory";
   function readMap() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY2);
       if (!raw) return {};
       const parsed = JSON.parse(raw);
       return parsed && typeof parsed === "object" ? parsed : {};
@@ -23063,7 +24078,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
   function writeMap(map) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+      localStorage.setItem(STORAGE_KEY2, JSON.stringify(map));
     } catch (e2) {
     }
   }
@@ -26246,8 +27261,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     const pair = a < b ? a + ":" + b : b + ":" + a;
     return "private:" + pair;
   }
-  function hubChatSince(cursor) {
-    return new Date(new Date(cursor.split("|")[0]).getTime() - 1e3).toISOString() + "|MS_0";
+  function hubChatSince(cursor2) {
+    return new Date(new Date(cursor2.split("|")[0]).getTime() - 1e3).toISOString() + "|MS_0";
   }
   async function pullChatsPage(opts) {
     const args = {};
@@ -26510,12 +27525,12 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
 
   // src/host/chat/stockHubTakeover.ts
-  var STYLE_ID4 = "ecu-suppress-stock-hub-chat";
+  var STYLE_ID5 = "ecu-suppress-stock-hub-chat";
   function injectSuppressCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID4)) return;
+    if (document.getElementById(STYLE_ID5)) return;
     const el = document.createElement("style");
-    el.id = STYLE_ID4;
+    el.id = STYLE_ID5;
     el.textContent = `
 #comm-chat,
 #comm-chat-toggle {
@@ -26694,8 +27709,13 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   // src/host/commChrome/chromeActions.ts
   function clearObserve() {
     clearObserveFollowSticky();
+    clearObserverCameraAnchor();
+    lockCamera();
     if (typeof window.init_socket !== "function") return;
     window.init_socket({});
+    window.setTimeout(() => {
+      syncLockFromMapAfterObserveClear();
+    }, 0);
   }
   function currentServerKey3() {
     const region = window.server_region;
@@ -28555,7 +29575,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   var DISCONNECT_OVERLAY_Z = 2147483647;
   var DISCONNECT_GRACE_MS = 1e4;
   var RECONNECT_HARD_TIMEOUT_MS = 25e3;
-  var STYLE_ID5 = "ecu-disconnect-overlay-css";
+  var STYLE_ID6 = "ecu-disconnect-overlay-css";
   var CSS3 = `
 /* Hide stock disconnect button entirely \u2014 ECU overlay handles display after a grace period. */
 #bottom > .gamebutton.disconnected {
@@ -28646,13 +29666,13 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   }
   function ensureCss2() {
     if (!canUseDom()) return;
-    const existing = document.getElementById(STYLE_ID5);
+    const existing = document.getElementById(STYLE_ID6);
     if (existing) {
       existing.textContent = CSS3;
       return;
     }
     const el = document.createElement("style");
-    el.id = STYLE_ID5;
+    el.id = STYLE_ID6;
     el.textContent = CSS3;
     document.head.appendChild(el);
   }
@@ -28936,503 +29956,6 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     subscribeTick(() => applyPageTitle());
   }
 
-  // src/lib/commTouchUi.ts
-  function isCommTouchUi() {
-    if (typeof document !== "undefined") {
-      const root = document.getElementById("comm-ui");
-      if (root && root.classList.contains("comm-ui-touch")) return true;
-    }
-    return isTouchishProfile(detectViewportProfile());
-  }
-
-  // src/ui/chrome/cooltip.ts
-  var PAD = 8;
-  var CURSOR = 14;
-  var STYLE_ID6 = "ecu-cooltip-css";
-  var HOST_ID5 = "ecu-cooltip";
-  var COOLTIP_ICON = 22;
-  var COOLTIP_MONSTER_ICON = 40;
-  var tipEl = null;
-  var hoverKey = null;
-  var tipX = 0;
-  var tipY = 0;
-  var tipRebuild = null;
-  var tipOpts = {};
-  var tipPinned = false;
-  var pinDocHandler = null;
-  var cssInjected2 = false;
-  var crossHideMeter = null;
-  function bindCooltipCrossHide(hideMeter) {
-    crossHideMeter = hideMeter;
-  }
-  function escapeCooltipHtml(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-  function ensureCooltipCss() {
-    if (typeof document === "undefined") return;
-    if (cssInjected2 && document.getElementById(STYLE_ID6)) return;
-    let el = document.getElementById(STYLE_ID6);
-    if (!el) {
-      el = document.createElement("style");
-      el.id = STYLE_ID6;
-      document.head.appendChild(el);
-    }
-    el.textContent = COOLTIP_CSS;
-    cssInjected2 = true;
-  }
-  function ensureHost() {
-    ensureCooltipCss();
-    if (tipEl && tipEl.isConnected) return tipEl;
-    tipEl = document.createElement("div");
-    tipEl.id = HOST_ID5;
-    tipEl.className = "ecu-cooltip";
-    tipEl.setAttribute("role", "tooltip");
-    document.body.appendChild(tipEl);
-    return tipEl;
-  }
-  function placeTip(tip, clientX, clientY) {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const rect = tip.getBoundingClientRect();
-    const tw = Math.max(1, rect.width);
-    const th2 = Math.max(1, rect.height);
-    let x = clientX + CURSOR;
-    let y = clientY + CURSOR;
-    if (x + tw > vw - PAD) x = clientX - tw - CURSOR;
-    if (y + th2 > vh - PAD) y = clientY - th2 - CURSOR;
-    x = Math.max(PAD, Math.min(vw - tw - PAD, x));
-    y = Math.max(PAD, Math.min(vh - th2 - PAD, y));
-    tip.style.left = Math.round(x) + "px";
-    tip.style.top = Math.round(y) + "px";
-  }
-  function paintTip(html, clientX, clientY, opts) {
-    if (crossHideMeter) {
-      try {
-        crossHideMeter();
-      } catch (e2) {
-      }
-    }
-    const tip = ensureHost();
-    tip.innerHTML = html || "";
-    tip.classList.toggle("is-item-tip", !!(opts && opts.itemTip));
-    tip.classList.add("is-open");
-    tip.style.left = "-9999px";
-    tip.style.top = "0px";
-    placeTip(tip, clientX, clientY);
-  }
-  function showCooltipAt(html, clientX, clientY, opts) {
-    tipX = clientX;
-    tipY = clientY;
-    if (opts) tipOpts = opts;
-    paintTip(html, clientX, clientY, tipOpts);
-  }
-  function clearPinListener() {
-    if (pinDocHandler) {
-      document.removeEventListener("mousedown", pinDocHandler, true);
-      pinDocHandler = null;
-    }
-  }
-  function hideCooltip(opts) {
-    if (tipPinned && !(opts && opts.force)) return;
-    tipPinned = false;
-    clearPinListener();
-    hoverKey = null;
-    tipRebuild = null;
-    tipOpts = {};
-    if (!tipEl) return;
-    tipEl.classList.remove("is-open", "is-item-tip", "is-pinned");
-    tipEl.innerHTML = "";
-  }
-  function cooltipHandlers(key, rebuild, opts) {
-    return {
-      onMouseEnter: (ev) => {
-        hoverKey = key;
-        tipRebuild = rebuild;
-        tipOpts = opts || {};
-        tipX = ev.clientX;
-        tipY = ev.clientY;
-        showCooltipAt(rebuild(), tipX, tipY, tipOpts);
-      },
-      onMouseMove: (ev) => {
-        if (hoverKey !== key) return;
-        tipX = ev.clientX;
-        tipY = ev.clientY;
-        if (tipRebuild) showCooltipAt(tipRebuild(), tipX, tipY, tipOpts);
-      },
-      onMouseLeave: () => {
-        if (hoverKey !== key) return;
-        if (tipPinned) return;
-        hideCooltip();
-      }
-    };
-  }
-  function refreshCooltip(key) {
-    if (hoverKey !== key || !tipRebuild) return;
-    showCooltipAt(tipRebuild(), tipX, tipY, tipOpts);
-  }
-  function dismissCooltip(key) {
-    if (key != null && hoverKey !== key) return;
-    if (!hoverKey && key != null) return;
-    hideCooltip({ force: true });
-  }
-  function isCooltipHovering(key) {
-    return hoverKey === key;
-  }
-
-  // src/ui/chrome/itemCooltip.ts
-  var tipSeq = 0;
-  function nextItemCooltipKey(name) {
-    tipSeq += 1;
-    return `item:${name}:${tipSeq}`;
-  }
-  function itemCooltipKeyFoot(name) {
-    const key = String(name || "").trim();
-    if (!key) return "";
-    return `<div class="ecu-cooltip-foot ecu-cooltip-item-key"><span>Key</span> <b>${escapeCooltipHtml(key)}</b></div>`;
-  }
-  function itemCooltipHtml(args) {
-    var _a;
-    const G = getG();
-    const def = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[args.name];
-    const actual = {
-      name: args.name,
-      ...args.actual || {}
-    };
-    if (actual.level == null && args.level != null) actual.level = args.level;
-    if (actual.q == null && args.q != null) actual.q = args.q;
-    if (actual.p == null && args.p != null) actual.p = args.p;
-    if (!actual.name) actual.name = args.name;
-    const keyFoot = itemCooltipKeyFoot(args.name);
-    if (def) {
-      const html = buildItemHtml({
-        item: def,
-        name: args.name,
-        actual,
-        readonly: true
-      });
-      if (html && String(html).trim()) return html + keyFoot;
-    }
-    const label = itemInstanceLabel(args.name, {
-      p: actual.p != null ? String(actual.p) : void 0,
-      level: actual.level
-    }) || args.name;
-    return `<h4>${escapeCooltipHtml(label)}</h4>${keyFoot}`;
-  }
-  function itemCooltipHandlers(key, rebuild) {
-    return cooltipHandlers(key, rebuild, { itemTip: true });
-  }
-  function dismissItemCooltip(key) {
-    dismissCooltip(key);
-  }
-
-  // src/ui/chrome/wrapIconHtml.ts
-  function wrapIconHtml(html) {
-    return e("div", {
-      className: "ecu-icon-html",
-      style: {
-        display: "inline-block",
-        lineHeight: 0,
-        fontSize: 0,
-        flexShrink: 0
-      },
-      // Keep for React builds that honor it; ref is the source of truth.
-      dangerouslySetInnerHTML: { __html: html || "" },
-      ref: (node) => {
-        if (!node) return;
-        if (html && node.innerHTML !== html) {
-          node.innerHTML = html;
-        }
-        const root = node.firstElementChild;
-        if (!root) return;
-        root.style.margin = "0";
-        root.removeAttribute("onmousedown");
-        root.removeAttribute("ontouchstart");
-        root.removeAttribute("onclick");
-      }
-    });
-  }
-
-  // src/ui/chrome/ItemInstance.ts
-  function formatQty(q, forceShowQ) {
-    if (q == null || !Number.isFinite(q)) return null;
-    if (!forceShowQ && q <= 1) return null;
-    if (q >= 1e6) return Math.floor(q / 1e6) + "m";
-    if (q >= 1e4) return Math.floor(q / 1e3) + "k";
-    return String(Math.floor(q));
-  }
-  function ItemInstance(props) {
-    const React = getReact();
-    ensureItemInstanceBadgeCss();
-    const ref = React.useRef(null);
-    const tipKeyRef = React.useRef("");
-    const {
-      name,
-      skin,
-      level,
-      q,
-      p,
-      data,
-      size = 40,
-      className,
-      title,
-      stockChrome = true,
-      forceShowQ,
-      qtyColor,
-      bankQ,
-      cooltip = true,
-      actual
-    } = props;
-    const levelNum = coerceItemLevel(level);
-    const resolvedData = getItemData({ data }) || getItemData(actual) || void 0;
-    const sealedCx = cxJarData({ name, data: resolvedData });
-    const sealedSkin = sealedCx ? cxJarContentSkin(sealedCx) : void 0;
-    const effectiveSkin = sealedSkin || skin;
-    const jarBadgePx = sealedCx ? Math.max(14, Math.round(size * 0.45)) : 0;
-    const jarBadgeHtml = sealedCx && jarBadgePx ? itemIconHtml("cxjar", {
-      size: jarBadgePx,
-      nativeTitle: false
-    }) : "";
-    const tipActual = {
-      name,
-      ...actual || {}
-    };
-    if (tipActual.level == null && level != null) tipActual.level = level;
-    if (tipActual.q == null && q != null) tipActual.q = q;
-    if (tipActual.p == null && p != null) tipActual.p = p;
-    if (resolvedData && tipActual.data == null) tipActual.data = resolvedData;
-    const tip = title || itemInstanceLabel(name, { p, level: levelNum }) || name;
-    const qtyLabel = formatQty(q, forceShowQ);
-    const levelBadge = resolveItemLevelBadge(name, level);
-    const bankLabel = bankQ != null && Number.isFinite(bankQ) && bankQ > 0 ? formatQty(bankQ, true) : null;
-    if (!tipKeyRef.current) tipKeyRef.current = nextItemCooltipKey(name);
-    const nameRef = React.useRef(name);
-    nameRef.current = name;
-    const levelRef = React.useRef(level);
-    levelRef.current = level;
-    const qRef = React.useRef(q);
-    qRef.current = q;
-    const pRef = React.useRef(p);
-    pRef.current = p;
-    const actualRef = React.useRef(tipActual);
-    actualRef.current = tipActual;
-    const tipLabelRef = React.useRef(tip);
-    tipLabelRef.current = tip;
-    const rebuildTip = React.useCallback(() => {
-      return itemCooltipHtml({
-        name: nameRef.current,
-        level: levelRef.current,
-        q: qRef.current,
-        p: pRef.current,
-        actual: actualRef.current
-      });
-    }, []);
-    const tipHandlers = cooltip && !isCommTouchUi() ? itemCooltipHandlers(tipKeyRef.current, rebuildTip) : null;
-    React.useEffect(() => {
-      const el = ref.current;
-      if (!el) return;
-      const html = stockChrome ? itemInstanceHtml(name, {
-        skin: effectiveSkin,
-        level: levelNum,
-        q,
-        p,
-        size,
-        title: tip,
-        nativeTitle: false
-      }) : itemIconHtml(name, {
-        skin: effectiveSkin,
-        size,
-        title: tip,
-        nativeTitle: false,
-        p
-      });
-      el.innerHTML = html || "";
-      const stockBadges = el.querySelectorAll(".iqui, .iuui");
-      for (let i = 0; i < stockBadges.length; i++) {
-        const node = stockBadges[i];
-        node.style.display = "none";
-      }
-      const root = el.querySelector(
-        ".ecu-item-instance > div, .ecu-item-title-frame, .ecu-meter-icon"
-      );
-      if (root) {
-        root.style.margin = "0";
-        root.removeAttribute("onmousedown");
-        root.removeAttribute("ontouchstart");
-        root.removeAttribute("onclick");
-        if (p) stampNativeItemTitleBorder(root, p);
-      }
-      if (cooltip) {
-        stripNativeTitles(el);
-        const host2 = el.parentElement;
-        if (host2) host2.removeAttribute("title");
-      }
-      return () => {
-        if (el) el.innerHTML = "";
-      };
-    }, [name, effectiveSkin, levelNum, q, p, size, tip, stockChrome, cooltip]);
-    React.useEffect(() => {
-      if (!cooltip) return;
-      const key = tipKeyRef.current;
-      return () => {
-        dismissItemCooltip(key);
-      };
-    }, [cooltip]);
-    return e(
-      "span",
-      {
-        className: ["ecu-item-instance-host", className].filter(Boolean).join(" "),
-        style: {
-          position: "relative",
-          display: "inline-flex",
-          width: size + 6,
-          height: size + 6,
-          flex: "0 0 auto",
-          alignItems: "center",
-          justifyContent: "center",
-          lineHeight: 0,
-          verticalAlign: "middle",
-          cursor: cooltip ? "help" : void 0
-        },
-        title: cooltip ? void 0 : tip,
-        onMouseEnter: tipHandlers ? tipHandlers.onMouseEnter : void 0,
-        onMouseMove: tipHandlers ? tipHandlers.onMouseMove : void 0,
-        onMouseLeave: tipHandlers ? tipHandlers.onMouseLeave : void 0
-      },
-      e("span", {
-        ref,
-        className: "ecu-item-instance-art",
-        style: {
-          display: "inline-flex",
-          width: size + 6,
-          height: size + 6,
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "visible",
-          lineHeight: 0
-        }
-      }),
-      jarBadgeHtml ? e(
-        "span",
-        {
-          className: "ecu-item-badge ecu-item-badge--cxjar",
-          "aria-hidden": true,
-          style: {
-            width: jarBadgePx,
-            height: jarBadgePx
-          }
-        },
-        wrapIconHtml(jarBadgeHtml)
-      ) : null,
-      levelBadge && !sealedCx ? e(
-        "span",
-        {
-          className: "ecu-item-badge ecu-item-badge--level",
-          // Skip native titles when Comm cooltip is on — they stack on hover.
-          title: cooltip ? void 0 : "Level " + levelBadge.text,
-          style: { color: levelBadge.color, borderColor: levelBadge.color }
-        },
-        levelBadge.text
-      ) : null,
-      qtyLabel ? e(
-        "span",
-        {
-          className: "ecu-item-badge ecu-item-badge--qty",
-          title: cooltip ? void 0 : "Quantity " + (q != null ? q : qtyLabel),
-          style: qtyColor ? { color: qtyColor, borderColor: qtyColor } : void 0
-        },
-        qtyLabel
-      ) : null,
-      bankLabel ? e(
-        "span",
-        {
-          className: "ecu-item-badge ecu-item-badge--bank",
-          title: cooltip ? void 0 : "Bank \xD7" + (bankQ != null ? bankQ : bankLabel)
-        },
-        bankLabel
-      ) : null
-    );
-  }
-  var ITEM_INSTANCE_BADGE_CSS = `
-.ecu-item-instance-host {
-  position: relative;
-  overflow: visible;
-}
-.ecu-item-badge {
-  position: absolute;
-  z-index: 2;
-  min-width: 14px;
-  padding: 0 4px;
-  border: 1px solid #666;
-  background: rgba(0, 0, 0, 0.92);
-  color: #fff;
-  font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
-  font-size: 11px !important;
-  font-weight: 700;
-  line-height: 14px !important;
-  height: 14px;
-  text-align: center;
-  box-sizing: border-box !important;
-  pointer-events: none;
-  letter-spacing: 0;
-}
-.ecu-item-badge--qty {
-  right: -2px;
-  bottom: -2px;
-  color: #fff;
-}
-.ecu-item-badge--level {
-  left: -2px;
-  bottom: -2px;
-  color: #cfcfcf;
-}
-.ecu-item-badge--cxjar {
-  left: 0;
-  bottom: 0;
-  z-index: 3;
-  min-width: 0;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 2px;
-  background: rgba(18, 18, 22, 0.94);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-  line-height: 0 !important;
-  height: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.ecu-item-badge--cxjar .ecu-icon-html,
-.ecu-item-badge--cxjar .ecu-item-instance,
-.ecu-item-badge--cxjar .ecu-meter-icon {
-  display: block !important;
-  margin: 0 !important;
-}
-.ecu-item-badge--bank {
-  right: -2px;
-  top: -2px;
-  color: #e8c96a;
-  border-color: #8a7340;
-}
-`;
-  var BADGE_STYLE_ID = "ecu-item-instance-badge-css";
-  var itemInstanceBadgeCssInjected = false;
-  function ensureItemInstanceBadgeCss() {
-    if (typeof document === "undefined") return;
-    if (itemInstanceBadgeCssInjected) {
-      if (document.getElementById(BADGE_STYLE_ID)) return;
-      itemInstanceBadgeCssInjected = false;
-    }
-    let el = document.getElementById(BADGE_STYLE_ID);
-    if (!el) {
-      el = document.createElement("style");
-      el.id = BADGE_STYLE_ID;
-      document.head.appendChild(el);
-    }
-    el.textContent = ITEM_INSTANCE_BADGE_CSS;
-    itemInstanceBadgeCssInjected = true;
-  }
-
   // src/ui/chrome/phoneShell.ts
   var PHONE_SHELL_EXPAND_BOTTOM = "calc(max(var(--ecu-phone-dock-h, 48px), var(--ecu-vv-keyboard, 0px)) + 8px)";
   var PHONE_SHELL_EXPANDED_SELECTOR = "[data-panel].ecu-chat-shell-expanded,[data-panel].ecu-command-shell-expanded,[data-panel].ecu-bank-shell-expanded,[data-panel].ecu-market-shell-expanded,[data-panel].ecu-mail-shell-expanded,[data-panel].ecu-bag-shell-expanded,[data-panel].ecu-settings-shell-expanded,.ecu-settings-backdrop.is-phone";
@@ -29473,16 +29996,9 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   background: transparent !important;
   padding: 0 !important;
 }
-/* Sheet mode: foot Done replaces window X / expand chrome. */
+/* Sheet mode: foot Done replaces window X. Keep expand so restore works. */
 [data-panel="${panelAttr}"].${className} > .comm-pos-panel-close,
-[data-panel="${panelAttr}"].${className} .comm-pos-panel-close,
-[data-panel="${panelAttr}"].${className} .ecu-panel-expand,
-[data-panel="${panelAttr}"].${className} .CommandPanel-expand,
-[data-panel="${panelAttr}"].${className} .BankPanel-expand,
-[data-panel="${panelAttr}"].${className} .MarketPanel-expand,
-[data-panel="${panelAttr}"].${className} .comm-bag-panel__expand,
-[data-panel="${panelAttr}"].${className} .ecu-chat-expand,
-[data-panel="${panelAttr}"].${className} .comm-mail__expand {
+[data-panel="${panelAttr}"].${className} .comm-pos-panel-close {
   display: none !important;
 }
 html.ecu-phone-sheet-open .ecu-cam-chrome,
@@ -29835,6 +30351,41 @@ ${inner}`;
 .comm-mail__banner.is-new {
   color: #8cf;
   background: linear-gradient(90deg, #122030, #0e0e0e 70%);
+}
+.comm-mail__banner-head {
+  font-size: 13px;
+  line-height: 1.3;
+}
+.comm-mail__banner-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.comm-mail__banner-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.comm-mail__banner-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+  line-height: 1.25;
+}
+.comm-mail__banner-route {
+  font-size: 13px;
+  color: #e8f2ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.comm-mail__banner-what {
+  font-size: 12px;
+  color: rgba(200, 210, 180, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .comm-mail__chrome {
   display: grid;
@@ -31380,17 +31931,88 @@ button.comm-mail__stack-u {
   background: #1a1a1a;
   border: 1px solid #666;
   color: #eee;
-  padding: 10px 16px;
-  font-size: 15px;
+  padding: 10px 14px;
+  font-size: 14px;
   font-family: "Segoe UI", Tahoma, Arial, sans-serif;
   z-index: 100000;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s, transform 0.2s;
+  max-width: min(440px, 92vw);
+  box-sizing: border-box;
 }
 .ecu-mail-toast.is-on {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+.ecu-mail-toast__head {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(170, 190, 210, 0.9);
+  margin: 0 0 6px;
+}
+.ecu-mail-toast__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ecu-mail-toast__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ecu-mail-toast__icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  line-height: 0;
+}
+.ecu-mail-toast .comm-mail__item {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  line-height: 0;
+  pointer-events: none;
+}
+.ecu-mail-toast .comm-mail__item.is-empty {
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  box-sizing: border-box;
+}
+.ecu-mail-toast .comm-mail__item .ecu-item-instance,
+.ecu-mail-toast .comm-mail__item .itemcontainer {
+  margin: 0 !important;
+}
+.ecu-mail-toast__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.25;
+}
+.ecu-mail-toast__route {
+  font-size: 13px;
+  color: #f0f0f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-mail-toast__what {
+  font-size: 12px;
+  color: rgba(200, 210, 180, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 `;
 
@@ -31416,7 +32038,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-05T11:09:38.731Z" : "unknown";
+    const builtAt = true ? "2026-11-05T18:23:54.069Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -33176,12 +33798,12 @@ button.comm-mail__stack-u {
       (a, b) => a.start - b.start || b.end - b.start - (a.end - a.start) || a.kind.localeCompare(b.kind)
     );
     const hits = [];
-    let cursor = 0;
+    let cursor2 = 0;
     for (let i = 0; i < candidates.length; i++) {
       const hit = candidates[i];
-      if (hit.start < cursor) continue;
+      if (hit.start < cursor2) continue;
       hits.push(hit);
-      cursor = hit.end;
+      cursor2 = hit.end;
     }
     return hits;
   }
@@ -33189,11 +33811,11 @@ button.comm-mail__stack-u {
     const hits = findUpdateNoteRefs(note, lexicon);
     if (!hits.length) return [{ type: "text", text: note }];
     const segments = [];
-    let cursor = 0;
+    let cursor2 = 0;
     for (let i = 0; i < hits.length; i++) {
       const hit = hits[i];
-      if (hit.start > cursor) {
-        segments.push({ type: "text", text: note.slice(cursor, hit.start) });
+      if (hit.start > cursor2) {
+        segments.push({ type: "text", text: note.slice(cursor2, hit.start) });
       }
       segments.push({
         type: "ref",
@@ -33201,10 +33823,10 @@ button.comm-mail__stack-u {
         kind: hit.kind,
         text: note.slice(hit.start, hit.end)
       });
-      cursor = hit.end;
+      cursor2 = hit.end;
     }
-    if (cursor < note.length) {
-      segments.push({ type: "text", text: note.slice(cursor) });
+    if (cursor2 < note.length) {
+      segments.push({ type: "text", text: note.slice(cursor2) });
     }
     return segments;
   }
@@ -36986,6 +37608,50 @@ button.comm-mail__stack-u {
     }
     return fov;
   }
+  function setWorldFovTowardClient(next, clientX, clientY) {
+    const before = readAppliedWorldFov();
+    const css = readWindowCssSize();
+    const after = clampWorldFovForDisplay(next, css.w, css.h);
+    if (after === before) {
+      return setWorldFov(after);
+    }
+    const host2 = window;
+    const map = host2.map;
+    const view = host2.renderer && host2.renderer.view;
+    const realX = map && typeof map.real_x === "number" && Number.isFinite(map.real_x) ? map.real_x : 0;
+    const realY = map && typeof map.real_y === "number" && Number.isFinite(map.real_y) ? map.real_y : 0;
+    const w0 = typeof host2.width === "number" && host2.width > 0 ? host2.width : css.w;
+    const h0 = typeof host2.height === "number" && host2.height > 0 ? host2.height : css.h;
+    let fracX = 0.5;
+    let fracY = 0.5;
+    if (view && typeof view.getBoundingClientRect === "function") {
+      const r = view.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        fracX = (clientX - r.left) / r.width;
+        fracY = (clientY - r.top) / r.height;
+      }
+    }
+    unlockCamera();
+    const fov = setWorldFov(after);
+    const w1 = typeof host2.width === "number" && host2.width > 0 ? host2.width : w0;
+    const h1 = typeof host2.height === "number" && host2.height > 0 ? host2.height : h0;
+    if (w1 === w0 && h1 === h0) {
+      return fov;
+    }
+    const anchored = cameraRealAfterFovTowardCursor({
+      realX,
+      realY,
+      scale: readHostWorldZoom(),
+      widthBefore: w0,
+      heightBefore: h0,
+      widthAfter: w1,
+      heightAfter: h1,
+      fracX,
+      fracY
+    });
+    setCameraWorldXY(anchored.x, anchored.y);
+    return fov;
+  }
   function zoomFovOut() {
     return setWorldFov(readAppliedWorldFov() + WORLD_FOV_STEP);
   }
@@ -37134,14 +37800,25 @@ button.comm-mail__stack-u {
     }
     return best;
   }
+  function asClosestHost(target) {
+    const maybe = target;
+    if (!maybe || typeof maybe.closest !== "function") return null;
+    return maybe;
+  }
   function isInteractiveChromeTarget(target) {
-    if (!(target instanceof Element)) return false;
-    return !!(target.closest("[data-ecu-phone-dock]") || target.closest(".ecu-phone-sheet") || target.closest(".ecu-phone-shade") || target.closest(".ecu-phone-sheet-scrim") || target.closest(".ecu-phone-shade-scrim") || target.closest("[data-panel]") || target.closest(".ecu-meter-shell") || target.closest(".ecu-chrome-stack") || target.closest(".ecu-cam-stick, .ecu-cam-chrome") || target.closest(".modal") || target.closest(".imodal") || target.closest("#bottomleftcorner") || target.closest("#bottomrightcorner") || target.closest("input, textarea, select, [contenteditable='true']") || target.closest(".CodeMirror"));
+    const el = asClosestHost(target);
+    if (!el) return false;
+    return !!(el.closest("[data-ecu-phone-dock]") || el.closest(".ecu-phone-sheet") || el.closest(".ecu-phone-shade") || el.closest(".ecu-phone-sheet-scrim") || el.closest(".ecu-phone-shade-scrim") || el.closest("[data-panel]") || el.closest("[data-ecu-comm-modal-portal]") || el.closest(".ecu-comm-wiz-backdrop") || el.closest(".ecu-meter-shell") || el.closest(".ecu-chrome-stack") || el.closest(".ecu-cam-stick, .ecu-cam-chrome") || el.closest(".ecu-trade-prompt-backdrop") || el.closest(".modal") || el.closest(".imodal") || el.closest("#bottomleftcorner") || el.closest("#bottomrightcorner") || el.closest("input, textarea, select, [contenteditable='true']") || el.closest(".CodeMirror"));
   }
   function isUiChromeTarget(target) {
-    if (!(target instanceof Element)) return false;
+    const el = asClosestHost(target);
+    if (!el) return false;
     if (isInteractiveChromeTarget(target)) return true;
-    return !!(target.closest("#comm-ui") || target.closest("#topleftcorner") || target.closest("#toprightcorner"));
+    return !!(el.closest("#comm-ui") || el.closest("#topleftcorner") || el.closest("#toprightcorner"));
+  }
+  function allowsDesktopWorldWheelZoom(opts) {
+    if (isUiChromeTarget(opts.target)) return false;
+    return opts.targetOnCanvas;
   }
   function pointOverCanvas(clientX, clientY) {
     const view = rendererView();
@@ -37162,11 +37839,11 @@ button.comm-mail__stack-u {
     if (isInteractiveChromeTarget(ev.target)) return;
     if (pinchSim) {
       if (!pointOverCanvas(ev.clientX, ev.clientY)) return;
-    } else {
-      if (isUiChromeTarget(ev.target)) return;
-      if (!targetOnCanvas(ev.target) && !pointOverCanvas(ev.clientX, ev.clientY)) {
-        return;
-      }
+    } else if (!allowsDesktopWorldWheelZoom({
+      target: ev.target,
+      targetOnCanvas: targetOnCanvas(ev.target)
+    })) {
+      return;
     }
     const now = Date.now();
     if (now - lastWheelApplyMs < WHEEL_MIN_MS) {
@@ -37180,7 +37857,7 @@ button.comm-mail__stack-u {
     }
     lastWheelApplyMs = now;
     ev.preventDefault();
-    setWorldFov(next);
+    setWorldFovTowardClient(next, ev.clientX, ev.clientY);
   }
   function touchDistance(a, b) {
     const dx = a.clientX - b.clientX;
@@ -37249,7 +37926,9 @@ button.comm-mail__stack-u {
       }
       const next2 = clampWorldFov(shiftPinchBaseFov - steps * WORLD_FOV_STEP);
       ev.preventDefault();
-      if (next2 !== readAppliedWorldFov()) setWorldFov(next2);
+      if (next2 !== readAppliedWorldFov()) {
+        setWorldFovTowardClient(next2, t.clientX, t.clientY);
+      }
       shiftPinchBaseFov = next2;
       shiftPinchStartY = t.clientY;
       return;
@@ -37269,7 +37948,9 @@ button.comm-mail__stack-u {
       return;
     }
     ev.preventDefault();
-    setWorldFov(next);
+    const midX = (ev.touches[0].clientX + ev.touches[1].clientX) / 2;
+    const midY = (ev.touches[0].clientY + ev.touches[1].clientY) / 2;
+    setWorldFovTowardClient(next, midX, midY);
     pinchBaseFov = next;
     pinchStartDist = dist;
   }
@@ -37300,7 +37981,9 @@ button.comm-mail__stack-u {
     }
     const next = clampWorldFov(shiftPinchBaseFov - steps * WORLD_FOV_STEP);
     ev.preventDefault();
-    if (next !== readAppliedWorldFov()) setWorldFov(next);
+    if (next !== readAppliedWorldFov()) {
+      setWorldFovTowardClient(next, ev.clientX, ev.clientY);
+    }
     shiftPinchBaseFov = next;
     shiftPinchStartY = ev.clientY;
   }
@@ -38280,15 +38963,6 @@ button.comm-mail__stack-u {
     if (!Number.isFinite(x + y)) return null;
     return { x, y };
   }
-  function readCameraXY() {
-    const map = getHostMap();
-    if (!map) return null;
-    const x = map.real_x;
-    const y = map.real_y;
-    if (typeof x !== "number" || typeof y !== "number") return null;
-    if (!Number.isFinite(x + y)) return null;
-    return { x, y };
-  }
   function findLiveObservedEntity() {
     const snap = window.observing;
     if (!snap) return null;
@@ -38318,14 +38992,34 @@ button.comm-mail__stack-u {
     if (fromChar) return fromChar;
     return { x: STOCK_VISION_HALF_X, y: STOCK_VISION_HALF_Y };
   }
+  function readCameraXY() {
+    const map = getHostMap();
+    if (!map) return null;
+    const x = map.real_x;
+    const y = map.real_y;
+    if (typeof x !== "number" || typeof y !== "number") return null;
+    if (!Number.isFinite(x + y)) return null;
+    return { x, y };
+  }
+  function hasVisionSubject() {
+    if (findLiveObservedEntity()) return true;
+    if (getObserving()) return true;
+    if (getCharacter()) return true;
+    if (readObserverCameraAnchor()) return true;
+    if (!isFreeCamera() && readCameraXY()) return true;
+    return false;
+  }
   function resolveVisionCenter() {
     syncFreeCameraAfterRealmChange();
     const fromLive = mapXY(findLiveObservedEntity());
     if (fromLive) return fromLive;
     const fromChar = mapXY(getCharacter());
     if (fromChar) return fromChar;
-    const fromSnap = mapXY(getObserving());
-    if (fromSnap) return fromSnap;
+    const observing = getObserving();
+    if (observing) {
+      const fromSnap = mapXY(observing);
+      if (fromSnap) return fromSnap;
+    }
     if (isFreeCamera()) {
       const anchor = readObserverCameraAnchor();
       if (anchor) return anchor;
@@ -38366,6 +39060,7 @@ button.comm-mail__stack-u {
     if (!settings["world.observerVision"]) return;
     try {
       if (!shouldPaintObserverVisionFog()) return;
+      if (!hasVisionSubject()) return;
       const center = resolveVisionCenter();
       if (!center) return;
       const half = readObserverVisionHalf();
@@ -54342,24 +55037,25 @@ ${parts.map(cssSlice).join("\n")}
     }
     style.textContent = `
 .ecu-cam-chrome {
+  /* Clear the home pager strip (Players \u203A / dots) so FOV never stacks on it. */
   position: fixed;
-  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 8px);
+  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 48px);
   z-index: 236;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   pointer-events: none;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 .ecu-cam-chrome.is-left {
-  left: max(8px, env(safe-area-inset-left, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
   right: auto;
 }
 .ecu-cam-chrome.is-right {
-  right: max(8px, env(safe-area-inset-right, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
   left: auto;
 }
 .ecu-cam-chrome > * {
@@ -54370,47 +55066,66 @@ ${parts.map(cssSlice).join("\n")}
   left: 0;
   bottom: 0;
   z-index: 1;
-  width: ${JOYSTICK_RADIUS_PX * 2 + 16}px;
-  height: ${JOYSTICK_RADIUS_PX * 2 + 16}px;
+  width: ${JOYSTICK_RADIUS_PX * 2 + 12}px;
+  height: ${JOYSTICK_RADIUS_PX * 2 + 12}px;
   touch-action: none;
 }
 .ecu-cam-stick__base {
   position: absolute;
-  inset: 8px;
+  inset: 6px;
   border-radius: 50%;
-  background: rgba(28, 27, 31, 0.38);
-  border: 1px solid rgba(230, 225, 229, 0.32);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
-  opacity: 0.82;
+  background:
+    radial-gradient(
+      circle at 50% 42%,
+      rgba(60, 58, 68, 0.55) 0%,
+      rgba(28, 27, 31, 0.62) 70%
+    );
+  border: 1.5px solid rgba(230, 225, 229, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.28),
+    0 2px 10px rgba(0, 0, 0, 0.28);
+  opacity: 0.9;
   transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 .ecu-cam-stick__knob {
   position: absolute;
-  width: 32px;
-  height: 32px;
-  margin-left: -16px;
-  margin-top: -16px;
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
+  margin-top: -17px;
   left: 50%;
   top: 50%;
   border-radius: 50%;
-  background: rgba(157, 212, 236, 0.42);
-  border: 1px solid rgba(157, 212, 236, 0.58);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
+  background:
+    radial-gradient(
+      circle at 38% 32%,
+      rgba(190, 230, 248, 0.95) 0%,
+      rgba(157, 212, 236, 0.72) 45%,
+      rgba(90, 140, 170, 0.75) 100%
+    );
+  border: 1.5px solid rgba(220, 240, 250, 0.75);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
   pointer-events: none;
-  opacity: 0.9;
+  opacity: 0.95;
   transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 .ecu-cam-stick.is-active .ecu-cam-stick__base {
   opacity: 1;
-  background: rgba(28, 27, 31, 0.42);
-  border-color: rgba(230, 225, 229, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+  border-color: rgba(157, 212, 236, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 2px 12px rgba(0, 0, 0, 0.35);
 }
 .ecu-cam-stick.is-active .ecu-cam-stick__knob {
   opacity: 1;
-  background: rgba(157, 212, 236, 0.55);
-  border-color: rgba(157, 212, 236, 0.85);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    0 3px 12px rgba(0, 0, 0, 0.45),
+    0 0 0 2px rgba(157, 212, 236, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .ecu-cam-chrome__fov {
   display: flex;
@@ -54418,24 +55133,24 @@ ${parts.map(cssSlice).join("\n")}
   justify-content: space-between;
   gap: 0;
   width: ${JOYSTICK_RADIUS_PX * 2 + 8}px;
-  min-height: 24px;
-  padding: 0;
-  border-radius: 12px;
-  border: 1px solid rgba(230, 225, 229, 0.14);
-  background: rgba(28, 27, 31, 0.42);
-  box-shadow: none;
-  opacity: 0.78;
+  min-height: 26px;
+  padding: 0 2px;
+  border-radius: 13px;
+  border: 1px solid rgba(230, 225, 229, 0.2);
+  background: rgba(28, 27, 31, 0.78);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+  opacity: 0.94;
 }
 .ecu-cam-chrome__fov-btn {
-  min-width: 28px;
-  min-height: 24px;
+  min-width: 30px;
+  min-height: 26px;
   margin: 0;
-  padding: 0 5px;
+  padding: 0 6px;
   border: none;
   border-radius: 10px;
   background: transparent;
-  color: rgba(230, 225, 229, 0.85);
-  font: 500 10px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  color: rgba(230, 225, 229, 0.9);
+  font: 600 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -54450,14 +55165,14 @@ ${parts.map(cssSlice).join("\n")}
 .ecu-cam-chrome__fov-label {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 24px;
+  min-height: 26px;
   margin: 0;
   padding: 0 2px;
   border: none;
   border-radius: 10px;
   background: transparent;
-  color: rgba(157, 212, 236, 0.9);
-  font: 500 10px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  color: rgba(157, 212, 236, 0.95);
+  font: 600 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -54688,16 +55403,6 @@ ${parts.map(cssSlice).join("\n")}
       e(
         "div",
         {
-          className: "ecu-cam-stick",
-          ref: rootRef,
-          "aria-label": "Camera pan joystick"
-        },
-        e("div", { className: "ecu-cam-stick__base" }),
-        e("div", { className: "ecu-cam-stick__knob", ref: knobRef })
-      ),
-      e(
-        "div",
-        {
           className: "ecu-cam-chrome__fov",
           title: "Camera FOV \u2014 out sees more, in sees less. Pinch the map also works."
         },
@@ -54746,6 +55451,16 @@ ${parts.map(cssSlice).join("\n")}
           },
           "in"
         )
+      ),
+      e(
+        "div",
+        {
+          className: "ecu-cam-stick",
+          ref: rootRef,
+          "aria-label": "Camera pan joystick"
+        },
+        e("div", { className: "ecu-cam-stick__base" }),
+        e("div", { className: "ecu-cam-stick__knob", ref: knobRef })
       )
     );
   }
@@ -55411,6 +56126,24 @@ ${parts.map(cssSlice).join("\n")}
 .ecu-phone-dock__apps.is-on .ecu-phone-dock__apps-glyph {
   background: rgba(157, 212, 236, 0.16);
 }
+.ecu-phone-dock__mail-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #d33;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 1px #1a1a1a;
+  pointer-events: none;
+}
 .ecu-phone-pick__banner {
   display: flex;
   flex-direction: row;
@@ -55872,7 +56605,9 @@ ${parts.map(cssSlice).join("\n")}
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 2px 6px;
-  padding: 2px 8px 4px;
+  /* Leave room for the camera stick on either thumb side. */
+  padding: 2px max(88px, env(safe-area-inset-right, 0px)) 4px
+    max(88px, env(safe-area-inset-left, 0px));
 }
 .ecu-phone-home-dots__side {
   pointer-events: auto;
@@ -55880,10 +56615,10 @@ ${parts.map(cssSlice).join("\n")}
   align-items: center;
   gap: 4px;
   min-width: 0;
-  min-height: 36px;
-  max-width: 100%;
+  min-height: 32px;
+  max-width: min(36vw, 112px);
   margin: 0;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: rgba(28, 27, 31, 0.72);
@@ -56139,6 +56874,7 @@ ${parts.map(cssSlice).join("\n")}
   color: #938f99;
 }
 .ecu-phone-apps__icon {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -56149,6 +56885,24 @@ ${parts.map(cssSlice).join("\n")}
   font-weight: 600;
   color: #fff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.ecu-phone-apps__mail-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #d33;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 1px #1a1a1a;
+  pointer-events: none;
 }
 .ecu-phone-apps__label {
   font-size: 12px;
@@ -57168,6 +57922,17 @@ ${parts.map(cssSlice).join("\n")}
     return out;
   }
   function appTile(tile) {
+    const iconKids = [tile.glyph];
+    if (tile.mailBadge) {
+      iconKids.push(
+        e("span", {
+          key: "mail-badge",
+          className: "ecu-mail-badge ecu-phone-apps__mail-badge",
+          "data-ecu-mail-badge": "1",
+          hidden: true
+        })
+      );
+    }
     return e(
       "button",
       {
@@ -57181,10 +57946,10 @@ ${parts.map(cssSlice).join("\n")}
       e(
         "span",
         {
-          className: "ecu-phone-apps__icon",
+          className: "ecu-phone-apps__icon" + (tile.mailBadge ? " has-badge" : ""),
           style: { background: tile.tone }
         },
-        tile.glyph
+        ...iconKids
       ),
       e("span", { className: "ecu-phone-apps__label" }, tile.label),
       tile.muted ? e("span", { className: "ecu-phone-apps__hint" }, "Observe first") : null
@@ -57220,6 +57985,10 @@ ${parts.map(cssSlice).join("\n")}
       window.addEventListener("keydown", onKey);
       return () => window.removeEventListener("keydown", onKey);
     }, [props.open, onClose]);
+    React.useEffect(() => {
+      if (!props.open || editHome) return;
+      syncMailBadge();
+    }, [props.open, editHome]);
     if (!props.open) return null;
     const resetDrag = () => {
       dragging.current = false;
@@ -57304,6 +58073,7 @@ ${parts.map(cssSlice).join("\n")}
         glyph: "M",
         tone: "#3d6b9a",
         on: props.visible("mail"),
+        mailBadge: true,
         tour: "btn-mail",
         onClick: () => openOverlay("mail")
       },
@@ -57690,6 +58460,11 @@ ${parts.map(cssSlice).join("\n")}
       const tick3 = () => setStatus2(readPhoneDockStatus());
       tick3();
       const id = window.setInterval(tick3, 500);
+      return () => window.clearInterval(id);
+    }, []);
+    React.useEffect(() => {
+      syncMailBadge();
+      const id = window.setInterval(() => syncMailBadge(), 2e3);
       return () => window.clearInterval(id);
     }, []);
     const pages = phoneHomeScreenIndices(props.phoneHomeScreens);
@@ -58086,7 +58861,12 @@ ${parts.map(cssSlice).join("\n")}
             }
           },
           e("span", { className: "ecu-phone-dock__apps-glyph" }, "\u25A6"),
-          e("span", null, "Apps")
+          e("span", null, "Apps"),
+          e("span", {
+            className: "ecu-mail-badge ecu-phone-dock__mail-badge",
+            "data-ecu-mail-badge": "1",
+            hidden: true
+          })
         ),
         dockStatusBtn("server", "Server", serverTitle, openServer, {
           on: !!status.serverLabel,
@@ -75007,8 +75787,8 @@ ${ESTIMATE_HINT}`,
     if (p === "type" || p === "mtype") return "monster";
     return "none";
   }
-  function findEnclosingCall(value, cursor) {
-    const c = Math.max(0, Math.min(cursor, value.length));
+  function findEnclosingCall(value, cursor2) {
+    const c = Math.max(0, Math.min(cursor2, value.length));
     let inString = null;
     const callStack = [];
     for (let i = 0; i < c; i++) {
@@ -75085,8 +75865,8 @@ ${ESTIMATE_HINT}`,
       argStart: top.argStart
     };
   }
-  function inspectObjectSite(value, cursor, argStart) {
-    const c = Math.max(0, Math.min(cursor, value.length));
+  function inspectObjectSite(value, cursor2, argStart) {
+    const c = Math.max(0, Math.min(cursor2, value.length));
     if (argStart < 0 || argStart > c) return null;
     const slice = value.slice(argStart, c);
     let inString = null;
@@ -75188,8 +75968,8 @@ ${ESTIMATE_HINT}`,
       to: c
     };
   }
-  function inspectCompletionContext(value, cursor, apiIndex) {
-    const c = Math.max(0, Math.min(cursor, value.length));
+  function inspectCompletionContext(value, cursor2, apiIndex) {
+    const c = Math.max(0, Math.min(cursor2, value.length));
     const before = value.slice(0, c);
     const index = apiIndex || getRunnerApiIndex();
     let quote = "'";
@@ -75450,13 +76230,13 @@ ${ESTIMATE_HINT}`,
     }
     return filterSort(raw, ctx.prefix);
   }
-  function shouldAutoOpenCompletions(value, cursor, apiIndex) {
-    const ctx = inspectCompletionContext(value, cursor, apiIndex);
+  function shouldAutoOpenCompletions(value, cursor2, apiIndex) {
+    const ctx = inspectCompletionContext(value, cursor2, apiIndex);
     if (ctx.kind === "none") return false;
     if (ctx.kind === "api") return ctx.prefix.length >= 2;
     if (ctx.kind === "prop") return true;
     if (ctx.inString) return true;
-    if (/[A-Za-z_][\w]*\s*\(\s*$/.test(value.slice(0, cursor))) return true;
+    if (/[A-Za-z_][\w]*\s*\(\s*$/.test(value.slice(0, cursor2))) return true;
     return ctx.prefix.length >= 1;
   }
 
@@ -75553,9 +76333,9 @@ ${ESTIMATE_HINT}`,
     };
     const open = () => {
       const value = cm.getValue();
-      const cursor = indexFromPos(cm, cm.getCursor());
-      const ctx = inspectCompletionContext(value, cursor);
-      const list = listCommandCompletions({ value, cursor });
+      const cursor2 = indexFromPos(cm, cm.getCursor());
+      const ctx = inspectCompletionContext(value, cursor2);
+      const list = listCommandCompletions({ value, cursor: cursor2 });
       if (!list.length) {
         close();
         return;
@@ -75581,8 +76361,8 @@ ${ESTIMATE_HINT}`,
         return;
       }
       const value = cm.getValue();
-      const cursor = indexFromPos(cm, cm.getCursor());
-      if (shouldAutoOpenCompletions(value, cursor)) open();
+      const cursor2 = indexFromPos(cm, cm.getCursor());
+      if (shouldAutoOpenCompletions(value, cursor2)) open();
       else close();
     };
     const onKeyDown2 = (_cm, ev) => {
@@ -75732,6 +76512,57 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/panelExpandControl.ts
+  var STYLE_ID12 = "ecu-panel-expand-css";
+  var EXPAND_CSS = `
+.ecu-panel-expand {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #886;
+  border-radius: 2px;
+  background: rgba(30, 30, 20, 0.95);
+  color: #ffe08a;
+  cursor: pointer;
+  line-height: 0;
+  box-sizing: border-box;
+}
+.ecu-panel-expand:hover {
+  border-color: #aa8;
+  background: rgba(50, 40, 20, 0.95);
+}
+.ecu-panel-expand.is-expanded {
+  border-color: rgba(232, 201, 106, 0.55);
+  color: #ffe08a;
+  background: #2a2410;
+}
+.ecu-panel-expand .ecu-expand-glyph {
+  display: block;
+}
+#comm-ui.comm-ui-touch .ecu-panel-expand,
+#comm-ui[data-viewport="tablet"] .ecu-panel-expand,
+#comm-ui[data-viewport="phone"] .ecu-panel-expand {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+}
+`;
+  function ensurePanelExpandCss() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById(STYLE_ID12)) return;
+    const el = document.createElement("style");
+    el.id = STYLE_ID12;
+    el.textContent = EXPAND_CSS;
+    document.head.appendChild(el);
+  }
   function ExpandGlyph(expanded) {
     const React = getReact();
     const d = expanded ? (
@@ -75763,16 +76594,22 @@ ${ESTIMATE_HINT}`,
   }
   function PanelExpandButton(props) {
     const React = getReact();
+    ensurePanelExpandCss();
     const title = props.expanded ? props.restoreTitle : props.expandTitle;
+    const extra = props.className ? " " + props.className : "";
     return e(
       "button",
       {
         type: "button",
-        className: (props.className || "ecu-panel-expand") + (props.expanded ? " is-expanded" : ""),
+        className: "ecu-panel-expand" + extra + (props.expanded ? " is-expanded" : ""),
         title,
         "aria-label": title,
         "aria-pressed": props.expanded,
-        onClick: () => props.onToggle()
+        onClick: (ev) => {
+          if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+          props.onToggle();
+        }
       },
       ExpandGlyph(props.expanded)
     );
@@ -77328,7 +78165,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/peerPageDotsCss.ts
-  var STYLE_ID12 = "ecu-peer-page-dots-css";
+  var STYLE_ID13 = "ecu-peer-page-dots-css";
   var CSS12 = `
 .ecu-peer-page-dots {
   flex-shrink: 0;
@@ -77485,10 +78322,10 @@ ${ESTIMATE_HINT}`,
 `;
   function ensurePeerPageDotsCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID12);
+    let el = document.getElementById(STYLE_ID13);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID12;
+      el.id = STYLE_ID13;
       document.head.appendChild(el);
     }
     el.textContent = CSS12;
@@ -80338,72 +81175,6 @@ ${ESTIMATE_HINT}`,
     };
   }
 
-  // src/ui/frames/mail/mailFormat.ts
-  function formatMailDate(sent, now = Date.now()) {
-    const t = Date.parse(sent);
-    if (!Number.isFinite(t)) return String(sent || "");
-    const d = new Date(t);
-    const n = new Date(now);
-    try {
-      if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) {
-        return d.toLocaleTimeString(void 0, {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false
-        });
-      }
-      if (d.getFullYear() === n.getFullYear()) {
-        return d.toLocaleDateString(void 0, {
-          day: "2-digit",
-          month: "2-digit"
-        });
-      }
-      return d.toLocaleDateString(void 0, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "2-digit"
-      });
-    } catch (e2) {
-      return String(sent);
-    }
-  }
-  function formatMailDateTime(sent) {
-    const t = Date.parse(sent);
-    if (!Number.isFinite(t)) return String(sent || "");
-    try {
-      return new Date(t).toLocaleString();
-    } catch (e2) {
-      return String(sent);
-    }
-  }
-  function formatMailRelative(sent, now = Date.now()) {
-    const t = Date.parse(sent);
-    if (!Number.isFinite(t)) return String(sent || "");
-    return formatRelativeAge(t, now);
-  }
-  function selfCharacterNames() {
-    const out = [];
-    const chars = window.X && window.X.characters || [];
-    for (let i = 0; i < chars.length; i++) {
-      const n = chars[i] && chars[i].name;
-      if (n) out.push(String(n));
-    }
-    return out;
-  }
-  function visiblePlayerNames() {
-    const out = [];
-    const raw = window.entities;
-    if (!raw) return out;
-    const list = Array.isArray(raw) ? raw : Object.values(raw);
-    for (let i = 0; i < list.length; i++) {
-      const ent = list[i];
-      if (!ent || !ent.name) continue;
-      if (ent.npc) continue;
-      if (ent.player || ent.type === "character") out.push(String(ent.name));
-    }
-    return out;
-  }
-
   // src/ui/frames/mail/mailBagMenuActions.ts
   function liveBagItems() {
     const obs = window.observing;
@@ -81992,6 +82763,59 @@ ${ESTIMATE_HINT}`,
       `if(${slotVar}<0){game_log(${lit7(commLogText("station \xB7 missing after buy \xB7 " + itemName))});return;}`
     ].join("");
   }
+  var LUCKY_SWAP_SLEEP_MS = 160;
+  function buildLuckySwapJs(slotVar, luckySlot, remapVars = []) {
+    if (luckySlot == null) return "";
+    const lucky = Number(luckySlot);
+    if (!Number.isFinite(lucky) || lucky < 0) return "";
+    const dest = lucky | 0;
+    const remaps = [];
+    for (let i = 0; i < remapVars.length; i++) {
+      const v = remapVars[i];
+      if (!v || v === slotVar) continue;
+      remaps.push(
+        `if(typeof ${v}==="number"){if(${v}===${dest})${v}=__luckyFrom;else if(${v}===__luckyFrom)${v}=${dest};}`
+      );
+    }
+    return [
+      `{`,
+      `var __luckyN=Math.max(character.isize||0,character.items.length);`,
+      `if(${dest}<0||${dest}>=__luckyN){`,
+      `game_log(${lit7(commLogText("lucky slot \xB7 aborted \u2014 invalid slot " + dest))});return;}`,
+      `if(${slotVar}!==${dest}){`,
+      `if(${slotVar}<0||${slotVar}>=__luckyN){`,
+      `game_log(${lit7(commLogText("lucky slot \xB7 aborted \u2014 item slot invalid"))});return;}`,
+      `var __luckyFrom=${slotVar};`,
+      `var __luckyIt=character.items[__luckyFrom];`,
+      `var __luckyDest=character.items[${dest}];`,
+      `if(!__luckyIt||!__luckyIt.name||__luckyIt.name==="placeholder"){`,
+      `game_log(${lit7(commLogText("lucky slot \xB7 aborted \u2014 item placeholder"))});return;}`,
+      `if(__luckyDest&&__luckyDest.name==="placeholder"){`,
+      `game_log(${lit7(commLogText("lucky slot \xB7 aborted \u2014 dest placeholder"))});return;}`,
+      `try{`,
+      `await swap(${dest},__luckyFrom);`,
+      `await sleep(${LUCKY_SWAP_SLEEP_MS});`,
+      `var __land=character.items[${dest}];`,
+      `var __lv0=__luckyIt.level!=null?Number(__luckyIt.level):0;`,
+      `var __lv1=__land&&__land.level!=null?Number(__land.level):0;`,
+      `var __p0=__luckyIt.p!=null?String(__luckyIt.p):"";`,
+      `var __p1=__land&&__land.p!=null?String(__land.p):"";`,
+      `if(!(__land&&__land.name===__luckyIt.name&&__lv0===__lv1&&__p0===__p1)){`,
+      `game_log(${lit7(commLogText("lucky slot \xB7 verify failed \u2014 rolling back"))});`,
+      `try{await swap(${dest},__luckyFrom);await sleep(${LUCKY_SWAP_SLEEP_MS});}catch(__rb){}`,
+      `return;`,
+      `}`,
+      remaps.join(""),
+      `${slotVar}=${dest};`,
+      `game_log(${lit7(commLogText("lucky slot \xB7 swapped \u2192 " + dest))});`,
+      `}catch(__e){`,
+      `game_log(${lit7(commLogText("lucky slot \xB7 swap failed \u2014 upgrade aborted"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+      `return;`,
+      `}`,
+      `}`,
+      `}`
+    ].join("");
+  }
   function buildShrineSkillPrefixJs(opts) {
     if (!opts) return "";
     const parts = [];
@@ -82026,6 +82850,7 @@ ${ESTIMATE_HINT}`,
     if (buyOffering) {
       parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
     }
+    const luckySlot = buyOpts && buyOpts.luckySlot != null ? Number(buyOpts.luckySlot) : null;
     parts.push(buildEnsureStationJs(station));
     parts.push(buildShrineSkillPrefixJs(buyOpts));
     parts.push(resolveInvSlotNamedJs(item, "__uItem"));
@@ -82047,6 +82872,7 @@ ${ESTIMATE_HINT}`,
     } else {
       parts.push(`var __uOffering=null;`);
     }
+    parts.push(buildLuckySwapJs("__uItem", luckySlot, ["__uScroll", "__uOffering"]));
     parts.push(
       `try{`,
       `var __uCalc=await upgrade(__uItem,__uScroll,__uOffering,true);`,
@@ -82518,16 +83344,21 @@ ${ESTIMATE_HINT}`,
     for (let i = 0; i < bag.length; i++) have.add(bag[i].name);
     return bag.concat(listVendorOfferings(G, have));
   }
-  function findCompoundPartners(items, primarySlot, name, level) {
+  function titleKey2(p) {
+    return p != null && String(p).trim() !== "" ? String(p) : "";
+  }
+  function findCompoundPartners(items, primarySlot, name, level, p) {
     const slots = listBagSlots(items);
     const out = [];
     const wantLevel = Number(level) || 0;
+    const wantTitle = titleKey2(p);
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];
       if (s.slot === primarySlot) continue;
       if (s.name !== name) continue;
       const lv = s.level != null ? Number(s.level) : 0;
       if (lv !== wantLevel) continue;
+      if (titleKey2(s.p) !== wantTitle) continue;
       if (isLocked(s)) continue;
       out.push(s);
     }
@@ -82568,7 +83399,8 @@ ${ESTIMATE_HINT}`,
       bagItems,
       slot,
       String(item.name),
-      level
+      level,
+      item.p != null ? String(item.p) : null
     );
     const station = compoundStation(G);
     const access = evaluateStationAccess(station, { items: bagItems });
@@ -82601,6 +83433,161 @@ ${ESTIMATE_HINT}`,
       return a.slot - b.slot;
     });
     return [ranked[0], ranked[1]];
+  }
+  function npcBuyPriceForItem(name, G) {
+    if (!name || !G || !G.items) return null;
+    const def = G.items[name];
+    if (!isNpcGoldBuyable(def)) return null;
+    return vendorBuyPrice(def);
+  }
+  function materialBuyPrice(m) {
+    if (!m) return 0;
+    return Math.max(0, Number(m.buyPrice) || 0);
+  }
+  function materialCanBuyExtra(m, buyExtras) {
+    if (!m) return false;
+    if (m.buy) return materialBuyPrice(m) > 0;
+    return !!(buyExtras && m.canBuy && materialBuyPrice(m) > 0);
+  }
+  function goldNeedForAttempts(attempts, scroll, offering, buyExtras, scrollHave, offeringHave) {
+    let need = 0;
+    if (scroll && materialCanBuyExtra(scroll, buyExtras)) {
+      const price = materialBuyPrice(scroll);
+      if (scroll.buy) need += attempts * price;
+      else need += Math.max(0, attempts - scrollHave) * price;
+    }
+    if (offering && materialCanBuyExtra(offering, buyExtras)) {
+      const price = materialBuyPrice(offering);
+      if (offering.buy) need += attempts * price;
+      else need += Math.max(0, attempts - offeringHave) * price;
+    }
+    return need;
+  }
+  function planShrineBatch(opts) {
+    const peers = Math.max(0, opts.peerCount | 0);
+    const want = opts.mode === "compound" ? Math.floor(peers / 3) : peers;
+    let attempts = want;
+    let limitedBy = want > 0 ? "peers" : null;
+    const buyExtras = !!opts.buyExtras;
+    const scroll = opts.scroll || null;
+    const offering = opts.offering || null;
+    const gold = typeof opts.gold === "number" && Number.isFinite(opts.gold) ? Math.max(0, opts.gold) : 0;
+    const scrollHave = scroll && !scroll.buy ? Math.max(0, Number(scroll.q) || 0) : 0;
+    const offeringHave = offering && !offering.buy ? Math.max(0, Number(offering.q) || 0) : 0;
+    if (scroll) {
+      if (!materialCanBuyExtra(scroll, buyExtras)) {
+        if (scroll.buy) {
+          attempts = 0;
+          limitedBy = "scroll";
+        } else if (scrollHave < attempts) {
+          attempts = scrollHave;
+          limitedBy = "scroll";
+        }
+      }
+    }
+    if (offering && attempts > 0) {
+      if (!materialCanBuyExtra(offering, buyExtras)) {
+        if (offering.buy) {
+          attempts = 0;
+          limitedBy = "offering";
+        } else if (offeringHave < attempts) {
+          attempts = offeringHave;
+          limitedBy = "offering";
+        }
+      }
+    }
+    while (attempts > 0 && goldNeedForAttempts(
+      attempts,
+      scroll,
+      offering,
+      buyExtras,
+      scrollHave,
+      offeringHave
+    ) > gold) {
+      attempts--;
+      limitedBy = "gold";
+    }
+    if (attempts <= 0) {
+      attempts = 0;
+      if (want > 0 && limitedBy === "peers") limitedBy = null;
+    } else if (attempts === want) {
+      limitedBy = "peers";
+    }
+    let scrollBuy = 0;
+    if (scroll && attempts > 0 && materialCanBuyExtra(scroll, buyExtras)) {
+      scrollBuy = scroll.buy ? attempts : Math.max(0, attempts - scrollHave);
+    }
+    let offeringBuy = 0;
+    if (offering && attempts > 0 && materialCanBuyExtra(offering, buyExtras)) {
+      offeringBuy = offering.buy ? attempts : Math.max(0, attempts - offeringHave);
+    }
+    return {
+      attempts,
+      wantAttempts: want,
+      scrollUse: scroll ? attempts : 0,
+      scrollHave: scroll ? scroll.buy ? null : scrollHave : null,
+      scrollBuy,
+      offeringUse: offering ? attempts : 0,
+      offeringHave: offering ? offering.buy ? null : offeringHave : null,
+      offeringBuy,
+      goldNeed: goldNeedForAttempts(
+        attempts,
+        scroll,
+        offering,
+        buyExtras,
+        scrollHave,
+        offeringHave
+      ),
+      goldHave: gold,
+      limitedBy: attempts > 0 ? limitedBy : want > 0 ? limitedBy || "scroll" : null
+    };
+  }
+  function formatBatchGold(n) {
+    if (n >= 1e6) return Math.floor(n / 1e6) + "m";
+    if (n >= 1e4) return Math.floor(n / 1e3) + "k";
+    return String(n);
+  }
+  function formatShrineBatchSummary(plan, opts) {
+    if (plan.wantAttempts <= 0) {
+      return opts.mode === "compound" ? " \xB7 need 3 copies" : " \xB7 no copies";
+    }
+    const unit = opts.mode === "compound" ? "set" : "upgrade";
+    const units = opts.mode === "compound" ? "sets" : "upgrades";
+    const head = plan.attempts === plan.wantAttempts ? " \xB7 " + plan.attempts + " " + (plan.attempts === 1 ? unit : units) : " \xB7 " + plan.attempts + " of " + plan.wantAttempts + " " + units;
+    const parts = [head];
+    const formatMat = (mat, use, have, buy) => {
+      const label = mat.displayName || mat.name;
+      if (buy > 0 && have != null && use > buy) {
+        parts.push(
+          "use " + (use - buy) + " + buy " + buy + "\xD7 " + label + " (have " + have + ")"
+        );
+      } else if (buy > 0 && (mat.buy || use === buy)) {
+        parts.push("buy " + buy + "\xD7 " + label);
+      } else {
+        parts.push(
+          "use " + use + "\xD7 " + label + " (have " + (have != null ? have : "?") + ")"
+        );
+      }
+    };
+    const scroll = opts.scroll || null;
+    if (scroll && plan.scrollUse > 0) {
+      formatMat(scroll, plan.scrollUse, plan.scrollHave, plan.scrollBuy);
+    }
+    const offering = opts.offering || null;
+    if (offering && plan.offeringUse > 0) {
+      formatMat(
+        offering,
+        plan.offeringUse,
+        plan.offeringHave,
+        plan.offeringBuy
+      );
+    }
+    if (plan.goldNeed > 0) {
+      parts.push(
+        "gold " + formatBatchGold(plan.goldNeed) + " (have " + formatBatchGold(plan.goldHave) + ")"
+      );
+    }
+    return parts.join(" \xB7 ");
   }
 
   // src/lib/shrineChanceEstimate.ts
@@ -82689,18 +83676,31 @@ ${ESTIMATE_HINT}`,
   function isBagPlaceholder(it) {
     return !!(it && it.name === "placeholder");
   }
+  function itemTitleKey(p) {
+    return p != null && String(p).trim() !== "" ? String(p) : "";
+  }
   function countNameLevel(items, name, level) {
-    if (!items) return 0;
-    let n = 0;
+    return listBagSlotsAtNameLevel(items, name, level).length;
+  }
+  function listBagSlotsAtNameLevel(items, name, level) {
+    return listBagSlotsAtNameLevelTitle(items, name, level, void 0, false);
+  }
+  function listBagSlotsAtNameLevelTitle(items, name, level, p, matchTitle = true) {
+    if (!items) return [];
+    const out = [];
     const want = Number(level) || 0;
     const wantName = String(name || "");
+    const wantTitle = matchTitle ? itemTitleKey(p) : null;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      if (!it || it.name !== wantName) continue;
+      if (!it || !it.name || it.name === "placeholder") continue;
+      if (it.name !== wantName) continue;
       const lv = it.level != null ? Number(it.level) : 0;
-      if (lv === want) n += 1;
+      if (lv !== want) continue;
+      if (wantTitle != null && itemTitleKey(it.p) !== wantTitle) continue;
+      out.push(i);
     }
-    return n;
+    return out;
   }
   function evaluateShrineBagWatch(opts) {
     const items = opts.items;
@@ -83307,6 +84307,50 @@ ${ESTIMATE_HINT}`,
   margin: 0;
   accent-color: #c9a24a;
 }
+.ecu-upg__batch-count {
+  color: rgba(232, 201, 106, 0.88);
+  font-variant-numeric: tabular-nums;
+}
+.ecu-upg__lucky-row {
+  align-items: center;
+}
+.ecu-upg__lucky-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  color: rgba(220, 210, 185, 0.92);
+}
+.ecu-upg__lucky-slot input[type="number"] {
+  width: 3.2em;
+  padding: 2px 4px;
+  border: 1px solid rgba(61, 186, 95, 0.45);
+  background: rgba(0, 0, 0, 0.45);
+  color: #c8f0d0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-upg__lucky-slot input[type="number"]:disabled {
+  opacity: 0.45;
+}
+.ecu-upg__lucky-hint {
+  margin: 4px 0 0;
+  padding: 0 8px;
+  font-size: 10px;
+  color: rgba(170, 160, 145, 0.88);
+  line-height: 1.35;
+}
+.ecu-upg__batch-buy {
+  margin-top: 2px;
+}
+.ecu-upg__batch-detail {
+  margin: 4px 0 0;
+  padding: 0 8px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(200, 185, 150, 0.82);
+}
 `;
   function ensureUpgradeCompoundDialogCss() {
     if (injected14) return;
@@ -83320,6 +84364,11 @@ ${ESTIMATE_HINT}`,
   // src/ui/bag/upgradeCompoundDialog.ts
   var shrineSkillMassproduction = true;
   var shrineSkillMassproductionPp = true;
+  var shrineBatchMode = false;
+  var shrineBatchBuyExtras = false;
+  function bagItemLocked(it) {
+    return !!(it && it.l != null && it.l !== false && it.l !== 0);
+  }
   var openBackdrop3 = null;
   var finishOpen3 = null;
   var onDialogCleanup = null;
@@ -83449,6 +84498,212 @@ ${ESTIMATE_HINT}`,
         massproductionpp: massPp.checked
       })
     };
+  }
+  function bagLenForLucky() {
+    const bag = observingBagItems();
+    if (bag && bag.length > 0) return bag.length - 1;
+    return LUCKY_SLOT_MAX_DEFAULT;
+  }
+  function luckyMetaSuffix() {
+    const pref = getLuckyUpgradePref();
+    if (!pref.enabled) return "";
+    return " \xB7 \u{1F340} slot " + pref.slot;
+  }
+  function makeLuckySlotCheck(opts) {
+    const charKey = luckyUpgradeCharKey();
+    const initial = getLuckyUpgradePref(charKey);
+    const maxSlot = bagLenForLucky();
+    const root = document.createElement("div");
+    root.className = "ecu-upg__skills ecu-upg__lucky";
+    const label = document.createElement("div");
+    label.className = "ecu-upg__section-label";
+    label.textContent = charKey ? "\u{1F340} Lucky slot \xB7 " + charKey : "\u{1F340} Lucky slot";
+    root.appendChild(label);
+    const row3 = document.createElement("div");
+    row3.className = "ecu-upg__skills-row ecu-upg__lucky-row";
+    const wrap = document.createElement("label");
+    wrap.className = "ecu-upg__skill";
+    const enabled = document.createElement("input");
+    enabled.type = "checkbox";
+    enabled.checked = initial.enabled;
+    enabled.setAttribute("data-lucky-enabled", "1");
+    const span = document.createElement("span");
+    span.textContent = "Use lucky slot";
+    wrap.title = "Swap the item into this bag index before upgrade (community lucky-slot practice). Saved per character.";
+    wrap.appendChild(enabled);
+    wrap.appendChild(span);
+    row3.appendChild(wrap);
+    const slotWrap = document.createElement("label");
+    slotWrap.className = "ecu-upg__lucky-slot";
+    const slotLab = document.createElement("span");
+    slotLab.textContent = "Slot";
+    const slotInput = document.createElement("input");
+    slotInput.type = "number";
+    slotInput.min = "0";
+    slotInput.max = String(maxSlot);
+    slotInput.step = "1";
+    slotInput.value = String(normalizeLuckySlot(initial.slot, maxSlot));
+    slotInput.setAttribute("data-lucky-slot", "1");
+    slotInput.title = "0-based inventory index (same as bag data-cnum)";
+    slotWrap.appendChild(slotLab);
+    slotWrap.appendChild(slotInput);
+    row3.appendChild(slotWrap);
+    const hint = document.createElement("div");
+    hint.className = "ecu-upg__lucky-hint";
+    root.appendChild(row3);
+    root.appendChild(hint);
+    const persistAndPaint = () => {
+      const max = bagLenForLucky();
+      slotInput.max = String(max);
+      const slot = normalizeLuckySlot(slotInput.value, max);
+      slotInput.value = String(slot);
+      const pref = setLuckyUpgradePref(
+        { enabled: enabled.checked, slot },
+        charKey
+      );
+      slotInput.disabled = !pref.enabled;
+      hint.textContent = pref.enabled ? "Will swap into bag slot " + pref.slot + " before upgrade." : "Off \u2014 upgrade uses the item\u2019s current bag slot.";
+      setShrineLuckySlotHighlight(pref.enabled ? pref.slot : null);
+      opts.onChange();
+    };
+    enabled.addEventListener("change", persistAndPaint);
+    slotInput.addEventListener("change", persistAndPaint);
+    slotInput.addEventListener("input", () => {
+      if (!enabled.checked) return;
+      const max = bagLenForLucky();
+      const slot = normalizeLuckySlot(slotInput.value, max);
+      setShrineLuckySlotHighlight(slot);
+    });
+    persistAndPaint();
+    return {
+      root,
+      read: () => {
+        const max = bagLenForLucky();
+        return {
+          enabled: enabled.checked,
+          slot: normalizeLuckySlot(slotInput.value, max)
+        };
+      },
+      syncHighlight: () => {
+        const pref = {
+          enabled: enabled.checked,
+          slot: normalizeLuckySlot(slotInput.value, bagLenForLucky())
+        };
+        setShrineLuckySlotHighlight(pref.enabled ? pref.slot : null);
+      }
+    };
+  }
+  function makeBatchModeCheck(opts) {
+    const root = document.createElement("div");
+    root.className = "ecu-upg__skills ecu-upg__batch";
+    const label = document.createElement("div");
+    label.className = "ecu-upg__section-label";
+    label.textContent = "Batch";
+    root.appendChild(label);
+    const row3 = document.createElement("div");
+    row3.className = "ecu-upg__skills-row";
+    const wrap = document.createElement("label");
+    wrap.className = "ecu-upg__skill";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = shrineBatchMode;
+    input.setAttribute("data-batch", "1");
+    const span = document.createElement("span");
+    const verb = opts.mode === "compound" ? "Compound" : "Upgrade";
+    span.textContent = "Batch " + verb.toLowerCase();
+    wrap.title = opts.mode === "compound" ? "Run every full set of 3 matching copies, one compound at a time. Highlights peers in the bag." : "Upgrade every matching copy one by one. Highlights peers in the bag.";
+    wrap.appendChild(input);
+    wrap.appendChild(span);
+    const count = document.createElement("span");
+    count.className = "ecu-upg__batch-count";
+    wrap.appendChild(count);
+    row3.appendChild(wrap);
+    root.appendChild(row3);
+    const buyRow = document.createElement("div");
+    buyRow.className = "ecu-upg__skills-row ecu-upg__batch-buy";
+    const buyWrap = document.createElement("label");
+    buyWrap.className = "ecu-upg__skill";
+    const buyInput = document.createElement("input");
+    buyInput.type = "checkbox";
+    buyInput.checked = shrineBatchBuyExtras;
+    buyInput.setAttribute("data-batch-buy", "1");
+    const buySpan = document.createElement("span");
+    buySpan.textContent = "Buy more scrolls / offerings";
+    buyWrap.title = "After bag stock runs out, buy the same selected scroll and offering from an NPC until copies or gold run out.";
+    buyWrap.appendChild(buyInput);
+    buyWrap.appendChild(buySpan);
+    buyRow.appendChild(buyWrap);
+    buyRow.style.display = "none";
+    root.appendChild(buyRow);
+    const detail = document.createElement("div");
+    detail.className = "ecu-upg__batch-detail";
+    root.appendChild(detail);
+    input.addEventListener("change", () => {
+      shrineBatchMode = input.checked;
+      opts.onChange();
+    });
+    buyInput.addEventListener("change", () => {
+      shrineBatchBuyExtras = buyInput.checked;
+      opts.onChange();
+    });
+    return {
+      root,
+      read: () => input.checked,
+      readBuyExtras: () => input.checked && buyInput.checked,
+      setPlanSummary: (summary, detailText) => {
+        count.textContent = summary;
+        detail.textContent = detailText;
+        detail.style.display = detailText ? "" : "none";
+      },
+      syncBuyExtras: (state3) => {
+        const show = state3.batchOn && state3.canBuyExtras;
+        buyRow.style.display = show ? "" : "none";
+        buyInput.disabled = !show;
+        buyInput.checked = show && shrineBatchBuyExtras;
+      }
+    };
+  }
+  function batchMaterialFromPick(pick) {
+    if (!pick) return null;
+    const out = {
+      name: pick.name,
+      displayName: pick.displayName || pick.name,
+      q: pick.q != null ? Number(pick.q) : 1
+    };
+    if (pick.buy) {
+      out.buy = true;
+      if (pick.buyPrice != null) out.buyPrice = Number(pick.buyPrice);
+      return out;
+    }
+    const npcPrice = npcBuyPriceForItem(pick.name, getG());
+    if (npcPrice != null && npcPrice > 0) {
+      out.canBuy = true;
+      out.buyPrice = npcPrice;
+    }
+    return out;
+  }
+  function describeBatchLimit(plan) {
+    if (plan.attempts <= 0 && plan.wantAttempts > 0) {
+      if (plan.limitedBy === "scroll") return "Not enough scrolls for a batch.";
+      if (plan.limitedBy === "offering") {
+        return "Not enough offerings for a batch.";
+      }
+      if (plan.limitedBy === "gold") return "Not enough gold to buy materials.";
+      return "Nothing left to batch.";
+    }
+    if (plan.limitedBy === "scroll") {
+      return "Stops early \u2014 only " + plan.scrollHave + " scroll(s) in bag.";
+    }
+    if (plan.limitedBy === "offering") {
+      return "Stops early \u2014 only " + plan.offeringHave + " offering(s) in bag.";
+    }
+    if (plan.limitedBy === "gold") {
+      return "Stops early \u2014 gold only covers " + plan.attempts + " of the batch.";
+    }
+    if (plan.scrollBuy > 0 || plan.offeringBuy > 0) {
+      return "Uses bag stock first, then buys the rest from NPC.";
+    }
+    return "";
   }
   function watchLevelBump(opts) {
     let done = false;
@@ -83970,7 +85225,7 @@ ${ESTIMATE_HINT}`,
       );
       const meta2 = document.createElement("p");
       meta2.className = "ecu-upg__meta";
-      meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access);
+      meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access) + luckyMetaSuffix();
       const trial = makeTrialCard("Upgrade");
       paintTrialResult(trial, liveOffer.item, fromLevel + 1);
       const scrollSection = document.createElement("div");
@@ -84028,10 +85283,51 @@ ${ESTIMATE_HINT}`,
           hint.textContent = "Enter confirms (low ~chance).";
         }
       };
+      const batchCheck = makeBatchModeCheck({
+        mode: "upgrade",
+        onChange: () => paint()
+      });
       const paint = () => {
         const scroll = findScroll(liveOffer.scrolls, scrollId);
         const offering = findOffering(liveOffer.offerings, offeringId);
-        const highlight = [liveOffer.item.slot];
+        const bagNow = observingBagItems();
+        const peerSlots = listBagSlotsAtNameLevelTitle(
+          bagNow,
+          liveOffer.item.name,
+          fromLevel,
+          liveOffer.item.p
+        );
+        const goldNow = observingGold();
+        const scrollMat = batchMaterialFromPick(scroll);
+        const offeringMat = batchMaterialFromPick(offering);
+        const batchOn = batchCheck.read();
+        const canBuyExtras = !!(scrollMat && (scrollMat.buy || scrollMat.canBuy) || offeringMat && (offeringMat.buy || offeringMat.canBuy));
+        batchCheck.syncBuyExtras({ batchOn, canBuyExtras });
+        const buyExtras = batchCheck.readBuyExtras();
+        const batchPlan = planShrineBatch({
+          mode: "upgrade",
+          peerCount: peerSlots.length,
+          scroll: scrollMat,
+          offering: offeringMat,
+          gold: goldNow,
+          buyExtras
+        });
+        if (batchOn) {
+          batchCheck.setPlanSummary(
+            formatShrineBatchSummary(batchPlan, {
+              mode: "upgrade",
+              scroll: scrollMat,
+              offering: offeringMat
+            }),
+            describeBatchLimit(batchPlan)
+          );
+        } else {
+          batchCheck.setPlanSummary(
+            peerSlots.length > 1 ? " \xB7 " + peerSlots.length + " copies" : peerSlots.length === 1 ? " \xB7 1 copy" : "",
+            ""
+          );
+        }
+        const highlight = batchOn ? peerSlots.slice() : [liveOffer.item.slot];
         if (scroll && !scroll.buy && scroll.slot >= 0) {
           highlight.push(scroll.slot);
         }
@@ -84093,7 +85389,6 @@ ${ESTIMATE_HINT}`,
             }
           });
         }
-        const gold = observingGold();
         appendScrollTiles(
           scrollTiles,
           liveOffer.scrolls,
@@ -84105,7 +85400,7 @@ ${ESTIMATE_HINT}`,
             paint();
             refreshChanceEstimate();
           },
-          gold,
+          goldNow,
           { allowNone: true }
         );
         appendOfferingTiles(
@@ -84119,13 +85414,14 @@ ${ESTIMATE_HINT}`,
             paint();
             refreshChanceEstimate();
           },
-          gold
+          goldNow
         );
         const ready = scrollId != null || offeringId != null;
-        const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
-        okBtn.disabled = busy || !ready;
-        okBtn.textContent = buying ? liveOffer.access.hasComputer ? "Buy & upgrade" : "Buy, travel & upgrade" : liveOffer.access.ok ? "Upgrade" : "Travel & upgrade";
-        meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access, { buying });
+        const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy) || batchPlan.scrollBuy > 0 || batchPlan.offeringBuy > 0;
+        const batchN = batchPlan.attempts;
+        okBtn.disabled = busy || !ready || batchOn && batchPlan.wantAttempts > 0 && batchN <= 0;
+        okBtn.textContent = buying ? liveOffer.access.hasComputer ? batchOn && batchN > 1 ? "Buy & upgrade all (" + batchN + ")" : "Buy & upgrade" : batchOn && batchN > 1 ? "Buy, travel & upgrade all (" + batchN + ")" : "Buy, travel & upgrade" : batchOn && batchN > 1 ? liveOffer.access.ok ? "Upgrade all (" + batchN + ")" : "Travel & upgrade all (" + batchN + ")" : liveOffer.access.ok ? "Upgrade" : "Travel & upgrade";
+        meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access, { buying }) + luckyMetaSuffix();
         if (!busy) {
           if (pickFocus === "scroll") {
             hint.textContent = "Pick a scroll (tiles, bag, buy) or None for offering-only / primstack.";
@@ -84133,6 +85429,8 @@ ${ESTIMATE_HINT}`,
             hint.textContent = "Pick an offering from the tiles, bag, vendor (or None).";
           } else if (!ready) {
             hint.textContent = "Pick a scroll and/or an offering.";
+          } else if (batchOn && batchPlan.wantAttempts > 1) {
+            hint.textContent = "Batch: " + batchN + " upgrade" + (batchN === 1 ? "" : "s") + " at +" + fromLevel + (batchN < batchPlan.wantAttempts ? " (materials limit " + batchPlan.wantAttempts + " copies)" : "") + ".";
           } else {
             hint.textContent = "";
           }
@@ -84140,7 +85438,78 @@ ${ESTIMATE_HINT}`,
         scrollSection.classList.toggle("is-focus", pickFocus === "scroll");
         offerSection.classList.toggle("is-focus", pickFocus === "offering");
       };
+      const applyOfferPicks = (nextOffer, keptScrollName, keptOfferingName, readyHint) => {
+        liveOffer = nextOffer;
+        fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : fromLevel;
+        const keepScroll = keptScrollName ? liveOffer.scrolls.find((s) => s.name === keptScrollName) : null;
+        scrollId = keepScroll ? shrinePickId(keepScroll) : liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
+        const keepOffering = keptOfferingName ? liveOffer.offerings.find((o) => o.name === keptOfferingName) : null;
+        offeringId = keepOffering ? shrinePickId(keepOffering) : null;
+        pickFocus = scrollId == null ? "scroll" : null;
+        itemName.textContent = levelTransitionLabel(
+          fromLevel,
+          liveOffer.displayName
+        );
+        meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access) + luckyMetaSuffix();
+        paintTrialResult(trial, liveOffer.item, fromLevel + 1);
+        busy = false;
+        hint.textContent = readyHint;
+        paint();
+        refreshChanceEstimate();
+      };
+      const rebindBatchPeer = (keptScrollName, keptOfferingName, afterFail) => {
+        const bag = observingBagItems();
+        const G = getG();
+        const wantTitle = itemTitleKey(liveOffer.item.p);
+        let nextSlot = -1;
+        let nextItem = null;
+        if (bag) {
+          for (let i = 0; i < bag.length; i++) {
+            const it = bag[i];
+            if (!it || it.name !== liveOffer.item.name) continue;
+            if (bagItemLocked(it)) continue;
+            const lv = it.level != null ? Number(it.level) : 0;
+            if (lv !== fromLevel) continue;
+            if (itemTitleKey(it.p) !== wantTitle) continue;
+            nextSlot = i;
+            nextItem = it;
+            break;
+          }
+        }
+        if (!nextItem || nextSlot < 0 || !G) {
+          hint.textContent = afterFail ? "Batch done \u2014 no more +" + fromLevel + " copies." : "Batch done \u2014 all +" + fromLevel + " copies upgraded.";
+          busy = false;
+          window.setTimeout(() => closeDialog2(null), 1600);
+          return;
+        }
+        const nextOffer = upgradeOfferForBagItem(nextItem, nextSlot, bag, G);
+        if (!nextOffer || nextOffer.locked || nextOffer.maxLevel) {
+          hint.textContent = "Batch stopped \u2014 cannot continue.";
+          busy = false;
+          window.setTimeout(() => closeDialog2(null), 1600);
+          return;
+        }
+        applyOfferPicks(
+          nextOffer,
+          keptScrollName,
+          keptOfferingName,
+          afterFail ? "Failed \u2014 continuing batch\u2026" : "Success \u2014 next copy in batch\u2026"
+        );
+        window.setTimeout(() => {
+          if (busy) return;
+          if (okBtn.disabled) {
+            hint.textContent = "Batch stopped \u2014 out of scrolls or offerings.";
+            window.setTimeout(() => closeDialog2(null), 1600);
+            return;
+          }
+          tryConfirm();
+        }, 280);
+      };
       const rebindAfterSuccess = (keptScrollName, keptOfferingName) => {
+        if (batchCheck.read()) {
+          rebindBatchPeer(keptScrollName, keptOfferingName, false);
+          return;
+        }
         const bag = observingBagItems();
         const G = getG();
         const nextLevel = fromLevel + 1;
@@ -84171,23 +85540,12 @@ ${ESTIMATE_HINT}`,
           window.setTimeout(() => closeDialog2(null), 1600);
           return;
         }
-        liveOffer = nextOffer;
-        fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : nextLevel;
-        const keepScroll = keptScrollName ? liveOffer.scrolls.find((s) => s.name === keptScrollName) : null;
-        scrollId = keepScroll ? shrinePickId(keepScroll) : liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
-        const keepOffering = keptOfferingName ? liveOffer.offerings.find((o) => o.name === keptOfferingName) : null;
-        offeringId = keepOffering ? shrinePickId(keepOffering) : null;
-        pickFocus = scrollId == null ? "scroll" : null;
-        itemName.textContent = levelTransitionLabel(
-          fromLevel,
-          liveOffer.displayName
+        applyOfferPicks(
+          nextOffer,
+          keptScrollName,
+          keptOfferingName,
+          "Ready for next upgrade."
         );
-        meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access);
-        paintTrialResult(trial, liveOffer.item, fromLevel + 1);
-        busy = false;
-        hint.textContent = "Ready for next upgrade.";
-        paint();
-        refreshChanceEstimate();
       };
       const unsubBagClick = installBagPickClick((slot) => {
         if (busy) return false;
@@ -84231,18 +85589,25 @@ ${ESTIMATE_HINT}`,
         unsubBagClick();
       };
       const skillChecks = makeMerchantSkillChecks();
+      const luckyCheck = makeLuckySlotCheck({
+        onChange: () => {
+          paint();
+        }
+      });
       const tryConfirm = () => {
         if (okBtn.disabled || busy) return;
         const scroll = findScroll(liveOffer.scrolls, scrollId);
         const offering = findOffering(liveOffer.offerings, offeringId);
         const skills = skillChecks ? skillChecks.read() : void 0;
+        const lucky = luckyCheck.read();
         const picked = {
           item: fpFromPick(liveOffer.item),
           scroll: scroll ? fpFromShrinePick(scroll) : null,
           offering: offering ? fpFromShrinePick(offering) : null,
           buyScroll: scroll && scroll.buy ? scroll.name : null,
           buyOffering: offering && offering.buy ? offering.name : null,
-          skills
+          skills,
+          lucky
         };
         if (!options || !options.execute) {
           closeDialog2(picked);
@@ -84265,11 +85630,13 @@ ${ESTIMATE_HINT}`,
           return;
         }
         if (watch) watch.cancel();
+        const watchSlots = [liveOffer.item.slot];
+        if (lucky.enabled) watchSlots.push(lucky.slot);
         watch = watchLevelBump({
           name: liveOffer.item.name,
           fromLevel,
           beforeNext,
-          watchedSlots: [liveOffer.item.slot],
+          watchedSlots: watchSlots,
           onSuccess: () => {
             watch = null;
             hint.textContent = "Success \u2014 preparing next\u2026";
@@ -84280,6 +85647,15 @@ ${ESTIMATE_HINT}`,
           },
           onDestroyed: () => {
             watch = null;
+            if (batchCheck.read()) {
+              hint.textContent = "Failed \u2014 continuing batch\u2026";
+              rebindBatchPeer(
+                scroll ? scroll.name : null,
+                offering ? offering.name : null,
+                true
+              );
+              return;
+            }
             busy = false;
             hint.textContent = "Failed \u2014 item gone.";
             window.setTimeout(() => closeDialog2(null), 1600);
@@ -84306,11 +85682,14 @@ ${ESTIMATE_HINT}`,
       panel.appendChild(trial.root);
       panel.appendChild(scrollSection);
       panel.appendChild(offerSection);
+      panel.appendChild(batchCheck.root);
+      panel.appendChild(luckyCheck.root);
       if (skillChecks) panel.appendChild(skillChecks.root);
       panel.appendChild(hint);
       panel.appendChild(actions);
       paint();
       refreshChanceEstimate();
+      luckyCheck.syncHighlight();
       wireDialogChrome(backdrop, panel, {
         onEnter: () => tryConfirm(),
         canEnter: () => !busy && !okBtn.disabled && lastChance != null && lastChance < ENTER_CONFIRM_BELOW
@@ -84427,6 +85806,10 @@ ${ESTIMATE_HINT}`,
           hint.textContent = "Enter confirms (low ~chance).";
         }
       };
+      const batchCheck = makeBatchModeCheck({
+        mode: "compound",
+        onChange: () => paint()
+      });
       const paint = () => {
         const partnerList = [];
         const keys = Array.from(selected.values()).sort((a, b) => a - b);
@@ -84436,9 +85819,49 @@ ${ESTIMATE_HINT}`,
         }
         const scroll = findScroll(liveOffer.scrolls, scrollId);
         const offering = findOffering(liveOffer.offerings, offeringId);
-        const highlight = [liveOffer.item.slot];
-        for (let i = 0; i < partnerList.length; i++) {
-          highlight.push(partnerList[i].slot);
+        const bagNow = observingBagItems();
+        const peerSlots = listBagSlotsAtNameLevelTitle(
+          bagNow,
+          liveOffer.item.name,
+          fromLevel,
+          liveOffer.item.p
+        );
+        const goldNow = observingGold();
+        const scrollMat = batchMaterialFromPick(scroll);
+        const offeringMat = batchMaterialFromPick(offering);
+        const batchOn = batchCheck.read();
+        const canBuyExtras = !!(scrollMat && (scrollMat.buy || scrollMat.canBuy) || offeringMat && (offeringMat.buy || offeringMat.canBuy));
+        batchCheck.syncBuyExtras({ batchOn, canBuyExtras });
+        const buyExtras = batchCheck.readBuyExtras();
+        const batchPlan = planShrineBatch({
+          mode: "compound",
+          peerCount: peerSlots.length,
+          scroll: scrollMat,
+          offering: offeringMat,
+          gold: goldNow,
+          buyExtras
+        });
+        if (batchOn) {
+          batchCheck.setPlanSummary(
+            formatShrineBatchSummary(batchPlan, {
+              mode: "compound",
+              scroll: scrollMat,
+              offering: offeringMat
+            }),
+            describeBatchLimit(batchPlan)
+          );
+        } else {
+          const sets = Math.floor(peerSlots.length / 3);
+          batchCheck.setPlanSummary(
+            peerSlots.length > 0 ? " \xB7 " + peerSlots.length + " copies \xB7 " + sets + " set" + (sets === 1 ? "" : "s") : "",
+            ""
+          );
+        }
+        const highlight = batchOn ? peerSlots.slice() : [liveOffer.item.slot];
+        if (!batchOn) {
+          for (let i = 0; i < partnerList.length; i++) {
+            highlight.push(partnerList[i].slot);
+          }
         }
         if (scroll && !scroll.buy && scroll.slot >= 0) {
           highlight.push(scroll.slot);
@@ -84541,7 +85964,6 @@ ${ESTIMATE_HINT}`,
           paint();
           refreshChanceEstimate();
         });
-        const gold = observingGold();
         appendScrollTiles(
           scrollTiles,
           liveOffer.scrolls,
@@ -84553,7 +85975,7 @@ ${ESTIMATE_HINT}`,
             paint();
             refreshChanceEstimate();
           },
-          gold
+          goldNow
         );
         appendOfferingTiles(
           offerTiles,
@@ -84566,12 +85988,13 @@ ${ESTIMATE_HINT}`,
             paint();
             refreshChanceEstimate();
           },
-          gold
+          goldNow
         );
         const ready = selected.size === 2 && scrollId != null;
-        const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
-        okBtn.disabled = busy || !ready;
-        okBtn.textContent = buying ? liveOffer.access.hasComputer ? "Buy & compound" : "Buy, travel & compound" : liveOffer.access.ok ? "Compound" : "Travel & compound";
+        const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy) || batchPlan.scrollBuy > 0 || batchPlan.offeringBuy > 0;
+        const batchSets = batchPlan.attempts;
+        okBtn.disabled = busy || !ready || batchOn && batchPlan.wantAttempts > 0 && batchSets <= 0;
+        okBtn.textContent = buying ? liveOffer.access.hasComputer ? batchOn && batchSets > 1 ? "Buy & compound all (" + batchSets + ")" : "Buy & compound" : batchOn && batchSets > 1 ? "Buy, travel & compound all (" + batchSets + ")" : "Buy, travel & compound" : batchOn && batchSets > 1 ? liveOffer.access.ok ? "Compound all (" + batchSets + ")" : "Travel & compound all (" + batchSets + ")" : liveOffer.access.ok ? "Compound" : "Travel & compound";
         meta2.textContent = "Need 3 copies \xB7 Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access, { buying });
         if (!busy) {
           if (pickFocus === "partner" || selected.size !== 2) {
@@ -84580,6 +86003,8 @@ ${ESTIMATE_HINT}`,
             hint.textContent = "Pick a compound scroll (tiles, bag, or buy from vendor).";
           } else if (pickFocus === "offering") {
             hint.textContent = "Pick an offering from the tiles, bag, vendor (or None).";
+          } else if (batchOn && batchPlan.wantAttempts > 1) {
+            hint.textContent = "Batch: " + batchSets + " set" + (batchSets === 1 ? "" : "s") + " at +" + fromLevel + (batchSets < batchPlan.wantAttempts ? " (materials limit " + batchPlan.wantAttempts + " sets)" : "") + ".";
           } else {
             hint.textContent = "";
           }
@@ -84588,7 +86013,88 @@ ${ESTIMATE_HINT}`,
         scrollSection.classList.toggle("is-focus", pickFocus === "scroll");
         offerSection.classList.toggle("is-focus", pickFocus === "offering");
       };
+      const applyCompoundOffer = (nextOffer, keptScrollName, keptOfferingName, readyHint) => {
+        liveOffer = nextOffer;
+        fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : fromLevel;
+        const nextDefaults = defaultCompoundPartners(
+          liveOffer.partners,
+          liveOffer.item
+        );
+        selected = /* @__PURE__ */ new Set([
+          nextDefaults[0].slot,
+          nextDefaults[1].slot
+        ]);
+        const keepScroll = keptScrollName ? liveOffer.scrolls.find((s) => s.name === keptScrollName) : null;
+        scrollId = keepScroll ? shrinePickId(keepScroll) : liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
+        const keepOffering = keptOfferingName ? liveOffer.offerings.find((o) => o.name === keptOfferingName) : null;
+        offeringId = keepOffering ? shrinePickId(keepOffering) : null;
+        pickFocus = selected.size < 2 ? "partner" : scrollId == null ? "scroll" : null;
+        itemName.textContent = levelTransitionLabel(
+          fromLevel,
+          liveOffer.displayName
+        );
+        meta2.textContent = "Grade " + liveOffer.grade + " \xB7 3 \u2192 1 \xB7 " + accessHint(liveOffer.access);
+        paintTrialResult(trial, liveOffer.item, fromLevel + 1);
+        busy = false;
+        hint.textContent = readyHint;
+        paint();
+        refreshChanceEstimate();
+      };
+      const rebindBatchPeer = (keptScrollName, keptOfferingName, afterFail) => {
+        const bag = observingBagItems();
+        const G = getG();
+        const wantTitle = itemTitleKey(liveOffer.item.p);
+        let nextSlot = -1;
+        let nextItem = null;
+        if (bag) {
+          for (let i = 0; i < bag.length; i++) {
+            const it = bag[i];
+            if (!it || it.name !== liveOffer.item.name) continue;
+            if (bagItemLocked(it)) continue;
+            const lv = it.level != null ? Number(it.level) : 0;
+            if (lv !== fromLevel) continue;
+            if (itemTitleKey(it.p) !== wantTitle) continue;
+            const probe = compoundOfferForBagItem(it, i, bag, G);
+            if (!probe || probe.partners.length < 2) continue;
+            nextSlot = i;
+            nextItem = it;
+            break;
+          }
+        }
+        if (!nextItem || nextSlot < 0 || !G) {
+          hint.textContent = afterFail ? "Batch done \u2014 no full set left at +" + fromLevel + "." : "Batch done \u2014 all +" + fromLevel + " sets compounded.";
+          busy = false;
+          window.setTimeout(() => closeDialog2(null), 1600);
+          return;
+        }
+        const nextOffer = compoundOfferForBagItem(nextItem, nextSlot, bag, G);
+        if (!nextOffer || nextOffer.locked || nextOffer.maxLevel || nextOffer.partners.length < 2) {
+          hint.textContent = "Batch stopped \u2014 need 3 matching copies.";
+          busy = false;
+          window.setTimeout(() => closeDialog2(null), 1600);
+          return;
+        }
+        applyCompoundOffer(
+          nextOffer,
+          keptScrollName,
+          keptOfferingName,
+          afterFail ? "Failed \u2014 continuing batch\u2026" : "Success \u2014 next set in batch\u2026"
+        );
+        window.setTimeout(() => {
+          if (busy) return;
+          if (okBtn.disabled) {
+            hint.textContent = "Batch stopped \u2014 out of scrolls or offerings.";
+            window.setTimeout(() => closeDialog2(null), 1600);
+            return;
+          }
+          tryConfirm();
+        }, 280);
+      };
       const rebindAfterSuccess = (keptScrollName, keptOfferingName) => {
+        if (batchCheck.read()) {
+          rebindBatchPeer(keptScrollName, keptOfferingName, false);
+          return;
+        }
         const bag = observingBagItems();
         const G = getG();
         const nextLevel = fromLevel + 1;
@@ -84619,31 +86125,12 @@ ${ESTIMATE_HINT}`,
           window.setTimeout(() => closeDialog2(null), 1800);
           return;
         }
-        liveOffer = nextOffer;
-        fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : nextLevel;
-        const nextDefaults = defaultCompoundPartners(
-          liveOffer.partners,
-          liveOffer.item
+        applyCompoundOffer(
+          nextOffer,
+          keptScrollName,
+          keptOfferingName,
+          "Ready for next compound."
         );
-        selected = /* @__PURE__ */ new Set([
-          nextDefaults[0].slot,
-          nextDefaults[1].slot
-        ]);
-        const keepScroll = keptScrollName ? liveOffer.scrolls.find((s) => s.name === keptScrollName) : null;
-        scrollId = keepScroll ? shrinePickId(keepScroll) : liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
-        const keepOffering = keptOfferingName ? liveOffer.offerings.find((o) => o.name === keptOfferingName) : null;
-        offeringId = keepOffering ? shrinePickId(keepOffering) : null;
-        pickFocus = selected.size < 2 ? "partner" : scrollId == null ? "scroll" : null;
-        itemName.textContent = levelTransitionLabel(
-          fromLevel,
-          liveOffer.displayName
-        );
-        meta2.textContent = "Grade " + liveOffer.grade + " \xB7 3 \u2192 1 \xB7 " + accessHint(liveOffer.access);
-        paintTrialResult(trial, liveOffer.item, fromLevel + 1);
-        busy = false;
-        hint.textContent = "Ready for next compound.";
-        paint();
-        refreshChanceEstimate();
       };
       const unsubBagClick = installBagPickClick((slot) => {
         if (busy) return false;
@@ -84772,6 +86259,15 @@ ${ESTIMATE_HINT}`,
           },
           onDestroyed: () => {
             watch = null;
+            if (batchCheck.read()) {
+              hint.textContent = "Failed \u2014 continuing batch\u2026";
+              rebindBatchPeer(
+                scroll.name,
+                offering ? offering.name : null,
+                true
+              );
+              return;
+            }
             busy = false;
             hint.textContent = "Failed \u2014 copies gone.";
             window.setTimeout(() => closeDialog2(null), 1600);
@@ -84799,6 +86295,7 @@ ${ESTIMATE_HINT}`,
       panel.appendChild(partnerSection);
       panel.appendChild(scrollSection);
       panel.appendChild(offerSection);
+      panel.appendChild(batchCheck.root);
       if (skillChecks) panel.appendChild(skillChecks.root);
       panel.appendChild(hint);
       panel.appendChild(actions);
@@ -84952,7 +86449,8 @@ ${ESTIMATE_HINT}`,
                 buyScroll: picked.buyScroll,
                 buyOffering: picked.buyOffering,
                 massproduction: !!(picked.skills && picked.skills.massproduction),
-                massproductionpp: !!(picked.skills && picked.skills.massproductionpp)
+                massproductionpp: !!(picked.skills && picked.skills.massproductionpp),
+                luckySlot: picked.lucky && picked.lucky.enabled ? picked.lucky.slot : null
               }
             )
           });
@@ -85592,7 +87090,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bagPanelCss.ts
-  var STYLE_ID13 = "ecu-bag-panel-css";
+  var STYLE_ID14 = "ecu-bag-panel-css";
   var CSS14 = `
 .comm-bag-panel {
   display: flex;
@@ -85827,12 +87325,12 @@ ${ESTIMATE_HINT}`,
   var injected15 = false;
   function ensureBagPanelCss() {
     if (typeof document === "undefined") return;
-    if (injected15 || document.getElementById(STYLE_ID13)) {
+    if (injected15 || document.getElementById(STYLE_ID14)) {
       injected15 = true;
       return;
     }
     const el = document.createElement("style");
-    el.id = STYLE_ID13;
+    el.id = STYLE_ID14;
     el.textContent = CSS14;
     document.head.appendChild(el);
     injected15 = true;
@@ -86715,7 +88213,7 @@ ${ESTIMATE_HINT}`,
     }
     const id = String(row3.name || "").toLowerCase();
     const mer = String(row3.merchant || "").toLowerCase();
-    const titleKey2 = String(row3.p || "").toLowerCase();
+    const titleKey3 = String(row3.p || "").toLowerCase();
     let titleDisp = "";
     let base = id;
     if (typeof window !== "undefined") {
@@ -86732,11 +88230,11 @@ ${ESTIMATE_HINT}`,
       nm,
       id,
       mer,
-      titleKey: titleKey2,
+      titleKey: titleKey3,
       titleDisp,
       stat,
       base,
-      hay: [nm, id, mer, titleKey2, titleDisp, base, stat].filter(Boolean).join(" ")
+      hay: [nm, id, mer, titleKey3, titleDisp, base, stat].filter(Boolean).join(" ")
     };
   }
   function valueHits(values, test) {
@@ -87652,7 +89150,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/querySearchFieldCss.ts
-  var STYLE_ID14 = "ecu-query-search-field-css";
+  var STYLE_ID15 = "ecu-query-search-field-css";
   var CSS15 = `
 .ecu-qsearch {
   position: relative;
@@ -87792,9 +89290,9 @@ ${ESTIMATE_HINT}`,
 `;
   function ensureQuerySearchFieldCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID14)) return;
+    if (document.getElementById(STYLE_ID15)) return;
     const el = document.createElement("style");
-    el.id = STYLE_ID14;
+    el.id = STYLE_ID15;
     el.textContent = CSS15;
     document.head.appendChild(el);
   }
@@ -92940,7 +94438,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bankPanelCss.ts
-  var STYLE_ID15 = "ecu-bank-panel-css";
+  var STYLE_ID16 = "ecu-bank-panel-css";
   var CSS16 = `
 .BankPanel {
   --bk-line: #2a2a2a;
@@ -93475,13 +94973,13 @@ ${ESTIMATE_HINT}`,
   function ensureBankPanelCss() {
     if (typeof document === "undefined") return;
     if (bankPanelCssInjected) {
-      if (document.getElementById(STYLE_ID15)) return;
+      if (document.getElementById(STYLE_ID16)) return;
       bankPanelCssInjected = false;
     }
-    let el = document.getElementById(STYLE_ID15);
+    let el = document.getElementById(STYLE_ID16);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID15;
+      el.id = STYLE_ID16;
       document.head.appendChild(el);
     }
     el.textContent = CSS16;
@@ -94964,6 +96462,8 @@ ${ESTIMATE_HINT}`,
         ) : null
       )
     ) : null;
+    const newRows = snap.newMailCount ? pickNewMailRows(snap.mails, Math.min(4, snap.newMailCount)) : [];
+    const newHead = snap.newMailCount === 1 ? "1 new mail" : snap.newMailCount + " new mails";
     return e(
       React.Fragment,
       null,
@@ -94971,9 +96471,39 @@ ${ESTIMATE_HINT}`,
         "div",
         {
           className: "comm-mail__banner is-new",
-          onClick: () => clearNewMailBanner()
+          onClick: () => clearNewMailBanner(),
+          title: "Tap to dismiss"
         },
-        snap.newMailCount + " new \xB7 tap to dismiss \xB7 attachments pinned at top"
+        e(
+          "div",
+          { className: "comm-mail__banner-head" },
+          newHead + " \xB7 tap to dismiss \xB7 attachments pinned at top"
+        ),
+        newRows.length ? e(
+          "div",
+          { className: "comm-mail__banner-list" },
+          ...newRows.map(
+            (m) => e(
+              "div",
+              { key: m.id, className: "comm-mail__banner-row" },
+              mailItemIcon(m, 24),
+              e(
+                "div",
+                { className: "comm-mail__banner-meta" },
+                e(
+                  "div",
+                  { className: "comm-mail__banner-route" },
+                  formatMailRoute(m)
+                ),
+                e(
+                  "div",
+                  { className: "comm-mail__banner-what" },
+                  formatMailWhat(m)
+                )
+              )
+            )
+          )
+        ) : null
       ) : null,
       compact ? e(
         "div",
@@ -95588,63 +97118,6 @@ ${ESTIMATE_HINT}`,
           "Cancel"
         )
       )
-    );
-  }
-
-  // src/ui/frames/mail/mailRowShared.ts
-  function rowMeta(m) {
-    const bits = [m.fro + " \u2192 " + m.to];
-    if (m.item && typeof m.item.q === "number" && m.item.q > 1) {
-      bits.push("\xD7" + m.item.q);
-    }
-    return bits.join(" \xB7 ");
-  }
-  function stackMeta(g) {
-    return g.head.fro + " \u2192 " + g.head.to;
-  }
-  function mailWhenColumn(sent) {
-    return e(
-      "div",
-      {
-        className: "comm-mail__when",
-        title: formatMailDateTime(sent)
-      },
-      e("div", { className: "comm-mail__when-date" }, formatMailDate(sent)),
-      e("div", { className: "comm-mail__when-ago" }, formatMailRelative(sent))
-    );
-  }
-  function mailItemIcon(m, size = 32, qtyOverride) {
-    if (!m.item || !m.item.name) {
-      return e("div", {
-        className: "comm-mail__item is-empty",
-        "aria-hidden": "true",
-        style: { width: size, height: size }
-      });
-    }
-    const q = qtyOverride != null ? qtyOverride : typeof m.item.q === "number" ? m.item.q : void 0;
-    const taken = !!m.taken;
-    const name = String(m.item.name);
-    const level = m.item.level;
-    const p = typeof m.item.p === "string" ? m.item.p : void 0;
-    const label = itemInstanceLabel(name, { p, level });
-    return e(
-      "div",
-      {
-        className: "comm-mail__item" + (taken ? " is-taken" : ""),
-        // ItemInstance cooltip owns hover — no native title stack.
-        "aria-label": taken ? label + " (taken)" : label,
-        onClick: (ev) => ev.stopPropagation(),
-        style: { width: size, height: size }
-      },
-      e(ItemInstance, {
-        name,
-        skin: typeof m.item.skin === "string" ? m.item.skin : void 0,
-        level,
-        q,
-        p,
-        size,
-        actual: m.item
-      })
     );
   }
 
@@ -97458,12 +98931,11 @@ ${ESTIMATE_HINT}`,
     };
     const doDelete = async (ids) => {
       const result = await deleteMailRows(ids);
-      if (result === "need-confirm") {
-        const ok = window.confirm(
-          ids.length === 1 ? "This mail still has an untaken item. Delete anyway?" : "Some selected mail still has untaken items. Delete anyway?"
+      if (result === "blocked-untaken") {
+        window.alert(
+          ids.length === 1 ? "Take the attachment first \u2014 received mail with an untaken item cannot be deleted." : "Take attachments first \u2014 received mail with untaken items cannot be deleted."
         );
-        if (!ok) return;
-        await deleteMailRows(ids, { confirmed: true });
+        return;
       }
       setSelectedIds({});
     };
@@ -98921,7 +100393,15 @@ ${ESTIMATE_HINT}`,
     "Courier New",
     "monospace"
   ];
-  function resolveNameplateFontFamily() {
+  function resolveNameplateFontFamily(profile) {
+    const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+    if (p === "phone") {
+      if (typeof window !== "undefined") {
+        const sz = window.SZ;
+        if (sz && typeof sz.font === "string" && sz.font.trim()) return sz.font;
+      }
+      return "pixel";
+    }
     const faces = NAMEPLATE_FONT_FAMILIES;
     const fonts = typeof document !== "undefined" ? document.fonts : void 0;
     if (fonts && typeof fonts.check === "function") {
@@ -98962,27 +100442,47 @@ ${ESTIMATE_HINT}`,
     const h = (r << 16 | g << 8 | b).toString(16).padStart(6, "0");
     return "#" + h;
   }
+  var NAMEPLATE_GHOST_ALPHA_BASE = 0.52;
+  function luminanceToNameplateBand(L) {
+    if (!(typeof L === "number") || !Number.isFinite(L)) return "mid";
+    if (L >= 0.42) return "bright";
+    if (L <= 0.2) return "dark";
+    return "mid";
+  }
+  function ghostAlphaForLuminanceBand(band, base = NAMEPLATE_GHOST_ALPHA_BASE) {
+    const b = typeof base === "number" && Number.isFinite(base) ? Math.max(0.28, Math.min(0.75, base)) : NAMEPLATE_GHOST_ALPHA_BASE;
+    if (band === "bright") return Math.min(0.78, b + 0.2);
+    if (band === "dark") return Math.max(0.34, b - 0.1);
+    return b;
+  }
+  function srgbLuminance(r, g, b) {
+    const toLin = (c) => {
+      const s = Math.max(0, Math.min(255, c)) / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b);
+  }
   function ghostPlateForClassColor(classHex) {
     const raw = String(classHex || "").trim() || "#ffffff";
     const key = raw.charAt(0) === "#" ? raw : "#" + raw;
     if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
-      return { color: 658450, alpha: 0.28 };
+      return { color: 526864, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
     }
     const L = hexLuminance(key);
-    const darken = L > 0.4 ? 0.42 : L > 0.3 ? 0.16 : L > 0.2 ? 0.08 : 0.04;
+    const darken = L > 0.4 ? 0.58 : L > 0.3 ? 0.4 : L > 0.2 ? 0.28 : 0.18;
     const mixed = mixHexTowardBlack(key, darken);
     const n = parseInt(mixed.slice(1), 16);
-    return { color: n >>> 0, alpha: 0.28 };
+    return { color: n >>> 0, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
   }
   function ghostPlateRimForClassColor(classHex) {
     const raw = String(classHex || "").trim() || "#ffffff";
     const key = raw.charAt(0) === "#" ? raw : "#" + raw;
     if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
-      return { color: 131844, alpha: 0.35 };
+      return { color: 131844, alpha: 0.55 };
     }
-    const mixed = mixHexTowardBlack(key, 0.62);
+    const mixed = mixHexTowardBlack(key, 0.72);
     const n = parseInt(mixed.slice(1), 16);
-    return { color: n >>> 0, alpha: 0.4 };
+    return { color: n >>> 0, alpha: 0.58 };
   }
   function softPlateFill(stockColor, classHex) {
     const c = stockColor >>> 0;
@@ -99000,13 +100500,36 @@ ${ESTIMATE_HINT}`,
   function nameplatePlateClassColor(ctype) {
     return resolveClassColor(ctype, "#ffffff");
   }
-  function softTextStylePatch(fillColor) {
+  function softTextStylePatch(fillColor, profile, dense) {
+    const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+    const phone = p === "phone";
+    const d = typeof dense === "number" && dense > 0 && Number.isFinite(dense) ? Math.max(1, Math.min(6, Math.round(dense))) : 1;
+    if (phone) {
+      return {
+        fontFamily: resolveNameplateFontFamily("phone"),
+        fill: fillColor || "#ffffff",
+        stroke: "#000000",
+        // Pixel face — stroke just muddies the bitmap.
+        strokeThickness: 0,
+        dropShadow: false,
+        dropShadowColor: "#000000",
+        dropShadowDistance: 0,
+        dropShadowBlur: 0,
+        dropShadowAlpha: 0,
+        dropShadowAngle: Math.PI / 4
+      };
+    }
     return {
-      fontFamily: resolveNameplateFontFamily(),
+      fontFamily: resolveNameplateFontFamily(p),
       fill: fillColor || "#ffffff",
       stroke: "#000000",
-      strokeThickness: 4,
-      dropShadow: false
+      strokeThickness: 7 * d,
+      dropShadow: true,
+      dropShadowColor: "#000000",
+      dropShadowDistance: 1 * d,
+      dropShadowBlur: 0,
+      dropShadowAlpha: 0.55,
+      dropShadowAngle: Math.PI / 4
     };
   }
   function getGraphicsData(gfx) {
@@ -99038,6 +100561,69 @@ ${ESTIMATE_HINT}`,
     }
     if (typeof d.lineAlpha === "number") d.lineAlpha = 0;
   }
+  function bumpGraphicsDirty(gfx) {
+    if (typeof gfx.dirty === "number") gfx.dirty++;
+    if (typeof gfx.clearDirty === "number") gfx.clearDirty++;
+    if (typeof gfx._invalidate === "function") {
+      try {
+        gfx._invalidate();
+      } catch (e2) {
+      }
+    }
+  }
+  function readFillAlpha(d) {
+    if (typeof d.fillAlpha === "number") return d.fillAlpha;
+    if (d.fill && typeof d.fill === "object" && typeof d.fill.alpha === "number") {
+      return d.fill.alpha;
+    }
+    return null;
+  }
+  function setNameBandFillAlpha(gfx, alpha) {
+    const data = getGraphicsData(gfx);
+    if (!data) return 0;
+    const a = Math.max(0.2, Math.min(0.82, alpha));
+    let changed = 0;
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i];
+      const shape = d.shape;
+      if (!shape) continue;
+      const y = typeof shape.y === "number" ? shape.y : 0;
+      const h = typeof shape.height === "number" ? shape.height : 0;
+      if (!isNameBandShape(y, h)) continue;
+      if (readFillColor(d) == null) continue;
+      const prev = readFillAlpha(d);
+      if (prev != null && Math.abs(prev - a) < 0.01) continue;
+      if (typeof d.fillAlpha === "number") d.fillAlpha = a;
+      const f = d.fill;
+      if (f && typeof f === "object") f.alpha = a;
+      changed++;
+    }
+    if (changed) bumpGraphicsDirty(gfx);
+    return changed;
+  }
+  function ensureNameBandAlphaFloor(gfx, floor = NAMEPLATE_GHOST_ALPHA_BASE) {
+    const data = getGraphicsData(gfx);
+    if (!data) return 0;
+    const a = Math.max(0.2, Math.min(0.82, floor));
+    let changed = 0;
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i];
+      const shape = d.shape;
+      if (!shape) continue;
+      const y = typeof shape.y === "number" ? shape.y : 0;
+      const h = typeof shape.height === "number" ? shape.height : 0;
+      if (!isNameBandShape(y, h)) continue;
+      if (readFillColor(d) == null) continue;
+      const prev = readFillAlpha(d);
+      if (prev != null && prev >= a - 0.01) continue;
+      if (typeof d.fillAlpha === "number") d.fillAlpha = a;
+      const f = d.fill;
+      if (f && typeof f === "object") f.alpha = a;
+      changed++;
+    }
+    if (changed) bumpGraphicsDirty(gfx);
+    return changed;
+  }
   function softenNameBandGraphics(gfx, classHex) {
     const data = getGraphicsData(gfx);
     if (!data) return 0;
@@ -99056,27 +100642,22 @@ ${ESTIMATE_HINT}`,
       writeFill(d, soft);
       changed++;
     }
-    if (changed) {
-      if (typeof gfx.dirty === "number") gfx.dirty++;
-      if (typeof gfx.clearDirty === "number") gfx.clearDirty++;
-      if (typeof gfx._invalidate === "function") {
-        try {
-          gfx._invalidate();
-        } catch (e2) {
-        }
-      }
-    }
+    if (changed) bumpGraphicsDirty(gfx);
     return changed;
   }
   function applySoftTextStyle(node, fillColor) {
     const style = node.style;
     if (!style || typeof style !== "object") return false;
-    const patch = softTextStylePatch(fillColor);
+    const denseFromStyle = typeof style.__ecuDense === "number" ? style.__ecuDense : 0;
+    const dense = denseFromStyle > 0 ? denseFromStyle : nameplateTextResolution();
+    const patch = softTextStylePatch(fillColor, void 0, dense);
     const wantFont = String(patch.fontFamily || "Consolas");
     const curFont = style.fontFamily;
     const fontOk = curFont === wantFont || Array.isArray(curFont) && curFont[0] === wantFont;
     const already = !!style.__ecuSoft;
-    if (already && fontOk) return false;
+    const strokeOk = style.strokeThickness === patch.strokeThickness;
+    const shadowOk = style.dropShadow === !!patch.dropShadow;
+    if (already && fontOk && strokeOk && shadowOk) return false;
     style.fontFamily = wantFont;
     style.fill = patch.fill;
     style.stroke = patch.stroke;
@@ -99230,8 +100811,9 @@ ${ESTIMATE_HINT}`,
     root.__ecuNameplateStyled = true;
     const visit = (node) => {
       if (!node) return;
-      if (!plateDone && looksLikeGraphics(node)) {
-        softenNameBandGraphics(node, plateClass);
+      if (looksLikeGraphics(node)) {
+        if (!plateDone) softenNameBandGraphics(node, plateClass);
+        else ensureNameBandAlphaFloor(node);
       }
       if (looksLikeText(node)) applySoftTextStyle(node, textFill);
       if (looksLikeGraphics(node)) {
@@ -99244,12 +100826,185 @@ ${ESTIMATE_HINT}`,
     visit(root);
   }
 
+  // src/host/nameplateContrast.ts
+  var SAMPLE_MS = 300;
+  var TINY_W = 64;
+  var TINY_H = 36;
+  var BLACK_FAILS_BEFORE_DISABLE = 4;
+  var MAX_PLATES_PER_TICK = 12;
+  var installed10 = false;
+  var timerId2 = null;
+  var tiny = null;
+  var tinyCtx = null;
+  var sampleDisabled = false;
+  var blackFails = 0;
+  var cursor = 0;
+  function rendererView2() {
+    const renderer = window.renderer;
+    const view = renderer && renderer.view;
+    if (!view) return null;
+    if (typeof view.getContext === "function") {
+      return view;
+    }
+    return null;
+  }
+  function ensureTiny() {
+    if (tinyCtx) return tinyCtx;
+    if (typeof document === "undefined") return null;
+    tiny = document.createElement("canvas");
+    tiny.width = TINY_W;
+    tiny.height = TINY_H;
+    tinyCtx = tiny.getContext("2d", { willReadFrequently: true });
+    return tinyCtx;
+  }
+  function looksLikeGraphics2(node) {
+    if (!node) return false;
+    const g = node;
+    return !!(g.graphicsData || g.geometry && g.geometry.graphicsData);
+  }
+  function applyBandToPlate(root, band) {
+    if (root.__ecuNameplateLumBand === band) return;
+    const alpha = ghostAlphaForLuminanceBand(band);
+    let touched = 0;
+    const visit = (node) => {
+      if (!node) return;
+      if (looksLikeGraphics2(node)) {
+        touched += setNameBandFillAlpha(
+          node,
+          alpha
+        );
+      }
+      const kids = node.children;
+      if (!kids || !kids.length) return;
+      for (let i = 0; i < kids.length; i++) visit(kids[i]);
+    };
+    visit(root);
+    if (touched > 0) root.__ecuNameplateLumBand = band;
+  }
+  function plateWorldSamplePoint(root) {
+    if (typeof root.getBounds !== "function") return null;
+    try {
+      const b = root.getBounds();
+      if (!b) return null;
+      const w = Number(b.width);
+      const h = Number(b.height);
+      const x = Number(b.x);
+      const y = Number(b.y);
+      if (![w, h, x, y].every((n) => Number.isFinite(n))) return null;
+      if (!(w > 0) || !(h > 0)) return null;
+      return { x: x + w * 0.5, y: y + h + 3 };
+    } catch (e2) {
+      return null;
+    }
+  }
+  function sampleBandAtCanvasPx(ctx, canvasX, canvasY, viewW, viewH, tinyW = TINY_W, tinyH = TINY_H) {
+    if (!(viewW > 0) || !(viewH > 0)) return null;
+    const tw = Math.max(1, tinyW | 0);
+    const th2 = Math.max(1, tinyH | 0);
+    const tx = Math.max(
+      0,
+      Math.min(tw - 1, Math.floor(canvasX / viewW * tw))
+    );
+    const ty = Math.max(
+      0,
+      Math.min(th2 - 1, Math.floor(canvasY / viewH * th2))
+    );
+    let data;
+    try {
+      data = ctx.getImageData(tx, ty, 1, 1);
+    } catch (e2) {
+      return null;
+    }
+    const r = data.data[0];
+    const g = data.data[1];
+    const b = data.data[2];
+    if (r === 0 && g === 0 && b === 0) {
+      blackFails++;
+      if (blackFails >= BLACK_FAILS_BEFORE_DISABLE) sampleDisabled = true;
+      return null;
+    }
+    blackFails = 0;
+    return luminanceToNameplateBand(srgbLuminance(r, g, b));
+  }
+  function collectPlates() {
+    const out = [];
+    const push = (ent) => {
+      if (!ent || !ent.name_tag) return;
+      if (ent.visible === false) return;
+      const tag = ent.name_tag;
+      if (tag.visible === false || tag.worldVisible === false) return;
+      if (!tag.__ecuNameplateStyled) return;
+      out.push(tag);
+    };
+    const w = window;
+    push(w.character);
+    push(w.observing);
+    const ents = w.entities;
+    if (ents) {
+      for (const id in ents) {
+        if (!Object.prototype.hasOwnProperty.call(ents, id)) continue;
+        push(ents[id]);
+      }
+    }
+    return out;
+  }
+  function tickNameplateContrast(opts) {
+    if (sampleDisabled) return;
+    const view = opts && opts.view !== void 0 ? opts.view : rendererView2();
+    if (!view) return;
+    const ctx = opts && opts.ctx ? opts.ctx : ensureTiny();
+    if (!ctx) return;
+    const viewW = typeof view.width === "number" && view.width > 0 ? view.width : view.clientWidth || 0;
+    const viewH = typeof view.height === "number" && view.height > 0 ? view.height : view.clientHeight || 0;
+    if (!(viewW > 0) || !(viewH > 0)) return;
+    const dest = ctx.canvas;
+    const dw = dest && typeof dest.width === "number" && dest.width > 0 ? dest.width : TINY_W;
+    const dh = dest && typeof dest.height === "number" && dest.height > 0 ? dest.height : TINY_H;
+    try {
+      ctx.clearRect(0, 0, dw, dh);
+      ctx.drawImage(view, 0, 0, dw, dh);
+    } catch (e2) {
+      blackFails++;
+      if (blackFails >= BLACK_FAILS_BEFORE_DISABLE) sampleDisabled = true;
+      return;
+    }
+    const plates = collectPlates();
+    if (!plates.length) return;
+    if (cursor >= plates.length) cursor = 0;
+    const n = Math.min(MAX_PLATES_PER_TICK, plates.length);
+    for (let i = 0; i < n; i++) {
+      const plate = plates[(cursor + i) % plates.length];
+      const mid = plateWorldSamplePoint(plate);
+      if (!mid) continue;
+      const cssW = view.clientWidth || viewW;
+      const cssH = view.clientHeight || viewH;
+      const sx = cssW > 0 ? mid.x / cssW * viewW : mid.x;
+      const sy = cssH > 0 ? mid.y / cssH * viewH : mid.y;
+      const band = sampleBandAtCanvasPx(ctx, sx, sy, viewW, viewH, dw, dh);
+      if (!band) continue;
+      applyBandToPlate(plate, band);
+    }
+    cursor = (cursor + n) % Math.max(1, plates.length);
+  }
+  function installNameplateContrast() {
+    if (installed10) return;
+    installed10 = true;
+    if (typeof window === "undefined") return;
+    timerId2 = window.setInterval(() => {
+      try {
+        tickNameplateContrast();
+      } catch (err) {
+        console.error("[ecu] nameplateContrast", err);
+      }
+    }, SAMPLE_MS);
+  }
+
   // src/host/nameplateSharpness.ts
   function nameplatePhoneBoost(profile) {
     const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
-    if (p === "phone") return 1.85;
-    if (p === "tablet") return 1.25;
-    return 0.88;
+    if (p === "phone") return 1;
+    if (p === "tablet") return 1.1;
+    return 0.95;
   }
   function resolveNameplateCtype(ent) {
     if (!ent) return void 0;
@@ -99315,10 +101070,63 @@ ${ESTIMATE_HINT}`,
     pv.x = px;
     pv.y = py;
   }
+  var NAMEPLATE_PHONE_MIN_SCALE = 2;
+  var NAMEPLATE_PHONE_MAX_SCALE = 5;
+  var NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE = 2;
+  var NAMEPLATE_DESKTOP_MAX_SCALE = 4;
+  var NAMEPLATE_STOCK_FONT_SIZE = 64;
+  var NAMEPLATE_STOCK_TEXT_SCALE = 0.125;
+  function snapNameplateScreenScale(raw) {
+    if (!(typeof raw === "number") || !Number.isFinite(raw)) return 1;
+    return Math.max(1, Math.min(8, Math.round(raw)));
+  }
   function nameplateScreenScale(fov, profile) {
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-    const boost = nameplatePhoneBoost(profile);
-    return Math.max(1 / 3, Math.min(8, f * boost));
+    const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+    const boost = nameplatePhoneBoost(p);
+    if (f < 1) {
+      const grow = snapNameplateScreenScale(1 / f);
+      if (p === "phone") {
+        return Math.min(3, Math.max(NAMEPLATE_PHONE_MIN_SCALE, grow));
+      }
+      return Math.min(3, Math.max(1, grow));
+    }
+    const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
+    let s = snapNameplateScreenScale(Math.max(1 / 3, Math.min(8, eased * boost)));
+    if (p === "phone") {
+      s = Math.max(NAMEPLATE_PHONE_MIN_SCALE, s);
+      return Math.min(NAMEPLATE_PHONE_MAX_SCALE, s);
+    }
+    if (p === "tablet") {
+      if (f >= 1.25) s = Math.max(2, s);
+      return Math.min(4, s);
+    }
+    if (f >= 1.5) s = Math.max(NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE, s);
+    return Math.min(NAMEPLATE_DESKTOP_MAX_SCALE, s);
+  }
+  function applyNameplateGlyphDenseness(node, dense) {
+    const d = Math.max(1, Math.min(6, Math.round(dense)));
+    const style = node.style;
+    if (!style || typeof style !== "object") return false;
+    const wantFont = NAMEPLATE_STOCK_FONT_SIZE * d;
+    const wantScale = NAMEPLATE_STOCK_TEXT_SCALE / d;
+    if (style.__ecuDense === d && style.fontSize === wantFont) {
+      return false;
+    }
+    style.fontSize = wantFont;
+    style.__ecuDense = d;
+    if (style.__ecuSoft) style.__ecuSoft = false;
+    setNodeScale(node, wantScale, wantScale);
+    if (typeof node.updateText === "function") {
+      try {
+        node.updateText();
+      } catch (e2) {
+        node.dirty = true;
+      }
+    } else {
+      node.dirty = true;
+    }
+    return true;
   }
   function nameplateAttachPoint(bounds) {
     return {
@@ -99411,16 +101219,19 @@ ${ESTIMATE_HINT}`,
       const ok = applyNameplateScreenScale(root, screen);
       if (ok) root.__ecuNameplateFov = appliedFov2;
     }
+    const profile = detectViewportProfile();
+    const phonePixel = profile === "phone";
     const visit = (node) => {
       if (!node) return;
       const isText = looksLikePixiText(node);
       if (typeof node.roundPixels !== "undefined") {
-        node.roundPixels = !isText;
+        node.roundPixels = phonePixel ? true : !isText;
       }
       const bt = node.texture && node.texture.baseTexture;
       if (bt) {
         if (isText) {
-          if (modes.linear != null) bt.scaleMode = modes.linear;
+          const mode = phonePixel ? modes.nearest : modes.linear;
+          if (mode != null) bt.scaleMode = mode;
         } else if (modes.nearest != null) {
           bt.scaleMode = modes.nearest;
         }
@@ -99428,25 +101239,18 @@ ${ESTIMATE_HINT}`,
       if (isText) {
         if (typeof node.resolution === "number" && node.resolution !== res) {
           node.resolution = res;
-          if (typeof node.updateText === "function") {
-            try {
-              node.updateText();
-            } catch (e2) {
-              node.dirty = true;
-            }
-          } else {
-            node.dirty = true;
-          }
         } else if (typeof node.resolution !== "number") {
           try {
             node.resolution = res;
-            if (typeof node.updateText === "function") node.updateText();
-            else node.dirty = true;
           } catch (e2) {
           }
         }
+        if (!phonePixel) applyNameplateGlyphDenseness(node, res);
         const bt2 = node.texture && node.texture.baseTexture;
-        if (bt2 && modes.linear != null) bt2.scaleMode = modes.linear;
+        if (bt2) {
+          const mode = phonePixel ? modes.nearest : modes.linear;
+          if (mode != null) bt2.scaleMode = mode;
+        }
       }
       const kids = node.children;
       if (!kids || !kids.length) return;
@@ -99454,6 +101258,20 @@ ${ESTIMATE_HINT}`,
     };
     visit(root);
     beautifyNameTag(root, { ctype: root.__ecuNameplateCtype || ctype });
+    if (phonePixel && modes.nearest != null) {
+      const forceNearest = (node) => {
+        if (!node) return;
+        if (looksLikePixiText(node)) {
+          const bt = node.texture && node.texture.baseTexture;
+          if (bt) bt.scaleMode = modes.nearest;
+          if (typeof node.roundPixels !== "undefined") node.roundPixels = true;
+        }
+        const kids = node.children;
+        if (!kids) return;
+        for (let i = 0; i < kids.length; i++) forceNearest(kids[i]);
+      };
+      forceNearest(root);
+    }
   }
   function bustNameTagCaches() {
     const bump = (ent) => {
@@ -99532,15 +101350,16 @@ ${ESTIMATE_HINT}`,
     w.add_name_tag = wrapped;
     return true;
   }
-  var installed10 = false;
+  var installed11 = false;
   function installNameplateSharpness() {
-    if (installed10) return;
-    installed10 = true;
+    if (installed11) return;
+    installed11 = true;
     window.__ecuBustNameTags = bustNameTagCaches;
     onWorldFovApplied((fov) => {
       bustNameTagCaches();
       resyncNameplateScales(fov);
     });
+    installNameplateContrast();
     const kick = () => {
       if (!wrapAddNameTag()) return false;
       bustNameTagCaches();
@@ -99891,8 +101710,8 @@ ${ESTIMATE_HINT}`,
   }
   function seedCommandDraft() {
     patchSettings({
-      // Single home page — hide page-dot chrome for cleaner map-first shots.
-      phoneHomeScreens: [{ id: "home", label: "Home", panels: [], meters: [] }],
+      // Production Home / Players / Coop so stick+FOV vs pager can be scored.
+      phoneHomeScreens: defaultPhoneHomeScreens(),
       commandDraft: "// Preview \u2014 phone Command sheet\nloot();\nuse_skill('town');\nstop('move');\nsay('pull');\n",
       commandSnippets: [
         { id: "loot", name: "Loot", code: "loot()" },

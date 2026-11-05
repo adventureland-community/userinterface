@@ -1,6 +1,6 @@
 /**
- * Overlay preview boot — cached live G + stock sprite APIs + sim dock.
- * Stays synchronous when /al/data.js already set window.G (HTML blocking script).
+ * Overlay preview boot — stock AL /comm host + sim dock + ECU.
+ * Stays synchronous when /data.js already set window.G (HTML blocking script).
  */
 
 import {
@@ -8,15 +8,10 @@ import {
   setInstanceSimEnabled,
   subscribeInstanceSim,
 } from "../../src/debug/instanceSim";
-import { ensureGameData, installPreviewHost } from "./hostStub";
-import {
-  adoptLiveGameData,
-  ensureSpriteApis,
-  hasLiveG,
-} from "./spriteApis";
+import { bootStockHost } from "./bootStockHost";
+import { installPreviewHost } from "./hostStub";
 import { mountSimDock, pinHudBelowToolbar } from "./simDock";
 import { syncSimToHost } from "./simHost";
-import { startWorldStage } from "./worldStage";
 
 const SIM_TICK_MS = 250;
 
@@ -63,12 +58,26 @@ function watchCommUiOffset(): void {
   }, 50);
 }
 
-function bootWithG(gSource: "live" | "stub"): void {
-  startWorldStage();
+async function bootPreview(): Promise<void> {
+  "use strict";
+  (window as { __ecuOverlayPreview?: boolean }).__ecuOverlayPreview = true;
+  if (typeof (window as { __ecuAssetOrigin?: string }).__ecuAssetOrigin !== "string") {
+    (window as { __ecuAssetOrigin?: string }).__ecuAssetOrigin = "";
+  }
+
+  const stockOk = await bootStockHost();
+  const gSource = stockOk ? "live" : "stub";
+  if (!stockOk) {
+    console.warn(
+      "[ecu] stock host failed — Comm UI may still mount; world will be empty. Run npm run overlay:sync",
+    );
+  }
+
   const { player, party } = installPreviewHost();
   setInstanceSimEnabled(true);
   installInstanceSimDebug();
   startSimLoop(player, party);
+
   const mount = () => {
     mountSimDock(gSource);
     watchCommUiOffset();
@@ -78,17 +87,6 @@ function bootWithG(gSource: "live" | "stub"): void {
   watchRebuild();
 }
 
-(function bootPreview() {
-  "use strict";
-  (window as any).__ecuOverlayPreview = true;
-  if (typeof (window as any).__ecuAssetOrigin !== "string") {
-    (window as any).__ecuAssetOrigin = "";
-  }
-  if (hasLiveG()) {
-    adoptLiveGameData();
-    ensureSpriteApis();
-    bootWithG("live");
-    return;
-  }
-  ensureGameData().then((src) => bootWithG(src));
-})();
+bootPreview().catch((err) => {
+  console.error("[ecu] overlay preview boot failed", err);
+});

@@ -38,6 +38,8 @@ const DIST_JS = resolve(ROOT, "dist/enhance-comm-ui.js");
 const ROOT_JS = resolve(ROOT, "../enhance-comm-ui.js");
 const OVERLAY_JS = resolve(ROOT, "dist/overlay-preview.js");
 const OVERLAY_HTML = resolve(ROOT, "dev/overlay/index.html");
+const OVERLAY_SHELL_HTML = resolve(ROOT, "dev/overlay/shell.html");
+const OVERLAY_SHOT_MJS = resolve(ROOT, "agentic/overlay-shot/capture.mjs");
 const DEV_USER_JS = resolve(ROOT, "dev.user.js");
 const PKG_JSON = resolve(ROOT, "package.json");
 
@@ -86,7 +88,20 @@ function sendJs(res, filePath) {
   res.end(body);
 }
 
-function sendOverlayHtml(res) {
+function sendOverlayShell(res) {
+  if (!existsSync(OVERLAY_SHELL_HTML)) {
+    res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Missing dev/overlay/shell.html\n");
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(readFileSync(OVERLAY_SHELL_HTML, "utf8"));
+}
+
+function sendOverlayFrame(res) {
   if (!existsSync(OVERLAY_HTML)) {
     res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Missing dev/overlay/index.html\n");
@@ -105,6 +120,67 @@ function sendOverlayHtml(res) {
     "Cache-Control": "no-store",
   });
   res.end(html);
+}
+
+async function readJsonBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const raw = Buffer.concat(chunks).toString("utf8");
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+async function handleOverlayShotApi(req, res) {
+  if (!existsSync(OVERLAY_SHOT_MJS)) {
+    res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Missing agentic/overlay-shot/capture.mjs\n");
+    return;
+  }
+  const body = req.method === "POST" ? await readJsonBody(req) : {};
+  const url = new URL(req.url || "/", "http://127.0.0.1");
+  const view =
+    body.view === "desktop" || url.searchParams.get("view") === "desktop"
+      ? "desktop"
+      : "phone";
+  const fovRaw = body.fov != null ? body.fov : url.searchParams.get("fov");
+  const fov = fovRaw != null && Number(fovRaw) > 0 ? Number(fovRaw) : 1;
+  try {
+    const mod = await import(
+      pathToFileUrl(OVERLAY_SHOT_MJS) + "?t=" + Date.now()
+    );
+    const result = await mod.captureOverlayShot({
+      view,
+      fov,
+      baseUrl: `http://127.0.0.1:${PORT}/overlay/frame`,
+    });
+    res.writeHead(200, {
+      "Content-Type": "image/png",
+      "Cache-Control": "no-store",
+      "Content-Disposition":
+        'attachment; filename="overlay-' +
+        view +
+        "-fov-" +
+        String(result.appliedFov).replace(".", "_") +
+        '.png"',
+      "X-ECU-Shot-Meta": JSON.stringify(result.meta),
+    });
+    res.end(result.buffer);
+  } catch (err) {
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end(err && err.message ? err.message : String(err));
+  }
+}
+
+function pathToFileUrl(filePath) {
+  const normalized = filePath.replace(/\\/g, "/");
+  if (/^[A-Za-z]:\//.test(normalized)) {
+    return "file:///" + normalized;
+  }
+  return "file://" + normalized;
 }
 
 /**
@@ -192,7 +268,7 @@ async function handleRequest(req, res) {
   }
 
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "*");
   res.setHeader("X-ECU-Service", "ecu-dev");
 
@@ -237,12 +313,42 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Stock api_call → /api/<method>. Overlay has no hub; return empty success so
+  // jQuery deferreds resolve (404 reject becomes an unhandled pageerror).
+  if (path.startsWith("/api/")) {
+    const method = path.slice("/api/".length).split("?")[0];
+    let body = {};
+    if (method === "pull_chats") body = { chats: [], cursor: null };
+    else if (method === "pull_chat") body = { messages: [], cursor: null };
+    else if (method === "servers_and_characters") {
+      body = { servers: [], characters: [], unread: 0 };
+    } else if (method === "send_message") body = { ok: true };
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(JSON.stringify(body));
+    return;
+  }
+
   if (
     path === "/overlay" ||
     path === "/overlay/" ||
     path === "/overlay/index.html"
   ) {
-    sendOverlayHtml(res);
+    // Harness shell: Phone/Desktop iframe + Shot (+UI / World).
+    sendOverlayShell(res);
+    return;
+  }
+
+  if (path === "/overlay/frame" || path === "/overlay/frame/") {
+    // Actual stock host + ECU (sized by the shell iframe / Playwright).
+    sendOverlayFrame(res);
+    return;
+  }
+
+  if (path === "/overlay/api/shot") {
+    await handleOverlayShotApi(req, res);
     return;
   }
 
@@ -280,7 +386,7 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if (path === "/al/data.js") {
+  if (path === "/al/data.js" || path === "/data.js") {
     await sendCachedAl(res, REL.data);
     return;
   }
@@ -290,6 +396,7 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Stock /comm scripts + images/css from overlay cache.
   if (isAllowedAssetPath(path)) {
     await handleOverlayAsset(res, path, url.search);
     return;

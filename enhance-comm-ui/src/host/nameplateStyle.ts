@@ -7,6 +7,11 @@
  */
 
 import { resolveClassColor } from "../lib/colors";
+import {
+  detectViewportProfile,
+  type ViewportProfile,
+} from "../lib/viewport";
+import { nameplateTextResolution } from "../lib/worldFov";
 
 export const STOCK_NAME_BORDER = 0x716d6c;
 export const STOCK_NAME_FILL = 0x201f1f;
@@ -27,8 +32,23 @@ export const NAMEPLATE_FONT_FAMILIES: string[] = [
 /** @deprecated Use {@link resolveNameplateFontFamily} — kept as Consolas label. */
 export const NAMEPLATE_FONT_FAMILY = "Consolas";
 
-/** Pick the first installed face from {@link NAMEPLATE_FONT_FAMILIES}. */
-export function resolveNameplateFontFamily(): string {
+/**
+ * Desktop/tablet: system mono (Consolas…).
+ * Phone: stock AL pixel face — Consolas at 8px turns to mush under CSS FOV fit.
+ */
+export function resolveNameplateFontFamily(
+  profile?: ViewportProfile,
+): string {
+  const p =
+    profile ||
+    (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+  if (p === "phone") {
+    if (typeof window !== "undefined") {
+      const sz = (window as Window & { SZ?: { font?: string } }).SZ;
+      if (sz && typeof sz.font === "string" && sz.font.trim()) return sz.font;
+    }
+    return "pixel";
+  }
   const faces = NAMEPLATE_FONT_FAMILIES;
   const fonts =
     typeof document !== "undefined"
@@ -237,17 +257,51 @@ export function nameplatePlateClassColor(ctype?: string | null): string {
 
 /**
  * Stroke for stock 64px Text (scaled ~0.125). System mono face, white fill,
- * heavy black edge so glyphs hold on bright sand when the plate is soft.
+ * black edge so glyphs hold on bright sand when the plate is soft.
+ *
+ * Phone: light stroke (not zero). Zero-stroke Consolas at stock 8px was mush
+ * on handsets; heavy stroke + CSS `pixelated` used to salt-and-pepper — phone
+ * FOV view stays on `image-rendering: auto`, so a thin edge is safe.
+ *
+ * `dense` matches glyph denseness (fontSize×d). Stroke grows with d so after
+ * scale÷d the screen edge weight stays ~constant.
  */
-export function softTextStylePatch(fillColor?: string): TextStyleLike {
+export function softTextStylePatch(
+  fillColor?: string,
+  profile?: ViewportProfile,
+  dense?: number,
+): TextStyleLike {
+  const p =
+    profile ||
+    (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+  const phone = p === "phone";
+  const d =
+    typeof dense === "number" && dense > 0 && Number.isFinite(dense)
+      ? Math.max(1, Math.min(6, Math.round(dense)))
+      : 1;
+  if (phone) {
+    return {
+      fontFamily: resolveNameplateFontFamily("phone"),
+      fill: fillColor || "#ffffff",
+      stroke: "#000000",
+      // Pixel face — stroke just muddies the bitmap.
+      strokeThickness: 0,
+      dropShadow: false,
+      dropShadowColor: "#000000",
+      dropShadowDistance: 0,
+      dropShadowBlur: 0,
+      dropShadowAlpha: 0,
+      dropShadowAngle: Math.PI / 4,
+    };
+  }
   return {
-    fontFamily: resolveNameplateFontFamily(),
+    fontFamily: resolveNameplateFontFamily(p),
     fill: fillColor || "#ffffff",
     stroke: "#000000",
-    strokeThickness: 7,
+    strokeThickness: 7 * d,
     dropShadow: true,
     dropShadowColor: "#000000",
-    dropShadowDistance: 1,
+    dropShadowDistance: 1 * d,
     dropShadowBlur: 0,
     dropShadowAlpha: 0.55,
     dropShadowAngle: Math.PI / 4,
@@ -397,7 +451,13 @@ export function applySoftTextStyle(
 ): boolean {
   const style = node.style;
   if (!style || typeof style !== "object") return false;
-  const patch = softTextStylePatch(fillColor);
+  const denseFromStyle =
+    typeof (style as { __ecuDense?: number }).__ecuDense === "number"
+      ? (style as { __ecuDense: number }).__ecuDense
+      : 0;
+  const dense =
+    denseFromStyle > 0 ? denseFromStyle : nameplateTextResolution();
+  const patch = softTextStylePatch(fillColor, undefined, dense);
   const wantFont = String(patch.fontFamily || "Consolas");
   const curFont = style.fontFamily;
   const fontOk =

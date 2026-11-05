@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it, afterEach } from "node:test";
 import { nameplateTextResolution } from "../src/lib/worldFov";
 import {
+  applyNameplateGlyphDenseness,
   nameplateAttachPoint,
   nameplatePivotPosition,
   nameplateScreenScale,
-  NAMEPLATE_DESKTOP_ZOOM_OUT_EXP,
+  NAMEPLATE_STOCK_FONT_SIZE,
+  NAMEPLATE_STOCK_TEXT_SCALE,
   sharpenNameTagTextures,
   snapNameplateScreenScale,
 } from "../src/host/nameplateSharpness";
@@ -15,7 +17,7 @@ describe("nameplateTextResolution", () => {
     delete (globalThis as { window?: unknown }).window;
   });
 
-  it("scales resolution with FOV and devicePixelRatio", () => {
+  it("scales denseness with FOV and devicePixelRatio", () => {
     (globalThis as { window?: Record<string, unknown> }).window = {
       devicePixelRatio: 2,
     };
@@ -32,12 +34,13 @@ describe("nameplateTextResolution", () => {
     assert.equal(nameplateTextResolution(0.5), 4);
   });
 
-  it("caps resolution so phone DPR × wide FOV stays WebGL-safe", () => {
+  it("caps denseness so phone DPR × wide FOV stays canvas-safe", () => {
     (globalThis as { window?: Record<string, unknown> }).window = {
       devicePixelRatio: 3,
     };
-    assert.equal(nameplateTextResolution(6), 6);
-    assert.equal(nameplateTextResolution(0.5), 6);
+    // DPR clamped to 2, denseness capped at 4 (64×4 font faces).
+    assert.equal(nameplateTextResolution(6), 4);
+    assert.equal(nameplateTextResolution(0.5), 4);
   });
 });
 
@@ -57,40 +60,39 @@ describe("snapNameplateScreenScale", () => {
 describe("nameplateScreenScale", () => {
   it("counter-scales FOV then snaps to integers for crisp glyphs", () => {
     assert.equal(nameplateScreenScale(1, "desktop"), 1);
-    assert.equal(nameplateScreenScale(0.5, "desktop"), 1);
+    assert.equal(nameplateScreenScale(0.5, "desktop"), 2);
     assert.ok(Number.isInteger(nameplateScreenScale(2, "desktop")));
     assert.ok(Number.isInteger(nameplateScreenScale(5, "desktop")));
   });
 
-  it("softens desktop zoom-out so plates shrink with the map", () => {
-    // Full f×0.88 at FOV 5 was 4.4; soft curve ~2.47 → snap 2.
-    assert.equal(
-      nameplateScreenScale(5, "desktop"),
-      snapNameplateScreenScale(Math.pow(5, NAMEPLATE_DESKTOP_ZOOM_OUT_EXP) * 0.88),
+  it("counter-scales desktop zoom-out so mid FOV stays readable", () => {
+    assert.equal(nameplateScreenScale(1.5, "desktop"), 2);
+    assert.equal(nameplateScreenScale(2, "desktop"), 2);
+    assert.ok(
+      nameplateScreenScale(5, "desktop") >= 3,
+      "desktop FOV 5 still fights CSS shrink",
     );
     assert.ok(
-      nameplateScreenScale(5, "desktop") < 3.2,
-      "desktop FOV 5 must stay under full counter-scale 4.4",
+      nameplateScreenScale(5, "desktop") <= 4,
+      "desktop FOV 5 eases off full cancel",
     );
-    assert.ok(
-      nameplateScreenScale(5, "desktop") >= nameplateScreenScale(1, "desktop"),
-      "still at least FOV 1 size so labels remain readable",
-    );
+    assert.equal(nameplateScreenScale(0.5, "desktop"), 2);
   });
 
-  it("boosts phone plates at every FOV including zoom-in and wide zoom-out", () => {
+  it("keeps phone plates readable at every FOV step", () => {
+    // 2× floor — stock 8px Pixel smudges on a 390px handset at 1×.
     assert.equal(nameplateScreenScale(1, "phone"), 2);
-    assert.equal(nameplateScreenScale(2, "phone"), 4);
-    // Zoom-in fractions snap up to 1× (crisp) instead of soft 0.9×.
-    assert.equal(nameplateScreenScale(0.5, "phone"), 1);
-    assert.equal(nameplateScreenScale(0.75, "phone"), 1);
-    assert.equal(nameplateScreenScale(3, "phone"), 6);
-    assert.equal(nameplateScreenScale(4, "phone"), 7);
-    assert.equal(nameplateScreenScale(5, "phone"), 8);
+    assert.equal(nameplateScreenScale(1.5, "phone"), 2);
+    assert.equal(nameplateScreenScale(2, "phone"), 2);
+    assert.equal(nameplateScreenScale(3, "phone"), 3);
+    assert.equal(nameplateScreenScale(5, "phone"), 4);
+    assert.equal(nameplateScreenScale(0.5, "phone"), 2);
+    assert.equal(nameplateScreenScale(0.75, "phone"), 2);
   });
 
-  it("boosts tablet plates modestly at FOV=1", () => {
+  it("boosts tablet plates on mild zoom-out", () => {
     assert.equal(nameplateScreenScale(1, "tablet"), 1);
+    assert.ok(nameplateScreenScale(1.5, "tablet") >= 2);
   });
 });
 
@@ -111,6 +113,31 @@ describe("nameplate bottom pivot glue", () => {
   });
 });
 
+describe("applyNameplateGlyphDenseness", () => {
+  it("raises fontSize and lowers scale so layout size stays stock", () => {
+    const node = {
+      style: { fontSize: NAMEPLATE_STOCK_FONT_SIZE } as {
+        fontSize?: number;
+        __ecuDense?: number;
+      },
+      scale: {
+        x: NAMEPLATE_STOCK_TEXT_SCALE,
+        y: NAMEPLATE_STOCK_TEXT_SCALE,
+        set(x: number, y: number) {
+          this.x = x;
+          this.y = y;
+        },
+      },
+      updateText() {},
+    };
+    assert.equal(applyNameplateGlyphDenseness(node, 5), true);
+    assert.equal(node.style.fontSize, NAMEPLATE_STOCK_FONT_SIZE * 5);
+    assert.equal(node.scale.x, NAMEPLATE_STOCK_TEXT_SCALE / 5);
+    assert.equal(node.style.__ecuDense, 5);
+    assert.equal(applyNameplateGlyphDenseness(node, 5), false);
+  });
+});
+
 describe("sharpenNameTagTextures", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;
@@ -121,7 +148,19 @@ describe("sharpenNameTagTextures", () => {
     const textNode = {
       resolution: 1,
       text: "Zincao",
-      style: {},
+      style: { fontSize: NAMEPLATE_STOCK_FONT_SIZE } as {
+        fontSize?: number;
+        __ecuDense?: number;
+        __ecuSoft?: boolean;
+      },
+      scale: {
+        x: NAMEPLATE_STOCK_TEXT_SCALE,
+        y: NAMEPLATE_STOCK_TEXT_SCALE,
+        set(x: number, y: number) {
+          this.x = x;
+          this.y = y;
+        },
+      },
       roundPixels: false,
       texture: { baseTexture: { scaleMode: 0 } },
       updateText() {
@@ -172,7 +211,10 @@ describe("sharpenNameTagTextures", () => {
     };
     // FOV 5 → soft curve ~2.47 → snap 2× (FOV 2 snaps to 1× and skips pivot).
     sharpenNameTagTextures(root, 5);
-    assert.equal(textNode.resolution, 5);
+    const dense = nameplateTextResolution(5);
+    assert.equal(textNode.resolution, dense);
+    assert.equal(textNode.style.fontSize, NAMEPLATE_STOCK_FONT_SIZE * dense);
+    assert.equal(textNode.scale.x, NAMEPLATE_STOCK_TEXT_SCALE / dense);
     assert.equal(textNode.roundPixels, false);
     assert.equal(textNode.texture.baseTexture.scaleMode, 0);
     const expect = nameplateScreenScale(5, "desktop");
@@ -181,9 +223,8 @@ describe("sharpenNameTagTextures", () => {
     assert.equal(root.scale.y, expect);
     assert.equal(root.pivot.y, -40);
     assert.equal(root.y, -40);
-    // FOV resolution bump + soft-plate stroke both re-rasterize Text.
+    // Glyph denseness + soft-plate stroke both re-rasterize Text.
     assert.ok(updates.length >= 1);
-    assert.equal(updates[updates.length - 1], 5);
   });
 
   it("does not scale from origin when attach bounds are missing", () => {

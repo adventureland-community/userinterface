@@ -1,6 +1,9 @@
 /**
  * Overlay-only world canvas: map walls + entity dots + fake PIXI overlay.
  * Camera follows the observing player. Paint is in game real_x/y.
+ *
+ * Nameplates go through stock `add_name_tag` → ECU sharpen/beautify, then
+ * canvas-replay of the resulting Graphics/Text tree (same path as live).
  */
 
 import { resolveMapGeometry } from "../../src/ui/minimap/mapExtent";
@@ -8,8 +11,11 @@ import { entityMapXY } from "../../src/lib/entityMapXY";
 import { patchVizSettings, VIZ_SETTINGS_KEY } from "../../src/viz/vizSettings";
 import {
   installFakePixi,
+  renderEntityNameTag,
   renderFakePixiTree,
+  type FakeDisplayObject,
 } from "./fakePixi";
+import { installStockNameTagApis, name_logic } from "./stockNameTag";
 
 const SCALE = 1.35;
 const CANVAS_ID = "ecu-world-stage";
@@ -95,26 +101,31 @@ function drawEntities(ctx: CanvasRenderingContext2D): void {
     const ent = rec[ids[i]];
     if (!ent || ent.dead || ent.visible === false) continue;
     const xy = entityMapXY(ent);
+    const tagEnt = ent as typeof ent & {
+      aheight?: number;
+      name_tag?: FakeDisplayObject | null;
+      player?: boolean;
+    };
     if (!xy) continue;
-    const isPlayer = ent.type === "character" || !!ent.player;
+    const isPlayer = tagEnt.type === "character" || !!tagEnt.player;
     const r = isPlayer ? 7 : 8;
+    if (typeof tagEnt.aheight !== "number") {
+      tagEnt.aheight = r + 2;
+    }
     ctx.beginPath();
     ctx.arc(xy.x, xy.y, r, 0, Math.PI * 2);
     ctx.fillStyle = isPlayer ? "#6ec8ff" : "#e08040";
     ctx.fill();
-    if (String(ent.id) === observingId) {
+    if (String(tagEnt.id) === observingId) {
       ctx.strokeStyle = "#ffe08a";
       ctx.lineWidth = 2 / SCALE;
       ctx.stroke();
     }
-    const label = isPlayer
-      ? ent.name || String(ent.id)
-      : ent.mtype || ent.name || String(ent.id);
-    ctx.fillStyle = "rgba(230,230,230,0.9)";
-    ctx.font = `${11 / SCALE}px pixel, ui-sans-serif, monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillText(label, xy.x, xy.y + r + 2);
+    // Stock name_logic → add_name_tag → ECU wrap (sharpen + beautify).
+    name_logic(tagEnt as Parameters<typeof name_logic>[0]);
+    if (tagEnt.name_tag) {
+      renderEntityNameTag(ctx, tagEnt.name_tag, xy.x, xy.y);
+    }
   }
 }
 
@@ -152,6 +163,8 @@ export function startWorldStage(): void {
   if (started) return;
   started = true;
   installFakePixi();
+  // Before ECU loads: stock add_name_tag so wrapAddNameTag can install.
+  installStockNameTagApis();
   seedOverlayVizDefaults();
 
   const loop = () => {

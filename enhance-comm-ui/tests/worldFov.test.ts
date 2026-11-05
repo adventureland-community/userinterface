@@ -91,9 +91,9 @@ describe("worldFov", () => {
     const resized: number[] = [];
     const view = { style: {} as Record<string, string> };
     (globalThis as { window?: Record<string, unknown> }).window = {
-      innerWidth: 400,
+      innerWidth: 1280,
       innerHeight: 800,
-      width: 400,
+      width: 1280,
       height: 800,
       map: { last_max_y: 1 },
       renderer: {
@@ -108,22 +108,22 @@ describe("worldFov", () => {
     assert.equal(readAppliedWorldFov(), 2);
     const w = (globalThis as { window: { width: number; height: number } })
       .window;
-    assert.equal(w.width, 800);
+    assert.equal(w.width, 2560);
     assert.equal(w.height, 1600);
-    assert.deepEqual(resized, [800, 1600]);
-    assert.equal(view.style.width, "400px");
+    assert.deepEqual(resized, [2560, 1600]);
+    assert.equal(view.style.width, "1280px");
     assert.equal(view.style.height, "800px");
     assert.equal(view.style.imageRendering, "pixelated");
   });
 
-  it("applyWorldFov zoom-in uses auto CSS sampling (not pixelated)", () => {
+  it("applyWorldFov zoom-in uses pixelated CSS (auto upscale mush)", () => {
     const view = {
       style: {} as Record<string, string>,
     };
     (globalThis as { window?: Record<string, unknown> }).window = {
-      innerWidth: 400,
+      innerWidth: 1280,
       innerHeight: 800,
-      width: 400,
+      width: 1280,
       height: 800,
       map: {},
       renderer: {
@@ -132,12 +132,12 @@ describe("worldFov", () => {
       },
     };
     applyWorldFov(0.5);
-    assert.equal(view.style.width, "400px");
+    assert.equal(view.style.width, "1280px");
     assert.equal(view.style.height, "800px");
-    assert.equal(view.style.imageRendering, "auto");
+    assert.equal(view.style.imageRendering, "pixelated");
   });
 
-  it("applyWorldFov at 1 clears size overrides but keeps pixelated snap", () => {
+  it("applyWorldFov at 1 clears size overrides but keeps pixelated snap on desktop", () => {
     const view = {
       style: {
         width: "12px",
@@ -151,9 +151,9 @@ describe("worldFov", () => {
       resize() {},
     };
     (globalThis as { window?: Record<string, unknown> }).window = {
-      innerWidth: 400,
+      innerWidth: 1280,
       innerHeight: 800,
-      width: 400,
+      width: 1280,
       height: 800,
       map: {},
       renderer,
@@ -163,6 +163,27 @@ describe("worldFov", () => {
     assert.equal(view.style.height, "");
     assert.equal(view.style.imageRendering, "pixelated");
     assert.equal(renderer.roundPixels, true);
+  });
+
+  it("phone FOV zoom-out uses auto CSS; FOV≤1 uses pixelated", () => {
+    const view = { style: {} as Record<string, string> };
+    (globalThis as { window?: Record<string, unknown> }).window = {
+      innerWidth: 390,
+      innerHeight: 844,
+      width: 390,
+      height: 844,
+      map: {},
+      renderer: {
+        view,
+        resize() {},
+      },
+    };
+    applyWorldFov(1.5);
+    assert.equal(view.style.imageRendering, "auto");
+    applyWorldFov(1);
+    assert.equal(view.style.imageRendering, "pixelated");
+    applyWorldFov(0.5);
+    assert.equal(view.style.imageRendering, "pixelated");
   });
 
   it("formats FOV labels", () => {

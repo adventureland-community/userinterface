@@ -59,9 +59,10 @@ Iterate on the Comm HUD in a plain browser tab. Instance sim lives in the previe
 The harness caches live `data.js`, stock `sprite` / `item_container` (from `old_common_functions.js` + `html.js`), the pixel font, and `/images` `/css` assets under `dev/overlay/cache/` — **gitignored**. Same-origin `/images/...` paths match the real client; the HUD does not rewrite them to the CDN.
 
 1. `npm run dev` (first run fetches the cache; or `npm run overlay:sync`)
-2. Open [http://127.0.0.1:3927/overlay](http://127.0.0.1:3927/overlay)
-3. Pick a scenario in the top toolbar (crypt / tomb / spider / winter)
-4. Rebuilds auto-reload the preview page
+2. Open [http://127.0.0.1:3927/overlay](http://127.0.0.1:3927/overlay) — harness shell with **Phone / Desktop** and **Shot**
+3. The game iframe is `/overlay/frame` (seed with `?view=phone` or `?view=desktop`)
+4. Pick a scenario in the iframe toolbar (crypt / tomb / spider / winter)
+5. CLI shots: `npm run overlay:shot -- --view phone` (also `--fov 1.5`, `--fov-grid`)
 
 Refresh the dump with `npm run overlay:sync -- --force`. Toolbar **G: live** means cached game data loaded; **G: stub** is the tiny offline fallback.
 

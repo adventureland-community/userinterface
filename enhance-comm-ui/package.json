@@ -11,6 +11,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:serve": "node scripts/dev-server.mjs",
     "overlay:sync": "node scripts/fetch-overlay-client.mjs",
+    "overlay:shot": "node agentic/overlay-shot/capture.mjs",
     "phone:flows": "node agentic/mobile-preview/flows/drive-real-flows.mjs"
   },
   "devDependencies": {
