@@ -239,6 +239,24 @@ const CSS = `
 .ecu-phone-dock__apps.is-on .ecu-phone-dock__apps-glyph {
   background: rgba(157, 212, 236, 0.16);
 }
+.ecu-phone-dock__mail-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #d33;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 1px #1a1a1a;
+  pointer-events: none;
+}
 .ecu-phone-pick__banner {
   display: flex;
   flex-direction: row;
@@ -967,6 +985,7 @@ const CSS = `
   color: #938f99;
 }
 .ecu-phone-apps__icon {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -977,6 +996,24 @@ const CSS = `
   font-weight: 600;
   color: #fff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.ecu-phone-apps__mail-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #d33;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 1px #1a1a1a;
+  pointer-events: none;
 }
 .ecu-phone-apps__label {
   font-size: 12px;

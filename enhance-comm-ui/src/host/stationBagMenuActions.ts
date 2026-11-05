@@ -236,6 +236,10 @@ function buildStationBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
                 massproductionpp: !!(
                   picked.skills && picked.skills.massproductionpp
                 ),
+                luckySlot:
+                  picked.lucky && picked.lucky.enabled
+                    ? picked.lucky.slot
+                    : null,
               },
             ),
         });

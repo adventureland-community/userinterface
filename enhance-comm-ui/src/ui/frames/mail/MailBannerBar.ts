@@ -6,9 +6,12 @@ import {
   cueMailItemsRecipient,
   formatCapFraction,
   formatDeleteProgressLabel,
+  formatMailRoute,
+  formatMailWhat,
   formatRefreshProgressLabel,
   getXUnread,
   MAIL_ATTACH_CAP,
+  pickNewMailRows,
   undoDeleteMail,
   undoSecondsLeft,
   type MailCapabilities,
@@ -19,6 +22,7 @@ import { formatRelativeAge } from "../../../lib/format";
 import { resolveMailActivity } from "./mailActivity";
 import { MailCapsModal } from "./MailCapsModal";
 import { selfCharacterNames } from "./mailFormat";
+import { mailItemIcon } from "./mailRowShared";
 
 export type MailBannerBarProps = {
   snap: MailStoreSnapshot;
@@ -294,6 +298,14 @@ export function MailBannerBar(props: MailBannerBarProps): any {
       )
     : null;
 
+  const newRows = snap.newMailCount
+    ? pickNewMailRows(snap.mails, Math.min(4, snap.newMailCount))
+    : [];
+  const newHead =
+    snap.newMailCount === 1
+      ? "1 new mail"
+      : snap.newMailCount + " new mails";
+
   return e(
     React.Fragment,
     null,
@@ -303,9 +315,40 @@ export function MailBannerBar(props: MailBannerBarProps): any {
           {
             className: "comm-mail__banner is-new",
             onClick: () => clearNewMailBanner(),
+            title: "Tap to dismiss",
           },
-          snap.newMailCount +
-            " new · tap to dismiss · attachments pinned at top",
+          e(
+            "div",
+            { className: "comm-mail__banner-head" },
+            newHead + " · tap to dismiss · attachments pinned at top",
+          ),
+          newRows.length
+            ? e(
+                "div",
+                { className: "comm-mail__banner-list" },
+                ...newRows.map((m) =>
+                  e(
+                    "div",
+                    { key: m.id, className: "comm-mail__banner-row" },
+                    mailItemIcon(m, 24),
+                    e(
+                      "div",
+                      { className: "comm-mail__banner-meta" },
+                      e(
+                        "div",
+                        { className: "comm-mail__banner-route" },
+                        formatMailRoute(m),
+                      ),
+                      e(
+                        "div",
+                        { className: "comm-mail__banner-what" },
+                        formatMailWhat(m),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : null,
         )
       : null,
     compact

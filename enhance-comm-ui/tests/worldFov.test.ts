@@ -8,8 +8,10 @@ import {
   applyWorldFov,
   cameraRealAfterFovTowardCursor,
   clampWorldFov,
+  clampWorldFovForDisplay,
   formatWorldFov,
   logicalSizeForFov,
+  maxWorldFovForWindow,
   nameplateTextResolution,
   readAppliedWorldFov,
 } from "../src/lib/worldFov";
@@ -32,6 +34,18 @@ describe("worldFov", () => {
     assert.deepEqual(logicalSizeForFov(400, 800, 1), { w: 400, h: 800 });
     assert.deepEqual(logicalSizeForFov(400, 800, 2), { w: 800, h: 1600 });
     assert.deepEqual(logicalSizeForFov(400, 800, 0.5), { w: 200, h: 400 });
+  });
+
+  it("caps FOV to what MAX_TEXTURE_SIZE can buffer", () => {
+    // 1280×720 @ 4096 → max edge FOV ≈ 3.2 → stepped max 3.0
+    assert.equal(maxWorldFovForWindow(1280, 720, 4096), 3);
+    assert.equal(clampWorldFovForDisplay(6, 1280, 720, 4096), 3);
+    assert.equal(clampWorldFovForDisplay(2.5, 1280, 720, 4096), 2.5);
+    // Past the GPU cap, logical size must not keep growing (that caused pan).
+    const pastA = logicalSizeForFov(1280, 720, 4, 4096);
+    const pastB = logicalSizeForFov(1280, 720, 6, 4096);
+    assert.ok(pastA.w <= 4095 && pastA.h <= 4095);
+    assert.deepEqual(pastA, pastB);
   });
 
   it("keeps the world under the cursor when FOV resizes the buffer", () => {

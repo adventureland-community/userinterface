@@ -388,14 +388,13 @@ export function MailPanel(props: MailPanelProps = {}): any {
 
   const doDelete = async (ids: string[]) => {
     const result = await deleteMailRows(ids);
-    if (result === "need-confirm") {
-      const ok = window.confirm(
+    if (result === "blocked-untaken") {
+      window.alert(
         ids.length === 1
-          ? "This mail still has an untaken item. Delete anyway?"
-          : "Some selected mail still has untaken items. Delete anyway?",
+          ? "Take the attachment first — received mail with an untaken item cannot be deleted."
+          : "Take attachments first — received mail with untaken items cannot be deleted.",
       );
-      if (!ok) return;
-      await deleteMailRows(ids, { confirmed: true });
+      return;
     }
     setSelectedIds({});
   };

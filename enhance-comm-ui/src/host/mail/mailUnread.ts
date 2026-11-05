@@ -5,8 +5,15 @@
 import { scalePollMs } from "../../lib/perfPrefs";
 import { readMail, readMailMany } from "./api";
 import { requestMailHead } from "./mailCache";
+import {
+  buildNewMailToast,
+  pickNewMailRows,
+} from "./mailNewNotify";
 import { schedulePersistMailCache } from "./mailPersist";
-import { markRowsRead } from "./mailUnreadLogic";
+import {
+  markRowsRead,
+  shouldHoldUnreadUntilVerified,
+} from "./mailUnreadLogic";
 import {
   commit,
   emitToast,
@@ -16,6 +23,7 @@ import {
   getPanelOpen,
   setStatus,
 } from "./mailState";
+import { buildNewMailToastNode } from "../../ui/frames/mail/mailNewToastView";
 
 /** Stock Comm unread counter on window.X.
  * Server recounts unread with `.limit(100)` (send_mail / read_mail / SAC),
@@ -35,14 +43,7 @@ export function formatUnreadBadgeLabel(n: number): string {
   return String(c);
 }
 
-/** Mail unread badge DOM sync — chrome leaf next to X.unread helpers. */
-export function syncMailBadge(): void {
-  if (typeof document === "undefined") return;
-  const badge = document.querySelector(
-    "[data-ecu-mail-badge]",
-  ) as HTMLElement | null;
-  if (!badge) return;
-  const n = getXUnread();
+function paintMailBadge(badge: HTMLElement, n: number): void {
   badge.textContent = formatUnreadBadgeLabel(n);
   badge.hidden = n === 0;
   badge.title =
@@ -53,12 +54,18 @@ export function syncMailBadge(): void {
         : "";
 }
 
-export function applyXUnread(
-  count: number,
-  opts?: { quiet?: boolean },
-): void {
-  const n = Math.max(0, Number(count) || 0);
-  const prevSeen = getLastSeenUnread();
+/** Mail unread badge DOM sync — every `[data-ecu-mail-badge]` leaf. */
+export function syncMailBadge(): void {
+  if (typeof document === "undefined") return;
+  const badges = document.querySelectorAll("[data-ecu-mail-badge]");
+  if (!badges.length) return;
+  const n = getXUnread();
+  for (let i = 0; i < badges.length; i++) {
+    paintMailBadge(badges[i] as HTMLElement, n);
+  }
+}
+
+function writeXUnread(n: number): void {
   if (typeof window !== "undefined" && window.X) {
     (window.X as { unread?: number }).unread = n;
   }
@@ -67,9 +74,49 @@ export function applyXUnread(
   } catch {
     /* badge optional during early boot */
   }
+}
+
+/** In-flight verify so stale SAC zeros do not spam pull_mail. */
+let pendingUnreadVerify: Promise<void> | null = null;
+
+async function verifyUnreadDecrease(): Promise<void> {
+  try {
+    await requestMailHead("X.unread↓ (verify)", { force: true });
+  } catch {
+    /* keep sticky lastSeen until a later sample */
+  } finally {
+    pendingUnreadVerify = null;
+  }
+}
+
+export function applyXUnread(
+  count: number,
+  opts?: { quiet?: boolean },
+): void {
+  const n = Math.max(0, Number(count) || 0);
+  const prevSeen = getLastSeenUnread();
+  const quiet = !!(opts && opts.quiet);
+
+  // Stale SAC `info.mail` can drop to 0 right after mail_received. Hold the
+  // higher last-seen count and confirm with pull_mail (quiet apply).
+  if (
+    shouldHoldUnreadUntilVerified({
+      prevSeen,
+      reported: n,
+      quiet,
+    })
+  ) {
+    writeXUnread(prevSeen);
+    if (!pendingUnreadVerify) {
+      pendingUnreadVerify = verifyUnreadDecrease();
+    }
+    return;
+  }
+
+  writeXUnread(n);
   // Unchanged count — avoid re-rendering the whole mail panel on the 2s watch.
   if (prevSeen >= 0 && n === prevSeen) return;
-  if (opts && opts.quiet) {
+  if (quiet) {
     commit({ lastSeenUnread: n });
     return;
   }
@@ -83,7 +130,7 @@ export function applyXUnread(
     if (getPanelOpen()) {
       void requestMailHead("X.unread↑ (new mail)");
     } else {
-      emitToast(delta === 1 ? "1 new mail" : delta + " new mails");
+      void announceNewMailToast(delta);
     }
     return;
   }
@@ -93,6 +140,31 @@ export function applyXUnread(
 
 export function syncUnreadFromX(): void {
   applyXUnread(getXUnread());
+}
+
+/** Pull newest page, then toast from → to · item (with icon when attached). */
+async function announceNewMailToast(delta: number): Promise<void> {
+  const want = Math.max(1, delta | 0);
+  const pinned = Math.max(want, getXUnread());
+  try {
+    await requestMailHead("X.unread↑ (new mail toast)");
+  } catch {
+    /* still toast a count if the pull fails */
+  }
+  // Fetch path does not run stock handle_information; quiet apply from the
+  // pull covers the usual case. If unread still slipped below the pin, restore.
+  if (pinned > 0 && getXUnread() < pinned) {
+    applyXUnread(pinned, { quiet: true });
+  } else {
+    syncMailBadge();
+  }
+  const rows = pickNewMailRows(getMails(), want);
+  const payload = buildNewMailToast(rows, want);
+  emitToast({
+    text: payload.text,
+    durationMs: payload.durationMs,
+    node: buildNewMailToastNode(payload.rows, payload.head),
+  });
 }
 
 export function findNewestUnreadId(): string | null {
@@ -196,6 +268,7 @@ export function bootMailUnreadWatch(): void {
   if (getLastSeenUnread() < 0) {
     commit({ lastSeenUnread: getXUnread() });
   }
+  syncMailBadge();
 }
 
 let unreadWatchInstalled = false;
@@ -223,4 +296,5 @@ export function uninstallMailUnreadWatch(): void {
     unreadWatchTimer = 0;
   }
   unreadWatchInstalled = false;
+  pendingUnreadVerify = null;
 }

@@ -29,6 +29,14 @@ import {
 } from "../../lib/bagUpgradeCompound";
 import { itemInstanceHtml, itemInstanceLabel } from "../../lib/gameIcon";
 import {
+  getLuckyUpgradePref,
+  luckyUpgradeCharKey,
+  LUCKY_SLOT_MAX_DEFAULT,
+  normalizeLuckySlot,
+  setLuckyUpgradePref,
+  type LuckyUpgradePref,
+} from "../../lib/luckyUpgradePrefs";
+import {
   estimateShrineChance,
   formatApproxChancePct,
 } from "../../lib/shrineChanceEstimate";
@@ -42,6 +50,7 @@ import { resolveInventorySlotNum } from "./bagItemContextMenu";
 import {
   clearShrineBagHighlights,
   setShrineBagHighlights,
+  setShrineLuckySlotHighlight,
 } from "./shrineBagHighlight";
 import { ensureUpgradeCompoundDialogCss } from "./upgradeCompoundDialogCss";
 
@@ -58,6 +67,8 @@ export type UpgradeDialogResult = {
   buyScroll?: string | null;
   buyOffering?: string | null;
   skills?: ShrineSkillPicks;
+  /** Per-character lucky slot (swap target in before shrine). */
+  lucky?: LuckyUpgradePref;
 };
 
 export type CompoundDialogResult = {
@@ -309,6 +320,128 @@ type BatchModeCheck = {
     canBuyExtras: boolean;
   }) => void;
 };
+
+type LuckySlotCheck = {
+  root: HTMLDivElement;
+  read: () => LuckyUpgradePref;
+  /** Sync bag outline for the lucky slot. */
+  syncHighlight: () => void;
+};
+
+function bagLenForLucky(): number {
+  const bag = observingBagItems();
+  if (bag && bag.length > 0) return bag.length - 1;
+  return LUCKY_SLOT_MAX_DEFAULT;
+}
+
+function luckyMetaSuffix(): string {
+  const pref = getLuckyUpgradePref();
+  if (!pref.enabled) return "";
+  return " · 🍀 slot " + pref.slot;
+}
+
+/**
+ * Per-character lucky inventory slot — persisted; swap-before-shrine when on.
+ */
+function makeLuckySlotCheck(opts: { onChange: () => void }): LuckySlotCheck {
+  const charKey = luckyUpgradeCharKey();
+  const initial = getLuckyUpgradePref(charKey);
+  const maxSlot = bagLenForLucky();
+
+  const root = document.createElement("div");
+  root.className = "ecu-upg__skills ecu-upg__lucky";
+  const label = document.createElement("div");
+  label.className = "ecu-upg__section-label";
+  label.textContent = charKey
+    ? "🍀 Lucky slot · " + charKey
+    : "🍀 Lucky slot";
+  root.appendChild(label);
+
+  const row = document.createElement("div");
+  row.className = "ecu-upg__skills-row ecu-upg__lucky-row";
+
+  const wrap = document.createElement("label");
+  wrap.className = "ecu-upg__skill";
+  const enabled = document.createElement("input");
+  enabled.type = "checkbox";
+  enabled.checked = initial.enabled;
+  enabled.setAttribute("data-lucky-enabled", "1");
+  const span = document.createElement("span");
+  span.textContent = "Use lucky slot";
+  wrap.title =
+    "Swap the item into this bag index before upgrade (community lucky-slot practice). Saved per character.";
+  wrap.appendChild(enabled);
+  wrap.appendChild(span);
+  row.appendChild(wrap);
+
+  const slotWrap = document.createElement("label");
+  slotWrap.className = "ecu-upg__lucky-slot";
+  const slotLab = document.createElement("span");
+  slotLab.textContent = "Slot";
+  const slotInput = document.createElement("input");
+  slotInput.type = "number";
+  slotInput.min = "0";
+  slotInput.max = String(maxSlot);
+  slotInput.step = "1";
+  slotInput.value = String(normalizeLuckySlot(initial.slot, maxSlot));
+  slotInput.setAttribute("data-lucky-slot", "1");
+  slotInput.title = "0-based inventory index (same as bag data-cnum)";
+  slotWrap.appendChild(slotLab);
+  slotWrap.appendChild(slotInput);
+  row.appendChild(slotWrap);
+
+  const hint = document.createElement("div");
+  hint.className = "ecu-upg__lucky-hint";
+  root.appendChild(row);
+  root.appendChild(hint);
+
+  const persistAndPaint = () => {
+    const max = bagLenForLucky();
+    slotInput.max = String(max);
+    const slot = normalizeLuckySlot(slotInput.value, max);
+    slotInput.value = String(slot);
+    const pref = setLuckyUpgradePref(
+      { enabled: enabled.checked, slot },
+      charKey,
+    );
+    slotInput.disabled = !pref.enabled;
+    hint.textContent = pref.enabled
+      ? "Will swap into bag slot " + pref.slot + " before upgrade."
+      : "Off — upgrade uses the item’s current bag slot.";
+    setShrineLuckySlotHighlight(pref.enabled ? pref.slot : null);
+    opts.onChange();
+  };
+
+  enabled.addEventListener("change", persistAndPaint);
+  slotInput.addEventListener("change", persistAndPaint);
+  slotInput.addEventListener("input", () => {
+    // Live outline while typing; persist on change/blur.
+    if (!enabled.checked) return;
+    const max = bagLenForLucky();
+    const slot = normalizeLuckySlot(slotInput.value, max);
+    setShrineLuckySlotHighlight(slot);
+  });
+
+  persistAndPaint();
+
+  return {
+    root,
+    read: () => {
+      const max = bagLenForLucky();
+      return {
+        enabled: enabled.checked,
+        slot: normalizeLuckySlot(slotInput.value, max),
+      };
+    },
+    syncHighlight: () => {
+      const pref = {
+        enabled: enabled.checked,
+        slot: normalizeLuckySlot(slotInput.value, bagLenForLucky()),
+      };
+      setShrineLuckySlotHighlight(pref.enabled ? pref.slot : null);
+    },
+  };
+}
 
 /**
  * Batch = run matching copies one shrine action each, capped by scrolls/offerings.
@@ -1172,7 +1305,11 @@ export function showUpgradeDialog(
     const meta = document.createElement("p");
     meta.className = "ecu-upg__meta";
     meta.textContent =
-      "Grade " + liveOffer.grade + " · " + accessHint(liveOffer.access);
+      "Grade " +
+      liveOffer.grade +
+      " · " +
+      accessHint(liveOffer.access) +
+      luckyMetaSuffix();
 
     const trial = makeTrialCard("Upgrade");
     paintTrialResult(trial, liveOffer.item, fromLevel + 1);
@@ -1418,7 +1555,8 @@ export function showUpgradeDialog(
         "Grade " +
         liveOffer.grade +
         " · " +
-        accessHint(liveOffer.access, { buying });
+        accessHint(liveOffer.access, { buying }) +
+        luckyMetaSuffix();
       if (!busy) {
         if (pickFocus === "scroll") {
           hint.textContent =
@@ -1481,7 +1619,11 @@ export function showUpgradeDialog(
         liveOffer.displayName,
       );
       meta.textContent =
-        "Grade " + liveOffer.grade + " · " + accessHint(liveOffer.access);
+        "Grade " +
+        liveOffer.grade +
+        " · " +
+        accessHint(liveOffer.access) +
+        luckyMetaSuffix();
       paintTrialResult(trial, liveOffer.item, fromLevel + 1);
       busy = false;
       hint.textContent = readyHint;
@@ -1644,12 +1786,18 @@ export function showUpgradeDialog(
     };
 
     const skillChecks = makeMerchantSkillChecks();
+    const luckyCheck = makeLuckySlotCheck({
+      onChange: () => {
+        paint();
+      },
+    });
 
     const tryConfirm = () => {
       if (okBtn.disabled || busy) return;
       const scroll = findScroll(liveOffer.scrolls, scrollId);
       const offering = findOffering(liveOffer.offerings, offeringId);
       const skills = skillChecks ? skillChecks.read() : undefined;
+      const lucky = luckyCheck.read();
       const picked: UpgradeDialogResult = {
         item: fpFromPick(liveOffer.item),
         scroll: scroll ? fpFromShrinePick(scroll) : null,
@@ -1657,6 +1805,7 @@ export function showUpgradeDialog(
         buyScroll: scroll && scroll.buy ? scroll.name : null,
         buyOffering: offering && offering.buy ? offering.name : null,
         skills,
+        lucky,
       };
       if (!options || !options.execute) {
         closeDialog(picked);
@@ -1679,11 +1828,13 @@ export function showUpgradeDialog(
         return;
       }
       if (watch) watch.cancel();
+      const watchSlots = [liveOffer.item.slot];
+      if (lucky.enabled) watchSlots.push(lucky.slot);
       watch = watchLevelBump({
         name: liveOffer.item.name,
         fromLevel,
         beforeNext,
-        watchedSlots: [liveOffer.item.slot],
+        watchedSlots: watchSlots,
         onSuccess: () => {
           watch = null;
           hint.textContent = "Success — preparing next…";
@@ -1732,11 +1883,13 @@ export function showUpgradeDialog(
     panel.appendChild(scrollSection);
     panel.appendChild(offerSection);
     panel.appendChild(batchCheck.root);
+    panel.appendChild(luckyCheck.root);
     if (skillChecks) panel.appendChild(skillChecks.root);
     panel.appendChild(hint);
     panel.appendChild(actions);
     paint();
     refreshChanceEstimate();
+    luckyCheck.syncHighlight();
     wireDialogChrome(backdrop, panel, {
       onEnter: () => tryConfirm(),
       canEnter: () =>

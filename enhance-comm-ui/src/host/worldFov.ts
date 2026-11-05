@@ -12,7 +12,7 @@ import {
   applyWorldFov,
   cameraRealAfterFovTowardCursor,
   clampWorldFov,
-  logicalSizeForFov,
+  clampWorldFovForDisplay,
   readAppliedWorldFov,
   readWindowCssSize,
 } from "../lib/worldFov";
@@ -66,6 +66,8 @@ export function setWorldFov(next: number): number {
 /**
  * Wheel / pinch FOV zoom that keeps the world under the pointer stable.
  * Enters free-cam so Follow does not yank the view mid-zoom.
+ * Anchors using the buffer size *after* apply — GPU texture caps can shrink
+ * the requested logical size; pre-computing from uncapped FOV caused a pan.
  */
 export function setWorldFovTowardClient(
   next: number,
@@ -73,7 +75,8 @@ export function setWorldFovTowardClient(
   clientY: number,
 ): number {
   const before = readAppliedWorldFov();
-  const after = clampWorldFov(next);
+  const css = readWindowCssSize();
+  const after = clampWorldFovForDisplay(next, css.w, css.h);
   if (after === before) {
     return setWorldFov(after);
   }
@@ -95,12 +98,10 @@ export function setWorldFovTowardClient(
       ? map.real_y
       : 0;
 
-  const css = readWindowCssSize();
   const w0 =
     typeof host.width === "number" && host.width > 0 ? host.width : css.w;
   const h0 =
     typeof host.height === "number" && host.height > 0 ? host.height : css.h;
-  const afterSize = logicalSizeForFov(css.w, css.h, after);
 
   let fracX = 0.5;
   let fracY = 0.5;
@@ -112,21 +113,28 @@ export function setWorldFovTowardClient(
     }
   }
 
+  // Leave Follow before resize — position_map would otherwise snap mid-zoom.
+  unlockCamera();
+  const fov = setWorldFov(after);
+  const w1 =
+    typeof host.width === "number" && host.width > 0 ? host.width : w0;
+  const h1 =
+    typeof host.height === "number" && host.height > 0 ? host.height : h0;
+  // Buffer did not grow (GPU cap / same size) — do not shift the camera.
+  if (w1 === w0 && h1 === h0) {
+    return fov;
+  }
   const anchored = cameraRealAfterFovTowardCursor({
     realX,
     realY,
     scale: readHostWorldZoom(),
     widthBefore: w0,
     heightBefore: h0,
-    widthAfter: afterSize.w,
-    heightAfter: afterSize.h,
+    widthAfter: w1,
+    heightAfter: h1,
     fracX,
     fracY,
   });
-
-  // Leave Follow before resize — position_map would otherwise snap mid-zoom.
-  unlockCamera();
-  const fov = setWorldFov(after);
   setCameraWorldXY(anchored.x, anchored.y);
   return fov;
 }

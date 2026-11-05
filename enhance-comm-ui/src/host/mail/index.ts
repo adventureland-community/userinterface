@@ -231,5 +231,18 @@ export {
   subscribeMailToast,
 } from "./mailState";
 export type { MailStoreSnapshot } from "./mailState";
-export { assignLocalReadFlags, resolveCommandOutcome } from "./mailUnreadLogic";
+export {
+  assignLocalReadFlags,
+  mailBlocksHardDelete,
+  resolveCommandOutcome,
+  shouldHoldUnreadUntilVerified,
+} from "./mailUnreadLogic";
 export type { CommandOutcome, CommandOutcomeCode } from "./mailUnreadLogic";
+export {
+  buildNewMailToast,
+  formatMailRoute,
+  formatMailWhat,
+  formatNewMailPlainLine,
+  pickNewMailRows,
+} from "./mailNewNotify";
+export type { NewMailToastPayload } from "./mailNewNotify";

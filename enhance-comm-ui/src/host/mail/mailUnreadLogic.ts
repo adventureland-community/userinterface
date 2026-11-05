@@ -5,6 +5,31 @@
 import type { MailRow } from "./types";
 
 /**
+ * SAC can publish a stale `info.mail` of 0 right after `mail_received`
+ * bumps X.unread. Hold the higher last-seen count until a quiet pull
+ * confirms the drop (or `quiet` applies a server recount).
+ */
+export function shouldHoldUnreadUntilVerified(p: {
+  prevSeen: number;
+  reported: number;
+  quiet: boolean;
+}): boolean {
+  return !p.quiet && p.prevSeen >= 0 && p.reported < p.prevSeen;
+}
+
+/**
+ * Upstream `delete_mail` rejects the recipient while an attachment is still
+ * untaken or claim-pending (`mail_item_untaken`). Sender copies (`can_take:
+ * false`) may hide their side. Unknown `canTake` is treated as recipient-side.
+ */
+export function mailBlocksHardDelete(m: MailRow): boolean {
+  if (!m.item) return false;
+  if (m.taken && !m.takenPending) return false;
+  if (m.canTake === false) return false;
+  return true;
+}
+
+/**
  * Assign local `read` flags for a pull merge.
  * Bootstrap: do not invent unread from X.unread (server unread ≠ newest N).
  * Delta: mark brand-new ids unread.

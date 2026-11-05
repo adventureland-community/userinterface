@@ -28,8 +28,11 @@ import {
 import { mailBatchSendCost, mailSendCost } from "../../src/host/mail/capabilities";
 import {
   assignLocalReadFlags,
+  mailBlocksHardDelete,
   resolveCommandOutcome,
+  shouldHoldUnreadUntilVerified,
 } from "../../src/host/mail/mailUnreadLogic";
+import type { MailRow } from "../../src/host/mail/types";
 import {
   formatUnreadBadgeLabel,
   SERVER_UNREAD_CAP,
@@ -307,6 +310,94 @@ describe("unread badge label", () => {
     assert.equal(formatUnreadBadgeLabel(99), "99");
     assert.equal(formatUnreadBadgeLabel(SERVER_UNREAD_CAP), "100+");
     assert.equal(formatUnreadBadgeLabel(150), "100+");
+  });
+});
+
+describe("shouldHoldUnreadUntilVerified", () => {
+  it("holds a higher last-seen against a non-quiet drop", () => {
+    assert.equal(
+      shouldHoldUnreadUntilVerified({
+        prevSeen: 3,
+        reported: 0,
+        quiet: false,
+      }),
+      true,
+    );
+  });
+
+  it("does not hold quiet recounts or increases", () => {
+    assert.equal(
+      shouldHoldUnreadUntilVerified({
+        prevSeen: 3,
+        reported: 0,
+        quiet: true,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldHoldUnreadUntilVerified({
+        prevSeen: 3,
+        reported: 4,
+        quiet: false,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldHoldUnreadUntilVerified({
+        prevSeen: -1,
+        reported: 0,
+        quiet: false,
+      }),
+      false,
+    );
+  });
+});
+
+describe("mailBlocksHardDelete", () => {
+  function row(partial: Partial<MailRow>): MailRow {
+    return {
+      id: "ML_x",
+      fro: "A",
+      to: "B",
+      subject: "s",
+      message: "m",
+      sent: "2026-01-01",
+      ...partial,
+    };
+  }
+
+  it("blocks recipient untaken and claim-pending", () => {
+    assert.equal(
+      mailBlocksHardDelete(row({ item: { name: "sword" }, canTake: true })),
+      true,
+    );
+    assert.equal(
+      mailBlocksHardDelete(
+        row({
+          item: { name: "sword" },
+          taken: true,
+          takenPending: true,
+          canTake: true,
+        }),
+      ),
+      true,
+    );
+  });
+
+  it("allows sender copies and settled takes", () => {
+    assert.equal(
+      mailBlocksHardDelete(
+        row({ item: { name: "sword" }, canTake: false }),
+      ),
+      false,
+    );
+    assert.equal(
+      mailBlocksHardDelete(
+        row({ item: { name: "sword" }, taken: true, canTake: true }),
+      ),
+      false,
+    );
+    assert.equal(mailBlocksHardDelete(row({})), false);
   });
 });
 

@@ -70,16 +70,9 @@ export function phoneShellExpandCss(
   background: transparent !important;
   padding: 0 !important;
 }
-/* Sheet mode: foot Done replaces window X / expand chrome. */
+/* Sheet mode: foot Done replaces window X. Keep expand so restore works. */
 [data-panel="${panelAttr}"].${className} > .comm-pos-panel-close,
-[data-panel="${panelAttr}"].${className} .comm-pos-panel-close,
-[data-panel="${panelAttr}"].${className} .ecu-panel-expand,
-[data-panel="${panelAttr}"].${className} .CommandPanel-expand,
-[data-panel="${panelAttr}"].${className} .BankPanel-expand,
-[data-panel="${panelAttr}"].${className} .MarketPanel-expand,
-[data-panel="${panelAttr}"].${className} .comm-bag-panel__expand,
-[data-panel="${panelAttr}"].${className} .ecu-chat-expand,
-[data-panel="${panelAttr}"].${className} .comm-mail__expand {
+[data-panel="${panelAttr}"].${className} .comm-pos-panel-close {
   display: none !important;
 }
 html.ecu-phone-sheet-open .ecu-cam-chrome,

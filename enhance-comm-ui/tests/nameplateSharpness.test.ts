@@ -5,7 +5,9 @@ import {
   nameplateAttachPoint,
   nameplatePivotPosition,
   nameplateScreenScale,
+  NAMEPLATE_DESKTOP_ZOOM_OUT_EXP,
   sharpenNameTagTextures,
+  snapNameplateScreenScale,
 } from "../src/host/nameplateSharpness";
 
 describe("nameplateTextResolution", () => {
@@ -39,47 +41,56 @@ describe("nameplateTextResolution", () => {
   });
 });
 
-describe("nameplateScreenScale", () => {
-  const near = (a: number, b: number) =>
-    assert.ok(Math.abs(a - b) < 1e-9, `${a} ≈ ${b}`);
+describe("snapNameplateScreenScale", () => {
+  it("rounds to integers in 1…8", () => {
+    assert.equal(snapNameplateScreenScale(0.44), 1);
+    assert.equal(snapNameplateScreenScale(0.88), 1);
+    assert.equal(snapNameplateScreenScale(1.41), 1);
+    assert.equal(snapNameplateScreenScale(1.85), 2);
+    assert.equal(snapNameplateScreenScale(2.47), 2);
+    assert.equal(snapNameplateScreenScale(3.7), 4);
+    assert.equal(snapNameplateScreenScale(7.4), 7);
+    assert.equal(snapNameplateScreenScale(8.2), 8);
+  });
+});
 
-  it("counter-scales FOV with a slight desktop shrink for ghost plates", () => {
-    assert.equal(nameplateScreenScale(1, "desktop"), 0.88);
-    assert.equal(nameplateScreenScale(0.5, "desktop"), 0.44);
+describe("nameplateScreenScale", () => {
+  it("counter-scales FOV then snaps to integers for crisp glyphs", () => {
+    assert.equal(nameplateScreenScale(1, "desktop"), 1);
+    assert.equal(nameplateScreenScale(0.5, "desktop"), 1);
+    assert.ok(Number.isInteger(nameplateScreenScale(2, "desktop")));
+    assert.ok(Number.isInteger(nameplateScreenScale(5, "desktop")));
   });
 
   it("softens desktop zoom-out so plates shrink with the map", () => {
-    // Full f×0.88 at FOV 5 was 4.4 (constant on-screen giants). Softer curve.
-    near(nameplateScreenScale(2, "desktop"), Math.pow(2, 0.68) * 0.88);
-    near(nameplateScreenScale(5, "desktop"), Math.pow(5, 0.68) * 0.88);
+    // Full f×0.88 at FOV 5 was 4.4; soft curve ~2.47 → snap 2.
+    assert.equal(
+      nameplateScreenScale(5, "desktop"),
+      snapNameplateScreenScale(Math.pow(5, NAMEPLATE_DESKTOP_ZOOM_OUT_EXP) * 0.88),
+    );
     assert.ok(
       nameplateScreenScale(5, "desktop") < 3.2,
       "desktop FOV 5 must stay under full counter-scale 4.4",
     );
     assert.ok(
-      nameplateScreenScale(5, "desktop") > nameplateScreenScale(1, "desktop"),
-      "still a bit larger than FOV 1 so labels remain readable",
-    );
-    // Keep more screen size than the old 0.45 curve (desert zoom-out).
-    assert.ok(
-      nameplateScreenScale(3, "desktop") > Math.pow(3, 0.45) * 0.88,
+      nameplateScreenScale(5, "desktop") >= nameplateScreenScale(1, "desktop"),
+      "still at least FOV 1 size so labels remain readable",
     );
   });
 
   it("boosts phone plates at every FOV including zoom-in and wide zoom-out", () => {
-    near(nameplateScreenScale(1, "phone"), 1.85);
-    near(nameplateScreenScale(2, "phone"), 3.7);
-    // Zoom-in: 0.5×1.85 — CSS ×2 → same screen size as FOV=1.
-    near(nameplateScreenScale(0.5, "phone"), 0.925);
-    near(nameplateScreenScale(0.75, "phone"), 1.3875);
-    // Cap 8 at extreme FOV×boost.
-    near(nameplateScreenScale(3, "phone"), 5.55);
-    near(nameplateScreenScale(4, "phone"), 7.4);
+    assert.equal(nameplateScreenScale(1, "phone"), 2);
+    assert.equal(nameplateScreenScale(2, "phone"), 4);
+    // Zoom-in fractions snap up to 1× (crisp) instead of soft 0.9×.
+    assert.equal(nameplateScreenScale(0.5, "phone"), 1);
+    assert.equal(nameplateScreenScale(0.75, "phone"), 1);
+    assert.equal(nameplateScreenScale(3, "phone"), 6);
+    assert.equal(nameplateScreenScale(4, "phone"), 7);
     assert.equal(nameplateScreenScale(5, "phone"), 8);
   });
 
   it("boosts tablet plates modestly at FOV=1", () => {
-    assert.equal(nameplateScreenScale(1, "tablet"), 1.25);
+    assert.equal(nameplateScreenScale(1, "tablet"), 1);
   });
 });
 
@@ -159,19 +170,20 @@ describe("sharpenNameTagTextures", () => {
       devicePixelRatio: 1,
       PIXI: { SCALE_MODES: { NEAREST: 1, LINEAR: 0 } },
     };
-    sharpenNameTagTextures(root, 2);
-    assert.equal(textNode.resolution, 2);
+    // FOV 5 → soft curve ~2.47 → snap 2× (FOV 2 snaps to 1× and skips pivot).
+    sharpenNameTagTextures(root, 5);
+    assert.equal(textNode.resolution, 5);
     assert.equal(textNode.roundPixels, false);
     assert.equal(textNode.texture.baseTexture.scaleMode, 0);
-    // Desktop soft zoom-out: 2^0.68 × 0.88 (not full 1.76 counter-scale).
-    const expect = Math.pow(2, 0.68) * 0.88;
-    assert.ok(Math.abs(root.scale.x - expect) < 1e-9);
-    assert.ok(Math.abs(root.scale.y - expect) < 1e-9);
+    const expect = nameplateScreenScale(5, "desktop");
+    assert.ok(Number.isInteger(expect) && expect > 1);
+    assert.equal(root.scale.x, expect);
+    assert.equal(root.scale.y, expect);
     assert.equal(root.pivot.y, -40);
     assert.equal(root.y, -40);
     // FOV resolution bump + soft-plate stroke both re-rasterize Text.
     assert.ok(updates.length >= 1);
-    assert.equal(updates[updates.length - 1], 2);
+    assert.equal(updates[updates.length - 1], 5);
   });
 
   it("does not scale from origin when attach bounds are missing", () => {

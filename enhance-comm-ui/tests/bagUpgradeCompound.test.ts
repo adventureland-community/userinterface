@@ -15,7 +15,9 @@ import {
 import type { GLike } from "../src/host/globals";
 import {
   buildCompoundScript,
+  buildLuckySwapJs,
   buildUpgradeScript,
+  remapSlotAfterExchange,
 } from "../src/host/stationCommands";
 
 const prevWindow = (globalThis as { window?: unknown }).window;
@@ -447,6 +449,62 @@ describe("upgrade / compound scripts", () => {
     assert.match(script, /use_skill\(\"massproduction\"\)/);
     assert.match(script, /use_skill\(\"massproductionpp\"\)/);
     assert.doesNotMatch(script, /smart_move/);
+  });
+
+  it("remapSlotAfterExchange only touches the swapped pair", () => {
+    assert.equal(remapSlotAfterExchange(7, 0, 7), 0);
+    assert.equal(remapSlotAfterExchange(0, 0, 7), 7);
+    assert.equal(remapSlotAfterExchange(3, 0, 7), 3);
+    assert.equal(remapSlotAfterExchange(null, 0, 7), null);
+  });
+
+  it("lucky swap verifies landing before remapping reagents", () => {
+    const js = buildLuckySwapJs("__uItem", 7, ["__uScroll", "__uOffering"]);
+    assert.match(js, /await swap\(7,__luckyFrom\)/);
+    assert.match(js, /lucky slot · verify failed/);
+    assert.match(js, /__land\.name===__luckyIt\.name/);
+    assert.match(js, /typeof __uScroll==="number"/);
+    assert.match(js, /name==="placeholder"/);
+    assert.match(js, /swap failed — upgrade aborted/);
+    assert.match(js, /catch\(__e\)\{[^}]*return;/);
+    const verifyAt = js.indexOf("__land.name===__luckyIt.name");
+    const remapAt = js.indexOf('typeof __uScroll==="number"');
+    assert.ok(verifyAt >= 0 && remapAt > verifyAt);
+  });
+
+  it("resolves scroll then lucky-swaps with slot remap on upgrade", () => {
+    const script = buildUpgradeScript(
+      { slot: 0, name: "helmet", level: 2 },
+      { slot: 3, name: "scroll0", q: 4 },
+      null,
+      null,
+      { luckySlot: 7 },
+    );
+    assert.match(script, /await swap\(7,__luckyFrom\)/);
+    assert.match(script, /lucky slot · swapped/);
+    assert.match(script, /await sleep\(160\)/);
+    assert.match(script, /typeof __uScroll==="number"/);
+    const scrollResolveAt = script.indexOf("var __uScroll=");
+    const swapAt = script.indexOf("await swap(7,__luckyFrom)");
+    const upgradeAt = script.indexOf("await upgrade(__uItem,__uScroll,__uOffering,true)");
+    assert.ok(scrollResolveAt >= 0 && swapAt > scrollResolveAt);
+    assert.ok(upgradeAt > swapAt);
+  });
+
+  it("compound scripts do not lucky-swap", () => {
+    const script = buildCompoundScript(
+      [
+        { slot: 0, name: "ringsj", level: 1 },
+        { slot: 1, name: "ringsj", level: 1 },
+        { slot: 2, name: "ringsj", level: 1 },
+      ],
+      { slot: 5, name: "cscroll0", q: 2 },
+      null,
+      null,
+      { luckySlot: 12 },
+    );
+    assert.doesNotMatch(script, /lucky slot/);
+    assert.doesNotMatch(script, /await swap\(/);
   });
 
   it("emits compound with three items", () => {

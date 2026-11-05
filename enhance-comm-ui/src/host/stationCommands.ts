@@ -258,7 +258,102 @@ export type ShrineBuyOpts = {
   massproduction?: boolean;
   /** Merchant: cast massproductionpp before the shrine action if buff missing. */
   massproductionpp?: boolean;
+  /**
+   * Prefer this bag index for upgrade (community “lucky slot”).
+   * When set, swap the upgrade target into this slot before reagents.
+   * Compound does not use lucky slots.
+   */
+  luckySlot?: number | null;
 };
+
+/** Pause after lucky swap so callcost / bag settle before upgrade. */
+const LUCKY_SWAP_SLEEP_MS = 160;
+
+/**
+ * After exchanging `from`↔`to`, map a prior slot index through the swap.
+ * `null`/non-finite values pass through (scroll/offering may be null).
+ */
+export function remapSlotAfterExchange(
+  value: number | null | undefined,
+  from: number,
+  to: number,
+): number | null {
+  if (value == null || !Number.isFinite(value)) return value == null ? null : value;
+  const v = value | 0;
+  if (v === to) return from | 0;
+  if (v === from) return to | 0;
+  return v;
+}
+
+/**
+ * Swap primary `slotVar` into lucky, then remap other already-resolved slot vars.
+ *
+ * Callers must resolve item + reagents BEFORE this. Do not re-scan the bag for
+ * reagents after the swap — remap the exchanged pair instead.
+ *
+ * Robustness:
+ * - skip / abort on placeholder (in-flight roll)
+ * - verify the moved item landed in lucky before remapping
+ * - on verify fail: attempt swap-back and abort the shrine script
+ * - on swap throw: abort — never upgrade outside the lucky slot when enabled
+ */
+export function buildLuckySwapJs(
+  slotVar: string,
+  luckySlot: number | null | undefined,
+  remapVars: string[] = [],
+): string {
+  if (luckySlot == null) return "";
+  const lucky = Number(luckySlot);
+  if (!Number.isFinite(lucky) || lucky < 0) return "";
+  const dest = lucky | 0;
+  const remaps: string[] = [];
+  for (let i = 0; i < remapVars.length; i++) {
+    const v = remapVars[i];
+    if (!v || v === slotVar) continue;
+    // Only remap numeric slots (null scroll/offering stays null).
+    remaps.push(
+      `if(typeof ${v}==="number"){if(${v}===${dest})${v}=__luckyFrom;else if(${v}===__luckyFrom)${v}=${dest};}`,
+    );
+  }
+  return [
+    `{`,
+    `var __luckyN=Math.max(character.isize||0,character.items.length);`,
+    `if(${dest}<0||${dest}>=__luckyN){`,
+    `game_log(${lit(commLogText("lucky slot · aborted — invalid slot " + dest))});return;}`,
+    `if(${slotVar}!==${dest}){`,
+    `if(${slotVar}<0||${slotVar}>=__luckyN){`,
+    `game_log(${lit(commLogText("lucky slot · aborted — item slot invalid"))});return;}`,
+    `var __luckyFrom=${slotVar};`,
+    `var __luckyIt=character.items[__luckyFrom];`,
+    `var __luckyDest=character.items[${dest}];`,
+    `if(!__luckyIt||!__luckyIt.name||__luckyIt.name==="placeholder"){`,
+    `game_log(${lit(commLogText("lucky slot · aborted — item placeholder"))});return;}`,
+    `if(__luckyDest&&__luckyDest.name==="placeholder"){`,
+    `game_log(${lit(commLogText("lucky slot · aborted — dest placeholder"))});return;}`,
+    `try{`,
+    `await swap(${dest},__luckyFrom);`,
+    `await sleep(${LUCKY_SWAP_SLEEP_MS});`,
+    `var __land=character.items[${dest}];`,
+    `var __lv0=__luckyIt.level!=null?Number(__luckyIt.level):0;`,
+    `var __lv1=__land&&__land.level!=null?Number(__land.level):0;`,
+    `var __p0=__luckyIt.p!=null?String(__luckyIt.p):"";`,
+    `var __p1=__land&&__land.p!=null?String(__land.p):"";`,
+    `if(!(__land&&__land.name===__luckyIt.name&&__lv0===__lv1&&__p0===__p1)){`,
+    `game_log(${lit(commLogText("lucky slot · verify failed — rolling back"))});`,
+    `try{await swap(${dest},__luckyFrom);await sleep(${LUCKY_SWAP_SLEEP_MS});}catch(__rb){}`,
+    `return;`,
+    `}`,
+    remaps.join(""),
+    `${slotVar}=${dest};`,
+    `game_log(${lit(commLogText("lucky slot · swapped → " + dest))});`,
+    `}catch(__e){`,
+    `game_log(${lit(commLogText("lucky slot · swap failed — upgrade aborted"))}+(__e&&__e.reason?(" · "+__e.reason):""));`,
+    `return;`,
+    `}`,
+    `}`,
+    `}`,
+  ].join("");
+}
 
 /** Prefix use_skill for checked merchant shrine buffs (no-op if already up). */
 export function buildShrineSkillPrefixJs(opts?: ShrineBuyOpts | null): string {
@@ -305,6 +400,8 @@ export function buildUpgradeScript(
   if (buyOffering) {
     parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
   }
+  const luckySlot =
+    buyOpts && buyOpts.luckySlot != null ? Number(buyOpts.luckySlot) : null;
   parts.push(buildEnsureStationJs(station));
   parts.push(buildShrineSkillPrefixJs(buyOpts));
   parts.push(resolveInvSlotNamedJs(item, "__uItem"));
@@ -326,6 +423,8 @@ export function buildUpgradeScript(
   } else {
     parts.push(`var __uOffering=null;`);
   }
+  // Remap scroll/offering if they sat in the exchanged pair — don't re-scan bag.
+  parts.push(buildLuckySwapJs("__uItem", luckySlot, ["__uScroll", "__uOffering"]));
   parts.push(
     `try{`,
     `var __uCalc=await upgrade(__uItem,__uScroll,__uOffering,true);`,

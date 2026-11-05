@@ -6,6 +6,7 @@
 
 import { e, getReact } from "../../../host/react";
 import { openChat } from "../../../host/chat";
+import { syncMailBadge } from "../../../host/mail";
 import {
   applyPhoneDockChrome,
   clearPhoneDockChrome,
@@ -163,6 +164,13 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
     const tick = () => setStatus(readPhoneDockStatus());
     tick();
     const id = window.setInterval(tick, 500);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Chrome mail actions are hidden on phone — keep Apps badge painted.
+  React.useEffect(() => {
+    syncMailBadge();
+    const id = window.setInterval(() => syncMailBadge(), 2000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -648,6 +656,11 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
         },
         e("span", { className: "ecu-phone-dock__apps-glyph" }, "▦"),
         e("span", null, "Apps"),
+        e("span", {
+          className: "ecu-mail-badge ecu-phone-dock__mail-badge",
+          "data-ecu-mail-badge": "1",
+          hidden: true,
+        }),
       ),
       dockStatusBtn("server", "Server", serverTitle, openServer, {
         on: !!status.serverLabel,

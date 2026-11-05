@@ -23,6 +23,8 @@ import {
   getView,
   setStatus,
 } from "./mailState";
+import { applyXUnread } from "./mailUnread";
+import { mailBlocksHardDelete } from "./mailUnreadLogic";
 import {
   MAIL_DELETE_UNDO_MAX,
   MAIL_DELETE_UNDO_MS,
@@ -123,8 +125,9 @@ function buildRemoveIdsPatch(
 
 export async function deleteMailRows(
   ids: string[],
-  opts?: { confirmed?: boolean },
-): Promise<"need-confirm" | "ok" | "busy"> {
+  _opts?: { confirmed?: boolean },
+): Promise<"blocked-untaken" | "ok" | "busy"> {
+  void _opts;
   if (finalizeInFlight) {
     setStatus("Delete already in progress…", "warn");
     return "busy";
@@ -139,7 +142,6 @@ export async function deleteMailRows(
   if (!unique.length) return "ok";
 
   const mails = getMails();
-  let hasUntaken = false;
   for (let i = 0; i < unique.length; i++) {
     let m: MailRow | null = null;
     for (let j = 0; j < mails.length; j++) {
@@ -148,11 +150,13 @@ export async function deleteMailRows(
         break;
       }
     }
-    // Settled takes only (`taken && !takenPending`). Claim tokens still block
-    // delete_mail server-side (`taken !== true`).
-    if (m && m.item && (!m.taken || m.takenPending)) hasUntaken = true;
+    // Recipient untaken / claim-pending → server `mail_item_untaken`.
+    // Sender copies (`canTake === false`) may still hide their side.
+    if (m && mailBlocksHardDelete(m)) {
+      setStatus("Take the attachment before deleting received mail", "warn");
+      return "blocked-untaken";
+    }
   }
-  if (hasUntaken && !(opts && opts.confirmed)) return "need-confirm";
 
   // Prior soft batch must hit the server — never drop it on a new delete.
   const priorIds = takePendingFinalizeIds();
@@ -203,7 +207,7 @@ export async function deleteMailRows(
 export async function deleteMailRow(
   id: string,
   opts?: { confirmed?: boolean },
-): Promise<"need-confirm" | "ok" | "busy"> {
+): Promise<"blocked-untaken" | "ok" | "busy"> {
   return deleteMailRows([id], opts);
 }
 
@@ -238,6 +242,7 @@ export async function finalizeDeletes(ids: string[]): Promise<void> {
   };
 
   paint(true);
+  let lastFailReason = "";
   try {
     for (let i = 0; i < ids.length; i++) {
       const gap = deleteGapMs(i);
@@ -247,7 +252,12 @@ export async function finalizeDeletes(ids: string[]): Promise<void> {
       const sample = Date.now() - t0;
       avgApiMs =
         done === 0 ? sample : Math.round(avgApiMs * 0.65 + sample * 0.35);
-      if (!res.ok) failed += 1;
+      if (!res.ok) {
+        failed += 1;
+        if (res.reason) lastFailReason = res.reason;
+      } else if (res.unreadCount != null) {
+        applyXUnread(res.unreadCount, { quiet: true });
+      }
       done += 1;
       paint();
     }
@@ -264,6 +274,12 @@ export async function finalizeDeletes(ids: string[]): Promise<void> {
   }
 
   if (failed) {
+    const hint =
+      lastFailReason === "mail_item_untaken"
+        ? " · take attachment first"
+        : lastFailReason
+          ? " · " + lastFailReason
+          : "";
     setStatus(
       "Deleted " +
         (total - failed) +
@@ -271,7 +287,8 @@ export async function finalizeDeletes(ids: string[]): Promise<void> {
         total +
         " · " +
         failed +
-        " failed",
+        " failed" +
+        hint,
       "err",
     );
     return;

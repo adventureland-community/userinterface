@@ -577,6 +577,36 @@ const CSS = `
   color: rgba(232, 201, 106, 0.88);
   font-variant-numeric: tabular-nums;
 }
+.ecu-upg__lucky-row {
+  align-items: center;
+}
+.ecu-upg__lucky-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  color: rgba(220, 210, 185, 0.92);
+}
+.ecu-upg__lucky-slot input[type="number"] {
+  width: 3.2em;
+  padding: 2px 4px;
+  border: 1px solid rgba(61, 186, 95, 0.45);
+  background: rgba(0, 0, 0, 0.45);
+  color: #c8f0d0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-upg__lucky-slot input[type="number"]:disabled {
+  opacity: 0.45;
+}
+.ecu-upg__lucky-hint {
+  margin: 4px 0 0;
+  padding: 0 8px;
+  font-size: 10px;
+  color: rgba(170, 160, 145, 0.88);
+  line-height: 1.35;
+}
 .ecu-upg__batch-buy {
   margin-top: 2px;
 }

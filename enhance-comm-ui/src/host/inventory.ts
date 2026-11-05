@@ -119,6 +119,40 @@ html.ecu-phone-dock-on #${HOST_ID} {
   outline-offset: 1px;
   box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.45), inset 0 0 10px rgba(232, 201, 106, 0.12);
 }
+#${HOST_ID} [data-cnum].is-ecu-shrine-lucky {
+  position: relative;
+  outline: 2px solid #3dba5f;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(61, 186, 95, 0.55), inset 0 0 10px rgba(61, 186, 95, 0.18);
+}
+/* Occupied: small clover tucked top-left over the item. */
+#${HOST_ID} [data-cnum].is-ecu-shrine-lucky::after {
+  content: "🍀";
+  position: absolute;
+  left: 0;
+  top: -1px;
+  z-index: 2;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(0, 0, 0, 0.75);
+  opacity: 0.95;
+}
+/* Empty: large clover centered in the cell. */
+#${HOST_ID} [data-cnum].is-ecu-shrine-lucky.is-ecu-shrine-lucky-empty::after {
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  opacity: 0.88;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.85);
+}
+#${HOST_ID} [data-cnum].is-ecu-shrine-pick.is-ecu-shrine-lucky {
+  outline: 2px solid #4fd06a;
+  box-shadow: 0 0 0 1px rgba(79, 208, 106, 0.65), inset 0 0 12px rgba(232, 201, 106, 0.16);
+}
 #${HOST_ID} [data-cnum].is-ecu-compose-queue {
   outline: 2px solid #6a9ae8;
   outline-offset: 1px;

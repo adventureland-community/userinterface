@@ -5,6 +5,61 @@
 
 import { getReact, e } from "../../host/react";
 
+const STYLE_ID = "ecu-panel-expand-css";
+
+/** Dark chrome matching window ☰ / × — not a stock white button. */
+const EXPAND_CSS = `
+.ecu-panel-expand {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #886;
+  border-radius: 2px;
+  background: rgba(30, 30, 20, 0.95);
+  color: #ffe08a;
+  cursor: pointer;
+  line-height: 0;
+  box-sizing: border-box;
+}
+.ecu-panel-expand:hover {
+  border-color: #aa8;
+  background: rgba(50, 40, 20, 0.95);
+}
+.ecu-panel-expand.is-expanded {
+  border-color: rgba(232, 201, 106, 0.55);
+  color: #ffe08a;
+  background: #2a2410;
+}
+.ecu-panel-expand .ecu-expand-glyph {
+  display: block;
+}
+#comm-ui.comm-ui-touch .ecu-panel-expand,
+#comm-ui[data-viewport="tablet"] .ecu-panel-expand,
+#comm-ui[data-viewport="phone"] .ecu-panel-expand {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+}
+`;
+
+export function ensurePanelExpandCss(): void {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(STYLE_ID)) return;
+  const el = document.createElement("style");
+  el.id = STYLE_ID;
+  el.textContent = EXPAND_CSS;
+  document.head.appendChild(el);
+}
+
 export type PanelExpandButtonProps = {
   expanded: boolean;
   onToggle: () => void;
@@ -47,18 +102,25 @@ function ExpandGlyph(expanded: boolean): any {
 /** Four-corner fullscreen / exit-fullscreen control. */
 export function PanelExpandButton(props: PanelExpandButtonProps): any {
   const React = getReact();
+  ensurePanelExpandCss();
   const title = props.expanded ? props.restoreTitle : props.expandTitle;
+  const extra = props.className ? " " + props.className : "";
   return e(
     "button",
     {
       type: "button",
       className:
-        (props.className || "ecu-panel-expand") +
+        "ecu-panel-expand" +
+        extra +
         (props.expanded ? " is-expanded" : ""),
       title,
       "aria-label": title,
       "aria-pressed": props.expanded,
-      onClick: () => props.onToggle(),
+      onClick: (ev: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+        if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+        if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        props.onToggle();
+      },
     },
     ExpandGlyph(props.expanded),
   );

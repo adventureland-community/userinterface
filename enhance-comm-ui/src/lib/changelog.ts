@@ -116,12 +116,12 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: "0.18.0",
     date: "2026-11-05",
     summary:
-      "Play Comm UI on a phone: Material dock, home pages, thumb-sized app sheets, free camera with FOV zoom, and denser class-tinted nameplates that stay readable on bright ground. Desktop also gets sell-to-vendor, batch shrine buys, and reliable shrine outcomes.",
+      "Play Comm UI on a phone: Material dock, home pages, thumb-sized app sheets, free camera with FOV zoom, and denser class-tinted nameplates. Desktop also gets sell-to-vendor, batch shrine buys with a lucky upgrade slot, and richer new-mail alerts.",
     highlights: [
       {
         label: "Phone dock and home pages",
         detail:
-          "Character and Server sit on the bar. Swipe the center band between Home, Players, and Coop. Apps opens from the center button or a swipe up. Character shows level, class, RIP, and realm; Server shows players and ping.",
+          "Character and Server sit on the bar. Swipe the center band between Home, Players, and Coop. Apps opens from the center button or a swipe up. Character shows level, class, RIP, and realm; Server shows players and ping. Unread mail shows on Apps and the Mail tile.",
         kind: "feature",
       },
       {
@@ -133,19 +133,19 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "App sheets for thumbs",
         detail:
-          "Command, Mail, Bag, Bank, Market, Chat, and Settings open as bottom sheets above the dock. Swipe the title or tap Done to close. Lists keep the sheet: Mail is list-first, Market puts the catalog first, Bank and Market swipe between pages with labeled prev/current/next. Chat swipes between server conversations; PMs stay in the Chats drawer. Bag asks you to observe first and keeps a full 7-column grid.",
+          "Command, Mail, Bag, Bank, Market, Chat, and Settings open as bottom sheets above the dock. Swipe the title or tap Done to close. Corner expand matches the dark window chrome and toggles full sheet vs restored size. Lists keep the sheet: Mail is list-first, Market puts the catalog first, Bank and Market swipe between pages with labeled prev/current/next. Chat swipes between server conversations; PMs stay in the Chats drawer. Bag asks you to observe first and keeps a full 7-column grid.",
         kind: "feature",
       },
       {
         label: "Free camera and FOV zoom",
         detail:
-          "Look around without changing sprite scale. Desktop: WASD or arrows, drag on the map, mouse wheel or Map out·in. Phone: on-screen stick, pinch, and always-on FOV out/×/in. Wheel and pinch zoom toward the cursor (or pinch midpoint) so the view does not drift once you are zoomed out. Center snaps once onto the watched character; Follow keeps them framed until you pan or zoom. Vision fog marks the server entity window around who you are watching (or yourself), or the static spectator when nobody is watched — it follows that subject, not the free camera. Map or realm hops re-home the camera.",
+          "Look around without changing sprite scale. Desktop: WASD or arrows, drag on the map, mouse wheel or Map out·in. Phone: on-screen stick, pinch, and always-on FOV out/×/in. Wheel and pinch zoom toward the cursor (or pinch midpoint) so the view does not drift once you are zoomed out. Zoom-out stops when the map buffer cannot grow further instead of sliding sideways. Center snaps once onto the watched character; Follow keeps them framed until you pan or zoom. Vision fog marks the server entity window around who you are watching (or yourself), or the static spectator when nobody is watched — it follows that subject, not the free camera. Map or realm hops re-home the camera.",
         kind: "feature",
       },
       {
         label: "Ghost nameplates",
         detail:
-          "One denser class-tinted band under white Consolas text with a heavier black stroke so names hold on desert sand and light stone. On bright ground the plate densifies further (cheap background sample). Names stay sharp on phone; desktop zoom-out keeps plates readable without going HUD-huge at 5×. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
+          "One denser class-tinted band under white Consolas text with a heavier black stroke so names hold on desert sand and light stone. On bright ground the plate densifies further. Name scale snaps to whole steps when you zoom so glyphs stay crisp. Desktop zoom-out keeps plates readable without going HUD-huge. NPCs stay white on charcoal. HP, MP, and stands are unchanged.",
         kind: "ui",
       },
       {
@@ -165,6 +165,18 @@ export const CHANGELOG: ChangelogEntry[] = [
         detail:
           "In the shrine dialog, turn on Batch to run every matching bag copy one by one (Upgrade all N, or Compound all sets of 3). Matches name, level, and title (shiny / glitched / plain). Shows how many scrolls and offerings the batch will use versus what you have. Optionally buy more of the selected scroll/offering from an NPC after bag stock runs out (capped by gold). The inventory highlights those peers while batch is on. Failures skip to the next copy instead of closing the dialog.",
         kind: "feature",
+      },
+      {
+        label: "Lucky upgrade slot",
+        detail:
+          "Per character in Upgrade: turn on Use lucky slot and pick a bag index. Single and batch upgrade swap the target into that slot first. Compound ignores lucky slots. The bag cell keeps a green outline and clover while you watch the character.",
+        kind: "feature",
+      },
+      {
+        label: "New-mail toast with who and what",
+        detail:
+          "When Mail is closed, new-mail toasts list who sent what to whom with attachment icons. The unread badge stays on the mail control (and on phone Apps). The in-panel banner shows the same preview.",
+        kind: "improve",
       },
       {
         label: "Shrine outcomes and Mass Production",
@@ -252,6 +264,12 @@ export const CHANGELOG: ChangelogEntry[] = [
         label: "Phone paperdoll close",
         detail:
           "Locked panels on phone keep a corner × so paperdoll, bag, and tips stay dismissible without arrange hover chrome.",
+        kind: "fix",
+      },
+      {
+        label: "Take before delete on received mail",
+        detail:
+          "Received mail with an untaken attachment cannot be deleted until you take it. Sender copies can still be hidden.",
         kind: "fix",
       },
     ],

@@ -67,6 +67,13 @@ export function apiResponseFailed(json: unknown): boolean {
   return false;
 }
 
+/** Stock `{ failed: true, reason }` body — keep the server reason string. */
+export function apiFailedReason(json: unknown): string | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  const reason = (json as { reason?: unknown }).reason;
+  return typeof reason === "string" && reason.trim() ? reason.trim() : undefined;
+}
+
 export type MailApiResult<T> = {
   ok: boolean;
   data?: T;
@@ -149,7 +156,10 @@ async function callApiFetch(
     if (!res) return null;
     if (!res.ok) return { ok: false, reason: "http_error" };
     if (apiResponseFailed(res.json)) {
-      return { ok: false, reason: "api_failed" };
+      return {
+        ok: false,
+        reason: apiFailedReason(res.json) || "api_failed",
+      };
     }
     return { ok: true, infs: extractInfs(res.json) };
   } finally {
@@ -188,7 +198,11 @@ function callApiStock(
     const accept = (ct: unknown) => {
       window.clearTimeout(timer);
       if (apiResponseFailed(ct)) {
-        finish({ ok: false, infs: [], reason: "api_failed" });
+        finish({
+          ok: false,
+          infs: [],
+          reason: apiFailedReason(ct) || "api_failed",
+        });
         return;
       }
       finish({ ok: true, infs: extractInfs(ct) });
@@ -218,7 +232,11 @@ function callApiStock(
             // Stock rejects on data.failed — still inspect the body.
             if (apiResponseFailed(data)) {
               window.clearTimeout(timer);
-              finish({ ok: false, infs: [], reason: "api_failed" });
+              finish({
+                ok: false,
+                infs: [],
+                reason: apiFailedReason(data) || "api_failed",
+              });
               return;
             }
             accept(data);
@@ -282,9 +300,12 @@ export async function pullMailPage(
   const args: Record<string, unknown> = {};
   if (cursor) args.cursor = cursor;
   const infs = await callApi("pull_mail", args);
+  const unreadCount = readUnreadFromInfs(infs);
   const info = findMailInfo(infs);
-  if (info) return { ok: true, data: normalizeMailPage(info) };
-  return { ok: false, reason: "no_mail_payload" };
+  if (info) {
+    return { ok: true, data: normalizeMailPage(info), unreadCount };
+  }
+  return { ok: false, reason: "no_mail_payload", unreadCount };
 }
 
 export async function readMail(
@@ -314,7 +335,12 @@ export async function deleteMail(
       message = info.message;
     }
   }
-  return { ok: true, data: true, message };
+  return {
+    ok: true,
+    data: true,
+    message,
+    unreadCount: readUnreadFromInfs(infs),
+  };
 }
 
 export async function readMailMany(

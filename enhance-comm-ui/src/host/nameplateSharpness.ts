@@ -206,12 +206,21 @@ function setNodePivot(node: SpriteLike, px: number, py: number): void {
 export const NAMEPLATE_DESKTOP_ZOOM_OUT_EXP = 0.68;
 
 /**
+ * Snap a raw screen scale to an integer step.
+ * Fractional PIXI.Text scales go soft under CSS FOV fit; 1×/2×/3× stay crisp.
+ */
+export function snapNameplateScreenScale(raw: number): number {
+  if (!(typeof raw === "number") || !Number.isFinite(raw)) return 1;
+  return Math.max(1, Math.min(8, Math.round(raw)));
+}
+
+/**
  * Screen-compensated FOV for nameplate size.
  * CSS fit shrinks/grows the canvas by 1/f; PIXI scale ≈ f × boost cancels that
  * so on-screen size stays ~boost × stock.
  * Desktop zoom-out uses a softer curve so plates do not stay HUD-huge at 5×
  * while characters shrink. Phone/tablet keep full cancel for thumb readability.
- * Floor 1/3 · cap 8.
+ * Result is snapped to integers (1…8) so glyphs stay crisp.
  */
 export function nameplateScreenScale(
   fov?: number,
@@ -227,7 +236,7 @@ export function nameplateScreenScale(
     p === "desktop" && f > 1
       ? Math.pow(f, NAMEPLATE_DESKTOP_ZOOM_OUT_EXP) * boost
       : f * boost;
-  return Math.max(1 / 3, Math.min(8, compensated));
+  return snapNameplateScreenScale(Math.max(1 / 3, Math.min(8, compensated)));
 }
 
 /**

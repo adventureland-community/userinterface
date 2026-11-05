@@ -52,7 +52,18 @@ export type MailStateFields = MailStoreSnapshot & {
 };
 
 type Listener = () => void;
-type ToastListener = (message: string) => void;
+
+export type MailToastMessage =
+  | string
+  | {
+      text: string;
+      html?: string;
+      /** React element tree (ItemInstance icons, etc.). */
+      node?: unknown;
+      durationMs?: number;
+    };
+
+type ToastListener = (message: MailToastMessage) => void;
 
 const listeners: Listener[] = [];
 const toastListeners: ToastListener[] = [];
@@ -87,7 +98,7 @@ function notifyListeners(): void {
   for (let i = 0; i < listeners.length; i++) listeners[i]();
 }
 
-export function emitToast(message: string): void {
+export function emitToast(message: MailToastMessage): void {
   for (let i = 0; i < toastListeners.length; i++) toastListeners[i](message);
 }
 

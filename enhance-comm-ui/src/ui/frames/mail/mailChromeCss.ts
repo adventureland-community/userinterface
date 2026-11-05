@@ -291,6 +291,41 @@ export const MAIL_CHROME_CSS = `
   color: #8cf;
   background: linear-gradient(90deg, #122030, #0e0e0e 70%);
 }
+.comm-mail__banner-head {
+  font-size: 13px;
+  line-height: 1.3;
+}
+.comm-mail__banner-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.comm-mail__banner-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.comm-mail__banner-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+  line-height: 1.25;
+}
+.comm-mail__banner-route {
+  font-size: 13px;
+  color: #e8f2ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.comm-mail__banner-what {
+  font-size: 12px;
+  color: rgba(200, 210, 180, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .comm-mail__chrome {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

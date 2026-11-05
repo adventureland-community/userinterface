@@ -8,6 +8,7 @@ import { getObservingId } from "../../../host/al";
 import { gateObservedBagOpen } from "../../../host/bagOpenGate";
 import { openChat } from "../../../host/chat";
 import { openCommander } from "../../../host/commander";
+import { syncMailBadge } from "../../../host/mail";
 import {
   isPageFullscreen,
   isPageFullscreenSupported,
@@ -68,6 +69,8 @@ type AppTile = {
   on: boolean;
   /** Dimmed — still tappable (e.g. Bag when not observing). */
   muted?: boolean;
+  /** Show the shared mail unread badge on this tile icon. */
+  mailBadge?: boolean;
   onClick: () => void;
 };
 
@@ -151,6 +154,17 @@ function orderedHomeWidgetIds(): PanelId[] {
 }
 
 function appTile(tile: AppTile & { tour?: string }): any {
+  const iconKids: any[] = [tile.glyph];
+  if (tile.mailBadge) {
+    iconKids.push(
+      e("span", {
+        key: "mail-badge",
+        className: "ecu-mail-badge ecu-phone-apps__mail-badge",
+        "data-ecu-mail-badge": "1",
+        hidden: true,
+      }),
+    );
+  }
   return e(
     "button",
     {
@@ -167,10 +181,11 @@ function appTile(tile: AppTile & { tour?: string }): any {
     e(
       "span",
       {
-        className: "ecu-phone-apps__icon",
+        className:
+          "ecu-phone-apps__icon" + (tile.mailBadge ? " has-badge" : ""),
         style: { background: tile.tone },
       },
-      tile.glyph,
+      ...iconKids,
     ),
     e("span", { className: "ecu-phone-apps__label" }, tile.label),
     tile.muted
@@ -213,6 +228,11 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [props.open, onClose]);
+
+  React.useEffect(() => {
+    if (!props.open || editHome) return;
+    syncMailBadge();
+  }, [props.open, editHome]);
 
   if (!props.open) return null;
 
@@ -305,6 +325,7 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
       glyph: "M",
       tone: "#3d6b9a",
       on: props.visible("mail"),
+      mailBadge: true,
       tour: "btn-mail",
       onClick: () => openOverlay("mail"),
     },

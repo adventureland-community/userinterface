@@ -41,6 +41,79 @@ export function clampWorldFov(n: number): number {
   );
 }
 
+/** Fallback when WebGL MAX_TEXTURE_SIZE is unavailable. */
+export const WORLD_FOV_DEFAULT_MAX_TEXTURE = 4096;
+
+/**
+ * GPU max 2D texture edge. Past this, PIXI/WebGL will not grow the FOV buffer —
+ * further zoom-out only shifts the camera (feels like a pan).
+ */
+export function readMaxTextureSize(): number {
+  try {
+    const host = window as Window & {
+      renderer?: {
+        gl?: WebGLRenderingContext | null;
+        context?: { gl?: WebGLRenderingContext | null };
+      };
+    };
+    const gl =
+      (host.renderer && host.renderer.gl) ||
+      (host.renderer &&
+        host.renderer.context &&
+        host.renderer.context.gl) ||
+      null;
+    if (gl && typeof gl.getParameter === "function") {
+      const n = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+      if (typeof n === "number" && Number.isFinite(n) && n >= 256) {
+        return Math.floor(n);
+      }
+    }
+  } catch {
+    /* headless / no GL */
+  }
+  return WORLD_FOV_DEFAULT_MAX_TEXTURE;
+}
+
+/**
+ * Largest FOV whose logical buffer fits under `maxTex` (with a 1px margin).
+ * Stepped down to {@link WORLD_FOV_STEP} so zoom-out stops cleanly.
+ */
+export function maxWorldFovForWindow(
+  cssW: number,
+  cssH: number,
+  maxTex: number = WORLD_FOV_DEFAULT_MAX_TEXTURE,
+): number {
+  const w = Math.max(1, cssW);
+  const h = Math.max(1, cssH);
+  const cap = Math.max(256, Math.floor(maxTex) - 1);
+  const raw = Math.min(cap / w, cap / h, WORLD_FOV_MAX);
+  if (!(raw > 0) || !Number.isFinite(raw)) return WORLD_FOV_DEFAULT;
+  // Never round UP past what the GPU can allocate.
+  const stepped = Math.floor(raw / WORLD_FOV_STEP + 1e-9) * WORLD_FOV_STEP;
+  return Math.max(
+    WORLD_FOV_MIN,
+    Math.min(WORLD_FOV_MAX, Math.round(stepped * 100) / 100),
+  );
+}
+
+/** Clamp + step FOV, then cap to what this window/GPU can actually buffer. */
+export function clampWorldFovForDisplay(
+  n: number,
+  cssW?: number,
+  cssH?: number,
+  maxTex?: number,
+): number {
+  const css =
+    cssW != null && cssH != null
+      ? { w: cssW, h: cssH }
+      : typeof window !== "undefined"
+        ? readWindowCssSize()
+        : { w: 1280, h: 720 };
+  const tex = maxTex != null && maxTex > 0 ? maxTex : readMaxTextureSize();
+  const maxFov = maxWorldFovForWindow(css.w, css.h, tex);
+  return Math.min(clampWorldFov(n), maxFov);
+}
+
 export function readAppliedWorldFov(): number {
   return appliedFov;
 }
@@ -77,12 +150,18 @@ export function logicalSizeForFov(
   cssW: number,
   cssH: number,
   fov: number,
+  maxTex: number = WORLD_FOV_DEFAULT_MAX_TEXTURE,
 ): { w: number; h: number } {
   const f = clampWorldFov(fov);
-  return {
-    w: Math.max(1, Math.round(cssW * f)),
-    h: Math.max(1, Math.round(cssH * f)),
-  };
+  let w = Math.max(1, Math.round(cssW * f));
+  let h = Math.max(1, Math.round(cssH * f));
+  const cap = Math.max(256, Math.floor(maxTex) - 1);
+  if (w > cap || h > cap) {
+    const s = Math.min(cap / w, cap / h);
+    w = Math.max(1, Math.floor(w * s));
+    h = Math.max(1, Math.floor(h * s));
+  }
+  return { w, h };
 }
 
 /**
@@ -193,16 +272,23 @@ export function applyRendererPixelSnap(): void {
 /**
  * Apply FOV: set logical width/height, resize PIXI, CSS-fit when ≠ 1.
  * Does not mutate `window.scale` / `map.scale`.
+ * Caps FOV/buffer to WebGL MAX_TEXTURE_SIZE so zoom-out cannot “pan” once
+ * the GPU refuses a larger canvas.
  */
 export function applyWorldFov(next: number): number {
-  const fov = clampWorldFov(next);
   const { w: cssW, h: cssH } = readWindowCssSize();
-  const logical = logicalSizeForFov(cssW, cssH, fov);
+  const maxTex = readMaxTextureSize();
+  const fov = clampWorldFovForDisplay(next, cssW, cssH, maxTex);
+  const logical = logicalSizeForFov(cssW, cssH, fov, maxTex);
   const host = window as Window & {
     width?: number;
     height?: number;
     map?: HostMap;
-    renderer?: { resize?: (w: number, h: number) => void };
+    renderer?: {
+      resize?: (w: number, h: number) => void;
+      width?: number;
+      height?: number;
+    };
     position_map?: () => void;
   };
 
@@ -217,6 +303,21 @@ export function applyWorldFov(next: number): number {
 
   if (host.renderer && typeof host.renderer.resize === "function") {
     host.renderer.resize(logical.w, logical.h);
+  }
+  // Prefer whatever the renderer actually allocated (some GL drivers clamp).
+  if (host.renderer) {
+    const aw =
+      typeof host.renderer.width === "number" && host.renderer.width > 0
+        ? Math.round(host.renderer.width)
+        : 0;
+    const ah =
+      typeof host.renderer.height === "number" && host.renderer.height > 0
+        ? Math.round(host.renderer.height)
+        : 0;
+    if (aw > 0 && ah > 0) {
+      host.width = aw;
+      host.height = ah;
+    }
   }
   if (changed && host.map) {
     host.map.last_max_y = undefined;

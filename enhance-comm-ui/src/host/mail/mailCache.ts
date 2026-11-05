@@ -45,7 +45,7 @@ import {
   MAIL_REFRESH_BATCH_GAP_MS,
   MAIL_REFRESH_CONCURRENCY,
 } from "./types";
-import { getXUnread } from "./mailUnread";
+import { applyXUnread, getXUnread } from "./mailUnread";
 
 let pullInFlight = false;
 let prefetchTimer = 0;
@@ -167,6 +167,11 @@ async function runPull(
         return null;
       }
       const page = res.data;
+      // pull_mail always recounts unread — apply quietly so the chrome badge
+      // tracks the server even when SAC publishes a stale info.mail of 0.
+      if (res.unreadCount != null) {
+        applyXUnread(res.unreadCount, { quiet: true });
+      }
       const mails = getMails();
       const prevIds = new Set<string>();
       for (let i = 0; i < mails.length; i++) prevIds.add(mails[i].id);
