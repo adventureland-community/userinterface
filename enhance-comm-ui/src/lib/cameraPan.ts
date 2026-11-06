@@ -150,11 +150,14 @@ export const MOUSE_PAN_DRAG_THRESHOLD_PX = 4;
 
 /**
  * Follow soft edge — fraction of each half-viewport kept as a push band.
- * Subject may roam the center; the lock only moves when they enter the band,
- * and then only enough to sit them on the inner edge (no continuous centering).
- * Cuts Follow retiles vs locking map.real_* to the entity every frame.
+ * Subject may roam the center; leaving the band starts a smooth recenter
+ * onto the subject (camera lock → subject XY). Idle lock = no retile churn.
  */
 export const FOLLOW_EDGE_MARGIN = 0.22;
+/** Exponential recenter rate (1/s) — ~center in a few tenths of a second. */
+export const FOLLOW_RECENTER_SPEED = 5.5;
+/** World units — treat lock as arrived on the subject. */
+export const FOLLOW_RECENTER_SNAP = 3;
 
 /** World half-extents of the logical buffer (stock width/height ÷ scale). */
 export function followViewHalfExtents(
@@ -168,13 +171,21 @@ export function followViewHalfExtents(
   return { halfW: Math.max(1, w / (2 * s)), halfH: Math.max(1, h / (2 * s)) };
 }
 
-/**
- * Next Follow camera lock for a subject. Pure — tested.
- * - Inside the safe rect → same lock (no retile churn).
- * - In the edge band → nudge lock so they sit on the inner edge.
- * - Fully off-screen (teleport / bad lock) → hard-center on the subject.
- */
-export function followCameraLockForSubject(
+/** Max subject offset from lock before Follow starts recentering. */
+export function followSafeOffset(
+  halfW: number,
+  halfH: number,
+  edgeMargin: number = FOLLOW_EDGE_MARGIN,
+): { maxOffX: number; maxOffY: number } {
+  const m = Math.max(0, Math.min(0.49, edgeMargin));
+  return {
+    maxOffX: Math.max(0, halfW * (1 - m)),
+    maxOffY: Math.max(0, halfH * (1 - m)),
+  };
+}
+
+/** True when the subject is outside the Follow dead zone (needs recenter). */
+export function followLockNeedsRecenter(
   lockX: number,
   lockY: number,
   subjectX: number,
@@ -182,20 +193,52 @@ export function followCameraLockForSubject(
   halfW: number,
   halfH: number,
   edgeMargin: number = FOLLOW_EDGE_MARGIN,
-): { x: number; y: number } {
+): boolean {
+  const { maxOffX, maxOffY } = followSafeOffset(halfW, halfH, edgeMargin);
+  return (
+    Math.abs(subjectX - lockX) > maxOffX ||
+    Math.abs(subjectY - lockY) > maxOffY
+  );
+}
+
+/** True when the subject is fully outside the logical viewport. */
+export function followSubjectOffScreen(
+  lockX: number,
+  lockY: number,
+  subjectX: number,
+  subjectY: number,
+  halfW: number,
+  halfH: number,
+): boolean {
+  return (
+    Math.abs(subjectX - lockX) > halfW || Math.abs(subjectY - lockY) > halfH
+  );
+}
+
+/**
+ * Smoothly ease the Follow lock toward the subject (screen center target).
+ * Pure — tested. `arrived` when within {@link FOLLOW_RECENTER_SNAP}.
+ */
+export function followCameraLockSmoothToward(
+  lockX: number,
+  lockY: number,
+  subjectX: number,
+  subjectY: number,
+  dtSec: number,
+  speed: number = FOLLOW_RECENTER_SPEED,
+): { x: number; y: number; arrived: boolean } {
   const dx = subjectX - lockX;
   const dy = subjectY - lockY;
-  if (Math.abs(dx) > halfW || Math.abs(dy) > halfH) {
-    return { x: subjectX, y: subjectY };
+  const dist = Math.hypot(dx, dy);
+  if (!(dist > FOLLOW_RECENTER_SNAP)) {
+    return { x: subjectX, y: subjectY, arrived: true };
   }
-  const m = Math.max(0, Math.min(0.49, edgeMargin));
-  const maxOffX = Math.max(0, halfW * (1 - m));
-  const maxOffY = Math.max(0, halfH * (1 - m));
-  let x = lockX;
-  let y = lockY;
-  if (dx > maxOffX) x = subjectX - maxOffX;
-  else if (dx < -maxOffX) x = subjectX + maxOffX;
-  if (dy > maxOffY) y = subjectY - maxOffY;
-  else if (dy < -maxOffY) y = subjectY + maxOffY;
-  return { x, y };
+  const rate = speed > 0 && Number.isFinite(speed) ? speed : FOLLOW_RECENTER_SPEED;
+  const t = 1 - Math.exp(-rate * Math.max(0, dtSec));
+  const x = lockX + dx * t;
+  const y = lockY + dy * t;
+  if (Math.hypot(subjectX - x, subjectY - y) <= FOLLOW_RECENTER_SNAP) {
+    return { x: subjectX, y: subjectY, arrived: true };
+  }
+  return { x, y, arrived: false };
 }

@@ -219,9 +219,24 @@ export const NAMEPLATE_PHONE_MIN_SCALE = 2;
 /** Phone zoom-in (FOV&lt;1) — CSS enlarge softens stock 8px Pixel harder. */
 export const NAMEPLATE_PHONE_ZOOM_IN_MIN_SCALE = 2;
 export const NAMEPLATE_PHONE_MAX_SCALE = 5;
-/** Desktop mid zoom-out floor so FOV 1.5–2 stay legible. */
-export const NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE = 2;
+/** Desktop mid zoom-out floor. */
+export const NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE = 1;
+/** Desktop extreme FOV still grows plates — do not cap the zoom-out range. */
 export const NAMEPLATE_DESKTOP_MAX_SCALE = 4;
+/**
+ * Desktop FOV→plate curve (before snap).
+ * Targets: FOV 2 ≈ 1.5×, FOV 3 ≈ 2.5×; flatten past 3 (FOV 4 was oversized).
+ */
+export function desktopNameplateZoomOutRaw(fov: number, boost: number): number {
+  const f = fov > 0 && Number.isFinite(fov) ? fov : 1;
+  const b = boost > 0 && Number.isFinite(boost) ? boost : 1;
+  // Through FOV 2: 0.75× cancel → FOV 2 * 0.75 ≈ 1.5.
+  if (f <= 2) return Math.max(1 / 3, f * 0.75 * b);
+  // FOV 2→3: climb to ~2.5.
+  if (f <= 3) return Math.max(1 / 3, (1.5 + (f - 2) * 1.05) * b);
+  // Past FOV 3: soft climb — FOV 4 at full prior slope hit ~3.5× (too big).
+  return Math.max(1 / 3, (2.55 + (f - 3) * 0.2) * b);
+}
 
 /** Stock add_name_tag face size before our denseness multiply. */
 export const NAMEPLATE_STOCK_FONT_SIZE = 64;
@@ -230,8 +245,8 @@ export const NAMEPLATE_STOCK_TEXT_SCALE = 0.125;
 
 /**
  * Snap a raw screen scale.
- * Desktop: integers (fractional container scales go soft under CSS FOV fit).
- * Phone: half-steps so 1.5× can sit between illegible 1× and oversized 2×.
+ * Phone: integers (fractional softens Pixel under cover CSS).
+ * Desktop/tablet: half-steps so FOV 2 can sit at 1.5× (between tiny 1 and huge 2).
  */
 export function snapNameplateScreenScale(
   raw: number,
@@ -242,10 +257,9 @@ export function snapNameplateScreenScale(
     profile ||
     (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
   if (p === "phone") {
-    // Integers only — fractional container scale softens Pixel under cover CSS.
     return Math.max(1, Math.min(8, Math.round(raw)));
   }
-  return Math.max(1, Math.min(8, Math.round(raw)));
+  return Math.max(1, Math.min(8, Math.round(raw * 2) / 2));
 }
 
 /**
@@ -275,22 +289,28 @@ export function nameplateScreenScale(
     return Math.min(3, Math.max(1, grow));
   }
 
-  // Full cancel to 2×, then ease so extreme FOV doesn't become one mega-bar.
-  const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
-  let s = snapNameplateScreenScale(
-    Math.max(1 / 3, Math.min(8, eased * boost)),
-    p,
-  );
   if (p === "phone") {
+    const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
+    let s = snapNameplateScreenScale(
+      Math.max(1 / 3, Math.min(8, eased * boost)),
+      p,
+    );
     s = Math.max(NAMEPLATE_PHONE_MIN_SCALE, s);
     // Through FOV 2× keep ≤2× under integer cover.
     if (f <= 2) s = Math.min(NAMEPLATE_PHONE_MIN_SCALE, s);
     return Math.min(NAMEPLATE_PHONE_MAX_SCALE, s);
   }
   if (p === "tablet") {
+    const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
+    let s = snapNameplateScreenScale(
+      Math.max(1 / 3, Math.min(8, eased * boost)),
+      p,
+    );
     if (f >= 1.25) s = Math.max(2, s);
     return Math.min(4, s);
   }
+  // Desktop: tuned curve (FOV 2 ≈ 1.5×, FOV 3 ≈ 2.5×) — not a zoom-range cap.
+  let s = snapNameplateScreenScale(desktopNameplateZoomOutRaw(f, boost), p);
   if (f >= 1.5) s = Math.max(NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE, s);
   return Math.min(NAMEPLATE_DESKTOP_MAX_SCALE, s);
 }
@@ -537,10 +557,16 @@ export function sharpenNameTagTextures(
 
   const profile = detectViewportProfile();
   const phonePixel = profile === "phone";
-  // Counter-scale + bottom-pivot (zoom-out up / zoom-in down). Re-apply when
-  // FOV wants scale≠1 so a first pass that lacked bounds can recover.
-  // Phone always re-applies so party Y-stagger sticks at plate×1 (screen===1).
-  if (phonePixel || root.__ecuNameplateFov !== appliedFov || screen !== 1) {
+  const curSx =
+    root.scale && typeof root.scale.x === "number" ? root.scale.x : NaN;
+  // Counter-scale + bottom-pivot. Re-apply when FOV changes, phone stagger
+  // needs a refresh, or the live scale no longer matches the formula (e.g.
+  // desktop half-cancel dropped FOV 2 from 2×→1× without an FOV bump).
+  if (
+    phonePixel ||
+    root.__ecuNameplateFov !== appliedFov ||
+    !(curSx === screen)
+  ) {
     const ok = applyNameplateScreenScale(root, screen);
     if (ok) root.__ecuNameplateFov = appliedFov;
   }

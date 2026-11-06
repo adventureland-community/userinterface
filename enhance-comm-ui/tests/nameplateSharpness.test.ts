@@ -47,14 +47,13 @@ describe("nameplateTextResolution", () => {
 });
 
 describe("snapNameplateScreenScale", () => {
-  it("rounds to integers in 1…8 on desktop", () => {
+  it("snaps desktop scales to half-steps in 1…8", () => {
     assert.equal(snapNameplateScreenScale(0.44, "desktop"), 1);
-    assert.equal(snapNameplateScreenScale(0.88, "desktop"), 1);
-    assert.equal(snapNameplateScreenScale(1.41, "desktop"), 1);
+    assert.equal(snapNameplateScreenScale(1.2, "desktop"), 1);
+    assert.equal(snapNameplateScreenScale(1.35, "desktop"), 1.5);
     assert.equal(snapNameplateScreenScale(1.85, "desktop"), 2);
-    assert.equal(snapNameplateScreenScale(2.47, "desktop"), 2);
-    assert.equal(snapNameplateScreenScale(3.7, "desktop"), 4);
-    assert.equal(snapNameplateScreenScale(7.4, "desktop"), 7);
+    assert.equal(snapNameplateScreenScale(2.4, "desktop"), 2.5);
+    assert.equal(snapNameplateScreenScale(3.7, "desktop"), 3.5);
     assert.equal(snapNameplateScreenScale(8.2, "desktop"), 8);
   });
 
@@ -66,23 +65,27 @@ describe("snapNameplateScreenScale", () => {
 });
 
 describe("nameplateScreenScale", () => {
-  it("counter-scales FOV then snaps to integers for crisp glyphs", () => {
+  it("counter-scales FOV then snaps desktop to half-steps", () => {
     assert.equal(nameplateScreenScale(1, "desktop"), 1);
     assert.equal(nameplateScreenScale(0.5, "desktop"), 2);
-    assert.ok(Number.isInteger(nameplateScreenScale(2, "desktop")));
-    assert.ok(Number.isInteger(nameplateScreenScale(5, "desktop")));
+    assert.equal(nameplateScreenScale(2, "desktop") % 0.5, 0);
+    assert.equal(nameplateScreenScale(5, "desktop") % 0.5, 0);
   });
 
-  it("counter-scales desktop zoom-out so mid FOV stays readable", () => {
-    assert.equal(nameplateScreenScale(1.5, "desktop"), 2);
-    assert.equal(nameplateScreenScale(2, "desktop"), 2);
+  it("sizes desktop plates for FOV 2 / 3 and softens FOV 4+", () => {
+    assert.equal(nameplateScreenScale(1, "desktop"), 1);
+    assert.equal(nameplateScreenScale(2, "desktop"), 1.5);
     assert.ok(
-      nameplateScreenScale(5, "desktop") >= 3,
-      "desktop FOV 5 still fights CSS shrink",
+      nameplateScreenScale(3, "desktop") >= 2.5,
+      "desktop FOV 3 must read larger than FOV 2",
     );
     assert.ok(
-      nameplateScreenScale(5, "desktop") <= 4,
-      "desktop FOV 5 eases off full cancel",
+      nameplateScreenScale(4, "desktop") <= 3,
+      "desktop FOV 4 must not balloon past ~3×",
+    );
+    assert.ok(
+      nameplateScreenScale(4, "desktop") >= nameplateScreenScale(3, "desktop"),
+      "desktop FOV 4 still ≥ FOV 3",
     );
     assert.equal(nameplateScreenScale(0.5, "desktop"), 2);
   });

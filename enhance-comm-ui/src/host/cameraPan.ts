@@ -11,7 +11,9 @@
 
 import {
   CAMERA_PAN_SPEED,
-  followCameraLockForSubject,
+  followCameraLockSmoothToward,
+  followLockNeedsRecenter,
+  followSubjectOffScreen,
   followViewHalfExtents,
   keysToPan,
   mouseDragWorldDelta,
@@ -30,6 +32,9 @@ let freeCamera = false;
  * every position_map (hub observe has no `character`, so stock will not).
  */
 let followCamera = true;
+/** Smooth Follow recenter in progress (edge left dead zone → ease to center). */
+let followRecenter = false;
+let followRecenterLastTs = 0;
 let lockX = 0;
 let lockY = 0;
 /** Observer/spectator world pos frozen when free-cam starts (vision hole). */
@@ -107,8 +112,7 @@ export function isFreeCamera(): boolean {
 }
 
 /**
- * True when Follow is on (edge-of-viewport track of the observed character).
- * Pans only near the screen edge — not a hard center lock every frame.
+ * True when Follow is on. Dead-zone idle, then smooth recenter to the subject.
  */
 export function isFollowCamera(): boolean {
   return followCamera && !freeCamera;
@@ -174,25 +178,48 @@ function schedulePositionMapFlush(): void {
   });
 }
 
+function clearFollowRecenter(): void {
+  followRecenter = false;
+  followRecenterLastTs = 0;
+}
+
 /**
- * Nudge the Follow lock only when the observed entity nears the viewport edge.
- * Staying still while they roam the center avoids stock map.x/y churn → retile.
+ * Follow: idle while the subject stays in the viewport dead zone; once they
+ * near the edge, ease the lock onto them (true center) instead of edge-nudging.
  */
 function panLockToObserved(): void {
   const at = readObservedWorldXY();
   if (!at) return;
   const size = readHostSize();
   const half = followViewHalfExtents(size.w, size.h, readHostWorldZoom());
-  const next = followCameraLockForSubject(
-    lockX,
-    lockY,
-    at.x,
-    at.y,
-    half.halfW,
-    half.halfH,
-  );
+  if (
+    followSubjectOffScreen(lockX, lockY, at.x, at.y, half.halfW, half.halfH)
+  ) {
+    lockX = at.x;
+    lockY = at.y;
+    clearFollowRecenter();
+    return;
+  }
+  if (
+    followLockNeedsRecenter(lockX, lockY, at.x, at.y, half.halfW, half.halfH)
+  ) {
+    followRecenter = true;
+  }
+  if (!followRecenter) return;
+
+  const now =
+    typeof performance !== "undefined" && typeof performance.now === "function"
+      ? performance.now()
+      : Date.now();
+  const dt =
+    followRecenterLastTs > 0
+      ? Math.min(0.05, Math.max(0, (now - followRecenterLastTs) / 1000))
+      : 1 / 60;
+  followRecenterLastTs = now;
+  const next = followCameraLockSmoothToward(lockX, lockY, at.x, at.y, dt);
   lockX = next.x;
   lockY = next.y;
+  if (next.arrived) clearFollowRecenter();
 }
 
 function syncLockFromMap(): void {
@@ -356,6 +383,7 @@ export function unlockCamera(): void {
     freeCamera = true;
     const wasFollow = followCamera;
     followCamera = false;
+    clearFollowRecenter();
     notifyFree();
     if (wasFollow) notifyFollow();
   }
@@ -675,8 +703,8 @@ function stopRafIfIdle(): void {
 
 /**
  * Keep the ECU lock across stock `position_map` / `draw`.
- * Follow edge-tracks the observed entity (dead zone in the viewport center),
- * then uses the same write path as free-cam. Never re-read live XY after stock.
+ * Follow dead-zone + smooth recenter onto the observed entity, then the same
+ * write path as free-cam. Never re-read live XY after stock.
  */
 function patchedPositionMap(this: unknown): void {
   syncFreeCameraAfterRealmChange();
@@ -750,14 +778,15 @@ export function centerOnObservedCamera(): void {
 }
 
 /**
- * Toggle Follow (exits free-cam when on). Snaps once onto the subject, then
- * only pans when they near the viewport edge. Pan / joystick clears Follow.
+ * Toggle Follow (exits free-cam when on). Snaps once, then dead-zone idle with
+ * smooth recenter to center when they near the edge. Pan clears Follow.
  */
 export function setFollowCamera(on: boolean): void {
   if (on) {
     followCamera = true;
     lockCamera();
     snapMapToObserved();
+    clearFollowRecenter();
     emitObserveHome();
     notifyFollow();
     window.setTimeout(() => {
@@ -766,6 +795,7 @@ export function setFollowCamera(on: boolean): void {
     return;
   }
   followCamera = false;
+  clearFollowRecenter();
   notifyFollow();
   unlockCamera();
 }

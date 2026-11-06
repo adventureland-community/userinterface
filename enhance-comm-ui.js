@@ -16369,34 +16369,51 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   var MOUSE_PAN_DRAG_THRESHOLD_PX = 4;
   var FOLLOW_EDGE_MARGIN = 0.22;
+  var FOLLOW_RECENTER_SPEED = 5.5;
+  var FOLLOW_RECENTER_SNAP = 3;
   function followViewHalfExtents(width, height, scale) {
     const s = scale > 0 && Number.isFinite(scale) ? scale : 1;
     const w = width > 0 && Number.isFinite(width) ? width : 1;
     const h = height > 0 && Number.isFinite(height) ? height : 1;
     return { halfW: Math.max(1, w / (2 * s)), halfH: Math.max(1, h / (2 * s)) };
   }
-  function followCameraLockForSubject(lockX2, lockY2, subjectX, subjectY, halfW, halfH, edgeMargin = FOLLOW_EDGE_MARGIN) {
+  function followSafeOffset(halfW, halfH, edgeMargin = FOLLOW_EDGE_MARGIN) {
+    const m = Math.max(0, Math.min(0.49, edgeMargin));
+    return {
+      maxOffX: Math.max(0, halfW * (1 - m)),
+      maxOffY: Math.max(0, halfH * (1 - m))
+    };
+  }
+  function followLockNeedsRecenter(lockX2, lockY2, subjectX, subjectY, halfW, halfH, edgeMargin = FOLLOW_EDGE_MARGIN) {
+    const { maxOffX, maxOffY } = followSafeOffset(halfW, halfH, edgeMargin);
+    return Math.abs(subjectX - lockX2) > maxOffX || Math.abs(subjectY - lockY2) > maxOffY;
+  }
+  function followSubjectOffScreen(lockX2, lockY2, subjectX, subjectY, halfW, halfH) {
+    return Math.abs(subjectX - lockX2) > halfW || Math.abs(subjectY - lockY2) > halfH;
+  }
+  function followCameraLockSmoothToward(lockX2, lockY2, subjectX, subjectY, dtSec, speed = FOLLOW_RECENTER_SPEED) {
     const dx = subjectX - lockX2;
     const dy = subjectY - lockY2;
-    if (Math.abs(dx) > halfW || Math.abs(dy) > halfH) {
-      return { x: subjectX, y: subjectY };
+    const dist = Math.hypot(dx, dy);
+    if (!(dist > FOLLOW_RECENTER_SNAP)) {
+      return { x: subjectX, y: subjectY, arrived: true };
     }
-    const m = Math.max(0, Math.min(0.49, edgeMargin));
-    const maxOffX = Math.max(0, halfW * (1 - m));
-    const maxOffY = Math.max(0, halfH * (1 - m));
-    let x = lockX2;
-    let y = lockY2;
-    if (dx > maxOffX) x = subjectX - maxOffX;
-    else if (dx < -maxOffX) x = subjectX + maxOffX;
-    if (dy > maxOffY) y = subjectY - maxOffY;
-    else if (dy < -maxOffY) y = subjectY + maxOffY;
-    return { x, y };
+    const rate = speed > 0 && Number.isFinite(speed) ? speed : FOLLOW_RECENTER_SPEED;
+    const t = 1 - Math.exp(-rate * Math.max(0, dtSec));
+    const x = lockX2 + dx * t;
+    const y = lockY2 + dy * t;
+    if (Math.hypot(subjectX - x, subjectY - y) <= FOLLOW_RECENTER_SNAP) {
+      return { x: subjectX, y: subjectY, arrived: true };
+    }
+    return { x, y, arrived: false };
   }
 
   // src/host/cameraPan.ts
   var installed = false;
   var freeCamera = false;
   var followCamera = true;
+  var followRecenter = false;
+  var followRecenterLastTs = 0;
   var lockX = 0;
   var lockY = 0;
   var observerAnchorX = 0;
@@ -16490,21 +16507,32 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       }
     });
   }
+  function clearFollowRecenter() {
+    followRecenter = false;
+    followRecenterLastTs = 0;
+  }
   function panLockToObserved() {
     const at = readObservedWorldXY();
     if (!at) return;
     const size = readHostSize();
     const half = followViewHalfExtents(size.w, size.h, readHostWorldZoom());
-    const next = followCameraLockForSubject(
-      lockX,
-      lockY,
-      at.x,
-      at.y,
-      half.halfW,
-      half.halfH
-    );
+    if (followSubjectOffScreen(lockX, lockY, at.x, at.y, half.halfW, half.halfH)) {
+      lockX = at.x;
+      lockY = at.y;
+      clearFollowRecenter();
+      return;
+    }
+    if (followLockNeedsRecenter(lockX, lockY, at.x, at.y, half.halfW, half.halfH)) {
+      followRecenter = true;
+    }
+    if (!followRecenter) return;
+    const now = typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+    const dt = followRecenterLastTs > 0 ? Math.min(0.05, Math.max(0, (now - followRecenterLastTs) / 1e3)) : 1 / 60;
+    followRecenterLastTs = now;
+    const next = followCameraLockSmoothToward(lockX, lockY, at.x, at.y, dt);
     lockX = next.x;
     lockY = next.y;
+    if (next.arrived) clearFollowRecenter();
   }
   function syncLockFromMap() {
     const map = hostMap();
@@ -16604,6 +16632,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       freeCamera = true;
       const wasFollow = followCamera;
       followCamera = false;
+      clearFollowRecenter();
       notifyFree();
       if (wasFollow) notifyFollow();
     }
@@ -16925,6 +16954,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       followCamera = true;
       lockCamera();
       snapMapToObserved();
+      clearFollowRecenter();
       emitObserveHome();
       notifyFollow();
       window.setTimeout(() => {
@@ -16933,6 +16963,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       return;
     }
     followCamera = false;
+    clearFollowRecenter();
     notifyFollow();
     unlockCamera();
   }
@@ -28123,7 +28154,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     const following = isFollowCamera();
     btn.classList.toggle("is-on", following);
     btn.setAttribute("aria-pressed", following ? "true" : "false");
-    btn.title = following ? "Following near screen edge \u2014 tap to free camera" : "Follow observed \u2014 pans when they near the screen edge";
+    btn.title = following ? "Following \u2014 eases to center near the edge; tap to free camera" : "Follow observed \u2014 eases them to center when near the screen edge";
   }
   var followChromeBound = false;
   function ensureFollowChromeSync() {
@@ -28261,7 +28292,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       mk(
         "follow",
         "Follow",
-        "Follow observed \u2014 pans when they near the screen edge",
+        "Follow observed \u2014 eases to center when near the screen edge",
         onFollowClick
       ),
       mk("bag", "Bag", "Observed inventory", onBagClick),
@@ -32346,7 +32377,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-06T13:24:43.315Z" : "unknown";
+    const builtAt = true ? "2026-11-06T13:48:51.201Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -101532,8 +101563,15 @@ ${ESTIMATE_HINT}`,
   }
   var NAMEPLATE_PHONE_MIN_SCALE = 2;
   var NAMEPLATE_PHONE_MAX_SCALE = 5;
-  var NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE = 2;
+  var NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE = 1;
   var NAMEPLATE_DESKTOP_MAX_SCALE = 4;
+  function desktopNameplateZoomOutRaw(fov, boost) {
+    const f = fov > 0 && Number.isFinite(fov) ? fov : 1;
+    const b = boost > 0 && Number.isFinite(boost) ? boost : 1;
+    if (f <= 2) return Math.max(1 / 3, f * 0.75 * b);
+    if (f <= 3) return Math.max(1 / 3, (1.5 + (f - 2) * 1.05) * b);
+    return Math.max(1 / 3, (2.55 + (f - 3) * 0.2) * b);
+  }
   var NAMEPLATE_STOCK_FONT_SIZE = 64;
   var NAMEPLATE_STOCK_TEXT_SCALE = 0.125;
   function snapNameplateScreenScale(raw, profile) {
@@ -101542,7 +101580,7 @@ ${ESTIMATE_HINT}`,
     if (p === "phone") {
       return Math.max(1, Math.min(8, Math.round(raw)));
     }
-    return Math.max(1, Math.min(8, Math.round(raw)));
+    return Math.max(1, Math.min(8, Math.round(raw * 2) / 2));
   }
   function nameplateScreenScale(fov, profile) {
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
@@ -101555,20 +101593,26 @@ ${ESTIMATE_HINT}`,
       }
       return Math.min(3, Math.max(1, grow));
     }
-    const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
-    let s = snapNameplateScreenScale(
-      Math.max(1 / 3, Math.min(8, eased * boost)),
-      p
-    );
     if (p === "phone") {
-      s = Math.max(NAMEPLATE_PHONE_MIN_SCALE, s);
-      if (f <= 2) s = Math.min(NAMEPLATE_PHONE_MIN_SCALE, s);
-      return Math.min(NAMEPLATE_PHONE_MAX_SCALE, s);
+      const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
+      let s2 = snapNameplateScreenScale(
+        Math.max(1 / 3, Math.min(8, eased * boost)),
+        p
+      );
+      s2 = Math.max(NAMEPLATE_PHONE_MIN_SCALE, s2);
+      if (f <= 2) s2 = Math.min(NAMEPLATE_PHONE_MIN_SCALE, s2);
+      return Math.min(NAMEPLATE_PHONE_MAX_SCALE, s2);
     }
     if (p === "tablet") {
-      if (f >= 1.25) s = Math.max(2, s);
-      return Math.min(4, s);
+      const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
+      let s2 = snapNameplateScreenScale(
+        Math.max(1 / 3, Math.min(8, eased * boost)),
+        p
+      );
+      if (f >= 1.25) s2 = Math.max(2, s2);
+      return Math.min(4, s2);
     }
+    let s = snapNameplateScreenScale(desktopNameplateZoomOutRaw(f, boost), p);
     if (f >= 1.5) s = Math.max(NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE, s);
     return Math.min(NAMEPLATE_DESKTOP_MAX_SCALE, s);
   }
@@ -101712,7 +101756,8 @@ ${ESTIMATE_HINT}`,
     }
     const profile = detectViewportProfile();
     const phonePixel = profile === "phone";
-    if (phonePixel || root.__ecuNameplateFov !== appliedFov2 || screen !== 1) {
+    const curSx = root.scale && typeof root.scale.x === "number" ? root.scale.x : NaN;
+    if (phonePixel || root.__ecuNameplateFov !== appliedFov2 || !(curSx === screen)) {
       const ok = applyNameplateScreenScale(root, screen);
       if (ok) root.__ecuNameplateFov = appliedFov2;
     }

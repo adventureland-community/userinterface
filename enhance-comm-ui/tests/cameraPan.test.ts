@@ -3,9 +3,12 @@ import { describe, it } from "node:test";
 import {
   CAMERA_PAN_SPEED,
   FOLLOW_EDGE_MARGIN,
+  FOLLOW_RECENTER_SNAP,
   JOYSTICK_DEADZONE,
   JOYSTICK_RADIUS_PX,
-  followCameraLockForSubject,
+  followCameraLockSmoothToward,
+  followLockNeedsRecenter,
+  followSubjectOffScreen,
   followViewHalfExtents,
   keysToPan,
   joystickToPan,
@@ -85,56 +88,55 @@ describe("cameraPan math", () => {
     });
   });
 
-  it("keeps Follow lock still while the subject stays inside the safe zone", () => {
+  it("keeps Follow idle while the subject stays inside the safe zone", () => {
     const halfW = 400;
     const halfH = 300;
     const maxOffX = halfW * (1 - FOLLOW_EDGE_MARGIN);
-    const still = followCameraLockForSubject(
-      1000,
-      2000,
-      1000 + maxOffX * 0.5,
-      2000 - maxOffX * 0.25,
-      halfW,
-      halfH,
+    assert.equal(
+      followLockNeedsRecenter(
+        1000,
+        2000,
+        1000 + maxOffX * 0.5,
+        2000 - maxOffX * 0.25,
+        halfW,
+        halfH,
+      ),
+      false,
     );
-    assert.deepEqual(still, { x: 1000, y: 2000 });
   });
 
-  it("pans Follow lock only enough to put the subject on the soft edge", () => {
+  it("starts Follow recenter when the subject enters the edge band", () => {
     const halfW = 400;
     const halfH = 300;
     const maxOffX = halfW * (1 - FOLLOW_EDGE_MARGIN);
-    const maxOffY = halfH * (1 - FOLLOW_EDGE_MARGIN);
-    const right = followCameraLockForSubject(
-      0,
-      0,
-      maxOffX + 80,
-      0,
-      halfW,
-      halfH,
+    assert.equal(
+      followLockNeedsRecenter(0, 0, maxOffX + 80, 0, halfW, halfH),
+      true,
     );
-    assert.equal(right.x, 80);
-    assert.equal(right.y, 0);
-    const up = followCameraLockForSubject(
-      0,
-      0,
-      0,
-      -(maxOffY + 50),
-      halfW,
-      halfH,
-    );
-    assert.equal(up.x, 0);
-    assert.equal(up.y, -50);
   });
 
-  it("hard-centers Follow when edge margin is 1 (legacy feel)", () => {
-    const next = followCameraLockForSubject(10, 20, 300, 400, 400, 300, 1);
-    assert.deepEqual(next, { x: 300, y: 400 });
+  it("smoothly eases the Follow lock onto the subject center", () => {
+    const step = followCameraLockSmoothToward(0, 0, 200, 0, 1 / 60);
+    assert.ok(step.x > 0 && step.x < 200);
+    assert.equal(step.y, 0);
+    assert.equal(step.arrived, false);
+    let x = 0;
+    let y = 0;
+    let arrived = false;
+    for (let i = 0; i < 120; i++) {
+      const next = followCameraLockSmoothToward(x, y, 200, 0, 1 / 60);
+      x = next.x;
+      y = next.y;
+      arrived = next.arrived;
+      if (arrived) break;
+    }
+    assert.equal(arrived, true);
+    assert.ok(Math.hypot(200 - x, y) <= FOLLOW_RECENTER_SNAP);
   });
 
-  it("hard-centers Follow when the subject is fully off-screen", () => {
-    const next = followCameraLockForSubject(0, 0, 2000, -1500, 400, 300);
-    assert.deepEqual(next, { x: 2000, y: -1500 });
+  it("flags Follow subjects that leave the logical viewport", () => {
+    assert.equal(followSubjectOffScreen(0, 0, 2000, -1500, 400, 300), true);
+    assert.equal(followSubjectOffScreen(0, 0, 100, 50, 400, 300), false);
   });
 });
 
@@ -235,7 +237,7 @@ describe("cameraPan Center vs Follow", () => {
     });
   });
 
-  it("Follow snaps once then edge-tracks; pan clears Follow", () => {
+  it("Follow snaps once then dead-zone tracks; pan clears Follow", () => {
     withObserveMap(() => {
       unlockCamera();
       assert.equal(isFollowCamera(), false);
