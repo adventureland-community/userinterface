@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.18.0
+// @version      0.19.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -5330,8 +5330,8 @@ var EnhanceCommUI = (() => {
   var WORLD_FOV_DEFAULT_MAX_TEXTURE = 4096;
   function readMaxTextureSize() {
     try {
-      const host2 = window;
-      const gl = host2.renderer && host2.renderer.gl || host2.renderer && host2.renderer.context && host2.renderer.context.gl || null;
+      const host4 = window;
+      const gl = host4.renderer && host4.renderer.gl || host4.renderer && host4.renderer.context && host4.renderer.context.gl || null;
       if (gl && typeof gl.getParameter === "function") {
         const n = gl.getParameter(gl.MAX_TEXTURE_SIZE);
         if (typeof n === "number" && Number.isFinite(n) && n >= 256) {
@@ -5555,33 +5555,33 @@ var EnhanceCommUI = (() => {
     const maxTex = readMaxTextureSize();
     const fov = clampWorldFovForDisplay(next, cssW, cssH, maxTex);
     const logical = logicalSizeForFov(cssW, cssH, fov, maxTex);
-    const host2 = window;
-    const prevW = typeof host2.width === "number" ? host2.width : 0;
-    const prevH = typeof host2.height === "number" ? host2.height : 0;
+    const host4 = window;
+    const prevW = typeof host4.width === "number" ? host4.width : 0;
+    const prevH = typeof host4.height === "number" ? host4.height : 0;
     const fovChanged = appliedFov !== fov;
-    const changed = fovChanged || host2.width !== logical.w || host2.height !== logical.h;
+    const changed = fovChanged || host4.width !== logical.w || host4.height !== logical.h;
     appliedFov = fov;
-    host2.width = logical.w;
-    host2.height = logical.h;
+    host4.width = logical.w;
+    host4.height = logical.h;
     let scrubbedTiling = false;
-    if (host2.mdraw_tiling_sprites) {
-      host2.mdraw_tiling_sprites = false;
+    if (host4.mdraw_tiling_sprites) {
+      host4.mdraw_tiling_sprites = false;
       scrubbedTiling = true;
     }
-    if (host2.renderer && typeof host2.renderer.resize === "function") {
-      host2.renderer.resize(logical.w, logical.h);
+    if (host4.renderer && typeof host4.renderer.resize === "function") {
+      host4.renderer.resize(logical.w, logical.h);
     }
-    if (host2.renderer) {
-      const aw = typeof host2.renderer.width === "number" && host2.renderer.width > 0 ? Math.round(host2.renderer.width) : 0;
-      const ah = typeof host2.renderer.height === "number" && host2.renderer.height > 0 ? Math.round(host2.renderer.height) : 0;
+    if (host4.renderer) {
+      const aw = typeof host4.renderer.width === "number" && host4.renderer.width > 0 ? Math.round(host4.renderer.width) : 0;
+      const ah = typeof host4.renderer.height === "number" && host4.renderer.height > 0 ? Math.round(host4.renderer.height) : 0;
       if (aw > 0 && ah > 0) {
-        host2.width = aw;
-        host2.height = ah;
+        host4.width = aw;
+        host4.height = ah;
       }
     }
-    const sizeDelta = Math.abs((host2.width || 0) - prevW) + Math.abs((host2.height || 0) - prevH);
-    if (host2.map && (scrubbedTiling || changed && (fovChanged || sizeDelta >= 8))) {
-      host2.map.last_max_y = void 0;
+    const sizeDelta = Math.abs((host4.width || 0) - prevW) + Math.abs((host4.height || 0) - prevH);
+    if (host4.map && (scrubbedTiling || changed && (fovChanged || sizeDelta >= 8))) {
+      host4.map.last_max_y = void 0;
     }
     if (fov === WORLD_FOV_DEFAULT) {
       clearRendererViewFit();
@@ -5591,9 +5591,9 @@ var EnhanceCommUI = (() => {
       fitRendererView(cssW, cssH, fov);
       if (!(fov < 1)) applyRendererPixelSnap();
     }
-    if (typeof host2.position_map === "function") {
+    if (typeof host4.position_map === "function") {
       try {
-        host2.position_map();
+        host4.position_map();
       } catch (e2) {
       }
     }
@@ -9628,6 +9628,26 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.19.0",
+      title: "0.19.0",
+      date: "2026-11-07",
+      summary: "Experimental farm-machine knobs: cap the stock map draw loop (and optionally lower render scale) without slowing Comm UI.",
+      highlights: [
+        {
+          label: "Experimental FPS cap",
+          detail: "Settings \u2192 Comm UI \u2192 Experimental: fixed Off / 30 / 60 while focused, plus separate toggles to cap at 60 when the tab is hidden, when the window is blurred, and to pause draws when the map canvas is off-screen. Live draw rate shows under the controls. Defaults all off \u2014 host hooks, so treat as experimental.",
+          kind: "feature"
+        }
+      ],
+      items: [
+        {
+          label: "Experimental map render scale",
+          detail: "Same Experimental pane: optional \xBE or \xBD PIXI resolution when an FPS cap is not enough. Zoom may look softer; set back to 1\xD7 if the map looks wrong.",
+          kind: "feature"
+        }
+      ]
+    },
+    {
       id: "0.18.0",
       title: "0.18.0",
       date: "2026-11-05",
@@ -12651,6 +12671,102 @@ ${fightHoverTip(src)}`
     return false;
   }
 
+  // src/lib/gameFpsCap.ts
+  var GAME_FPS_CAP_OFF = 0;
+  var GAME_FPS_CAPS = [0, 30, 60];
+  var GAME_FPS_BG_RATE = 60;
+  function normalizeGameFpsCap(raw) {
+    if (raw === 30 || raw === "30") return 30;
+    if (raw === 60 || raw === "60") return 60;
+    return GAME_FPS_CAP_OFF;
+  }
+  function gameFpsCapIntervalMs(rate) {
+    if (rate <= 0) return 0;
+    return 1e3 / rate;
+  }
+  function gameFpsCapLabel(cap) {
+    if (cap === 30) return "30";
+    if (cap === 60) return "60";
+    return "Off";
+  }
+  function emptyGameFpsCapBg() {
+    return { hidden: false, blurred: false, covered: false };
+  }
+  function gameFpsCapNeedsHook(opts) {
+    return opts.cap !== GAME_FPS_CAP_OFF || opts.whenHidden || opts.whenBlurred || opts.pauseWhenCovered;
+  }
+  function resolveGameFpsDrawPolicy(opts, bg) {
+    if (opts.pauseWhenCovered && bg.covered) {
+      return { rate: 0, paused: true, reason: "covered" };
+    }
+    if (opts.whenHidden && bg.hidden) {
+      return { rate: GAME_FPS_BG_RATE, paused: false, reason: "hidden" };
+    }
+    if (opts.whenBlurred && bg.blurred) {
+      return { rate: GAME_FPS_BG_RATE, paused: false, reason: "blurred" };
+    }
+    if (opts.cap === 30) return { rate: 30, paused: false, reason: "cap30" };
+    if (opts.cap === 60) return { rate: 60, paused: false, reason: "cap60" };
+    return { rate: 0, paused: false, reason: "off" };
+  }
+  function shouldRunDrawFrame(opts) {
+    if (opts.forced) {
+      return { run: true, nextDueMs: 0 };
+    }
+    if (opts.paused) {
+      return { run: false, nextDueMs: opts.nextDueMs };
+    }
+    if (!(opts.intervalMs > 0)) {
+      return { run: true, nextDueMs: 0 };
+    }
+    if (opts.nowMs < opts.nextDueMs - opts.intervalMs * 0.1) {
+      return { run: false, nextDueMs: opts.nextDueMs };
+    }
+    return {
+      run: true,
+      nextDueMs: Math.max(opts.nextDueMs + opts.intervalMs, opts.nowMs)
+    };
+  }
+  function isForcedDrawArgs(args) {
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === true) return true;
+    }
+    return false;
+  }
+  function detectForeignRafWrapper(raf2) {
+    if (typeof raf2 !== "function") return true;
+    try {
+      const src = Function.prototype.toString.call(raf2);
+      if (src.indexOf("[native code]") >= 0) return false;
+      return true;
+    } catch (e2) {
+      return true;
+    }
+  }
+  function formatGameFpsReadout(opts) {
+    const fps = opts.fps > 0 ? Math.round(opts.fps) + " FPS" : "\u2014 FPS";
+    let mode = "uncapped";
+    if (opts.policy.paused) mode = "paused (" + opts.policy.reason + ")";
+    else if (opts.policy.rate > 0)
+      mode = "cap " + opts.policy.rate + " (" + opts.policy.reason + ")";
+    else if (opts.policy.reason === "off") mode = "off";
+    const warn = opts.foreignRaf ? " \xB7 other FPS script detected" : "";
+    return fps + " \xB7 " + mode + warn;
+  }
+
+  // src/lib/gameRenderScale.ts
+  var GAME_RENDER_SCALES = [1, 0.75, 0.5];
+  function normalizeGameRenderScale(raw) {
+    if (raw === 0.75 || raw === "0.75") return 0.75;
+    if (raw === 0.5 || raw === "0.5") return 0.5;
+    return 1;
+  }
+  function gameRenderScaleLabel(scale) {
+    if (scale === 0.75) return "\xBE";
+    if (scale === 0.5) return "\xBD";
+    return "1\xD7";
+  }
+
   // src/lib/settings.ts
   var KEY = "al-comm-ui-settings-v1";
   var PANEL_IDS_SET = new Set(PANEL_IDS);
@@ -12701,6 +12817,11 @@ ${fightHoverTip(src)}`
     setupWizardDone: false,
     hudDensity: "auto",
     worldOverlayEnabled: true,
+    gameFpsCap: GAME_FPS_CAP_OFF,
+    gameFpsCapWhenHidden: false,
+    gameFpsCapWhenBlurred: false,
+    gameFpsPauseWhenCovered: false,
+    gameRenderScale: 1,
     worldWheelZoomEnabled: true,
     cameraJoystickSide: "left",
     phoneHudVisible: {},
@@ -12954,6 +13075,11 @@ ${fightHoverTip(src)}`
       metersHidden: !!parsed.metersHidden,
       hudDensity: normalizeHudDensity(parsed.hudDensity),
       worldOverlayEnabled: parsed.worldOverlayEnabled !== false,
+      gameFpsCap: normalizeGameFpsCap(parsed.gameFpsCap),
+      gameFpsCapWhenHidden: !!parsed.gameFpsCapWhenHidden,
+      gameFpsCapWhenBlurred: !!parsed.gameFpsCapWhenBlurred,
+      gameFpsPauseWhenCovered: !!parsed.gameFpsPauseWhenCovered,
+      gameRenderScale: normalizeGameRenderScale(parsed.gameRenderScale),
       worldWheelZoomEnabled: parsed.worldWheelZoomEnabled !== false,
       cameraJoystickSide: normalizeCameraJoystickSide(
         parsed.cameraJoystickSide
@@ -13130,6 +13256,21 @@ ${fightHoverTip(src)}`
     }
     if (typeof partial.worldOverlayEnabled === "boolean") {
       next.worldOverlayEnabled = partial.worldOverlayEnabled;
+    }
+    if (partial.gameFpsCap != null) {
+      next.gameFpsCap = normalizeGameFpsCap(partial.gameFpsCap);
+    }
+    if (typeof partial.gameFpsCapWhenHidden === "boolean") {
+      next.gameFpsCapWhenHidden = partial.gameFpsCapWhenHidden;
+    }
+    if (typeof partial.gameFpsCapWhenBlurred === "boolean") {
+      next.gameFpsCapWhenBlurred = partial.gameFpsCapWhenBlurred;
+    }
+    if (typeof partial.gameFpsPauseWhenCovered === "boolean") {
+      next.gameFpsPauseWhenCovered = partial.gameFpsPauseWhenCovered;
+    }
+    if (partial.gameRenderScale != null) {
+      next.gameRenderScale = normalizeGameRenderScale(partial.gameRenderScale);
     }
     if (typeof partial.worldWheelZoomEnabled === "boolean") {
       next.worldWheelZoomEnabled = partial.worldWheelZoomEnabled;
@@ -17008,9 +17149,9 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (s < -1) return -1;
     return s;
   }
-  function panFrameDtSec(nowMs3, prevMs) {
+  function panFrameDtSec(nowMs4, prevMs) {
     if (!(prevMs > 0)) return 1 / 60;
-    return Math.min(0.05, Math.max(0, (nowMs3 - prevMs) / 1e3));
+    return Math.min(0.05, Math.max(0, (nowMs4 - prevMs) / 1e3));
   }
   function tick(ts) {
     rafId = null;
@@ -17571,14 +17712,14 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function refreshBagBuyOrderIndicators() {
     if (!window.inventory) return;
-    const host2 = document.getElementById(HOST_ID);
-    if (!host2) return;
+    const host4 = document.getElementById(HOST_ID);
+    if (!host4) return;
     const obs = window.observing;
     const items = obs && Array.isArray(obs.items) ? obs.items : null;
     if (!obs || !items) return;
     ensureCss();
     const index = indexNearbyBuyOrders(getEntitiesList(), obs);
-    const nodes = host2.querySelectorAll("[data-cnum]");
+    const nodes = host4.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       clearBuyOrderChrome(node);
@@ -18840,10 +18981,10 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     return uniqueSlots(slots);
   }
   function applyComposeBagHighlights() {
-    const host2 = document.getElementById(HOST_ID2);
-    if (!host2) return;
+    const host4 = document.getElementById(HOST_ID2);
+    if (!host4) return;
     const want = new Set(activeSlots);
-    const nodes = host2.querySelectorAll("[data-cnum]");
+    const nodes = host4.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       const raw = node.getAttribute("data-cnum");
@@ -19013,11 +19154,11 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     return resolveLuckySlotForShrine();
   }
   function applyShrineBagHighlights() {
-    const host2 = document.getElementById(HOST_ID3);
-    if (!host2) return;
+    const host4 = document.getElementById(HOST_ID3);
+    if (!host4) return;
     const want = new Set(activeSlots2);
     const luckySlot = resolvedLuckySlot();
-    const nodes = host2.querySelectorAll("[data-cnum]");
+    const nodes = host4.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       const raw = node.getAttribute("data-cnum");
@@ -19349,16 +19490,16 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     closeKindImpl = fn;
   }
   function writeInfoHtml(kind, html) {
-    const host2 = ensureAdoptedHost(kind);
-    host2.innerHTML = html || "";
-    if (hasContent(host2)) {
-      ensureCloseButton(host2, kind, (k) => {
+    const host4 = ensureAdoptedHost(kind);
+    host4.innerHTML = html || "";
+    if (hasContent(host4)) {
+      ensureCloseButton(host4, kind, (k) => {
         closeKindImpl(k);
       });
       emitInfoDialogChange(kind, true);
       return;
     }
-    if (host2.innerHTML) host2.innerHTML = "";
+    if (host4.innerHTML) host4.innerHTML = "";
     emitInfoDialogChange(kind, false);
   }
   function clearInfoHost(kind) {
@@ -19607,8 +19748,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   function openCondition(entity, conditionName) {
     if (!entity || !conditionName) return;
     installInfoDialogLifecycle();
-    const host2 = ensureAdoptedHost("buff");
-    if (lastConditionId === conditionName && hasContent(host2)) {
+    const host4 = ensureAdoptedHost("buff");
+    if (lastConditionId === conditionName && hasContent(host4)) {
       closeBuffDialog();
       return;
     }
@@ -19901,8 +20042,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
   function closeInventoryHost() {
     if (typeof document !== "undefined") {
-      const host2 = document.getElementById(HOST_ID4);
-      if (host2) host2.innerHTML = "";
+      const host4 = document.getElementById(HOST_ID4);
+      if (host4) host4.innerHTML = "";
     }
     window.inventory = false;
     bagRenderedForName = null;
@@ -19976,30 +20117,30 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
   var BAG_HOST_FLOAT_Z_INDEX = 210;
   function applyBagLayoutPos(pos) {
-    const host2 = document.getElementById(HOST_ID4);
-    if (!host2) return;
-    if (host2.parentElement && host2.parentElement.id === MOUNT_ID) {
-      host2.style.position = "relative";
-      host2.style.left = "";
-      host2.style.top = "";
-      host2.style.transform = "";
-      host2.style.zIndex = "";
-      host2.style.pointerEvents = "auto";
+    const host4 = document.getElementById(HOST_ID4);
+    if (!host4) return;
+    if (host4.parentElement && host4.parentElement.id === MOUNT_ID) {
+      host4.style.position = "relative";
+      host4.style.left = "";
+      host4.style.top = "";
+      host4.style.transform = "";
+      host4.style.zIndex = "";
+      host4.style.pointerEvents = "auto";
       return;
     }
     const layout = mergeLayout(getSettings().panelLayout);
     const p = pos || layout.bag;
     const style = panelStyle(p, false);
-    const hasGrid = !!host2.querySelector(".theinventory");
-    host2.style.position = "fixed";
-    host2.style.left = String(style.left);
-    host2.style.top = String(style.top);
-    host2.style.transform = String(style.transform);
-    host2.style.zIndex = String(BAG_HOST_FLOAT_Z_INDEX);
-    host2.style.pointerEvents = hasGrid ? "auto" : "none";
-    host2.style.maxWidth = "min(96vw, 420px)";
-    host2.style.maxHeight = "min(70vh, calc(100vh - 72px))";
-    host2.style.overflow = "auto";
+    const hasGrid = !!host4.querySelector(".theinventory");
+    host4.style.position = "fixed";
+    host4.style.left = String(style.left);
+    host4.style.top = String(style.top);
+    host4.style.transform = String(style.transform);
+    host4.style.zIndex = String(BAG_HOST_FLOAT_Z_INDEX);
+    host4.style.pointerEvents = hasGrid ? "auto" : "none";
+    host4.style.maxWidth = "min(96vw, 420px)";
+    host4.style.maxHeight = "min(70vh, calc(100vh - 72px))";
+    host4.style.overflow = "auto";
   }
   function ensureInventoryHost() {
     injectHostCss();
@@ -20016,9 +20157,9 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   function attachInventoryToMount(mount) {
     if (!mount) return;
     mount.id = MOUNT_ID;
-    const host2 = ensureInventoryHost();
-    if (host2.parentElement !== mount) {
-      mount.append(host2);
+    const host4 = ensureInventoryHost();
+    if (host4.parentElement !== mount) {
+      mount.append(host4);
     }
     applyBagLayoutPos();
   }
@@ -20037,9 +20178,9 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
   function stripObservedBagNativeDropHandlers() {
     if (!window.is_comm || !window.observing) return;
-    const host2 = document.getElementById(HOST_ID4);
-    if (!host2) return;
-    const nodes = host2.querySelectorAll("[data-cnum]");
+    const host4 = document.getElementById(HOST_ID4);
+    if (!host4) return;
+    const nodes = host4.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       node.removeAttribute("ondrop");
@@ -20048,12 +20189,12 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   }
   function refreshInventoryItemTitles() {
     if (!window.inventory) return;
-    const host2 = document.getElementById(HOST_ID4);
-    if (!host2) return;
+    const host4 = document.getElementById(HOST_ID4);
+    if (!host4) return;
     const obs = window.observing;
     const items = obs && Array.isArray(obs.items) ? obs.items : null;
     if (!items) return;
-    const nodes = host2.querySelectorAll("[data-cnum]");
+    const nodes = host4.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       const raw = node.getAttribute("data-cnum");
@@ -20161,8 +20302,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       window.render_inventory = function patchedRenderInventory(reset) {
         ensureInventoryHost();
         if (window.inventory && !reset) {
-          const host2 = document.getElementById(HOST_ID4);
-          if (host2) host2.innerHTML = "";
+          const host4 = document.getElementById(HOST_ID4);
+          if (host4) host4.innerHTML = "";
           window.inventory = false;
           bagRenderedForName = null;
           restoreCharacter();
@@ -21692,8 +21833,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       }
       if (cooltip) {
         stripNativeTitles(el);
-        const host2 = el.parentElement;
-        if (host2) host2.removeAttribute("title");
+        const host4 = el.parentElement;
+        if (host4) host4.removeAttribute("title");
       }
       return () => {
         if (el) el.innerHTML = "";
@@ -32601,8 +32742,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-06T18:55:59.712Z" : "unknown";
+    const version = true ? "0.19.0" : "unknown";
+    const builtAt = true ? "2026-11-06T23:42:58.972Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -34807,7 +34948,7 @@ button.comm-mail__stack-u {
   function CommModalPortal(props) {
     const React = getReact();
     const ReactDOM = getReactDOM();
-    const [host2, setHost] = React.useState(null);
+    const [host4, setHost] = React.useState(null);
     React.useEffect(() => {
       const orphans = document.querySelectorAll("[data-ecu-comm-modal-portal]");
       for (let i = 0; i < orphans.length; i++) {
@@ -34823,8 +34964,8 @@ button.comm-mail__stack-u {
         setHost(null);
       };
     }, []);
-    if (!host2) return null;
-    return ReactDOM.createPortal(props.children, host2);
+    if (!host4) return null;
+    return ReactDOM.createPortal(props.children, host4);
   }
 
   // src/ui/frames/comm/guidedTour/guidedTourCss.ts
@@ -36105,7 +36246,7 @@ button.comm-mail__stack-u {
   function TourPortal(props) {
     const React = getReact();
     const ReactDOM = getReactDOM();
-    const [host2, setHost] = React.useState(null);
+    const [host4, setHost] = React.useState(null);
     React.useEffect(() => {
       const orphans = document.querySelectorAll("[data-ecu-tour-portal]");
       for (let i = 0; i < orphans.length; i++) {
@@ -36121,8 +36262,8 @@ button.comm-mail__stack-u {
         setHost(null);
       };
     }, []);
-    if (!host2) return null;
-    return ReactDOM.createPortal(props.children, host2);
+    if (!host4) return null;
+    return ReactDOM.createPortal(props.children, host4);
   }
 
   // src/ui/frames/comm/guidedTour/GuidedTourOverlay.ts
@@ -36467,15 +36608,15 @@ button.comm-mail__stack-u {
     }
     return out;
   }
-  function applyTourStepEffects(host2, effects, snap) {
+  function applyTourStepEffects(host4, effects, snap) {
     if (!effects) return;
-    if (effects.layoutEdit != null) host2.setLayoutEdit(effects.layoutEdit);
-    if (effects.showMeters && snap.metersHidden) host2.setMetersHidden(false);
-    if (effects.testBars != null) host2.setTestBars(effects.testBars);
-    if (effects.meterAddOpen != null) host2.setMeterAddOpen(effects.meterAddOpen);
-    if (effects.closeCommand) host2.closeCommandPanel();
-    if (effects.closeBag) host2.closeBagPanel();
-    if (effects.refreshHud) host2.refreshCommHud();
+    if (effects.layoutEdit != null) host4.setLayoutEdit(effects.layoutEdit);
+    if (effects.showMeters && snap.metersHidden) host4.setMetersHidden(false);
+    if (effects.testBars != null) host4.setTestBars(effects.testBars);
+    if (effects.meterAddOpen != null) host4.setMeterAddOpen(effects.meterAddOpen);
+    if (effects.closeCommand) host4.closeCommandPanel();
+    if (effects.closeBag) host4.closeBagPanel();
+    if (effects.refreshHud) host4.refreshCommHud();
     if (effects.openMarket) openMarket({});
     if (effects.openBank) openBank({});
     if (effects.bankView) cueBankView(effects.bankView);
@@ -36485,16 +36626,16 @@ button.comm-mail__stack-u {
     if (effects.openPhoneApps) openPhoneApps();
     if (effects.openPhoneShade) openPhoneShade();
   }
-  function restoreTourUi(host2, snap, opts) {
-    host2.setLayoutEdit(snap.layoutEdit);
-    host2.setMetersHidden((opts == null ? void 0 : opts.keepMetersShown) ? false : snap.metersHidden);
-    host2.setMeterAddOpen(snap.meterAddOpen);
-    host2.setTestBars(snap.testBars);
+  function restoreTourUi(host4, snap, opts) {
+    host4.setLayoutEdit(snap.layoutEdit);
+    host4.setMetersHidden((opts == null ? void 0 : opts.keepMetersShown) ? false : snap.metersHidden);
+    host4.setMeterAddOpen(snap.meterAddOpen);
+    host4.setTestBars(snap.testBars);
     const ids = CLOSABLE_PANEL_IDS;
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       const was = snap.panelVisible[id];
-      if (typeof was === "boolean") host2.setPanelVisible(id, was);
+      if (typeof was === "boolean") host4.setPanelVisible(id, was);
     }
   }
   function refreshCommChromeHud() {
@@ -36538,29 +36679,29 @@ button.comm-mail__stack-u {
     if (prep.openBank) out.openBank = true;
     return out;
   }
-  function beginTourSession(host2, tour) {
-    const snap = host2.snapshot();
+  function beginTourSession(host4, tour) {
+    const snap = host4.snapshot();
     const prep = tour.prepare || {};
     const keepMetersShown = !!prep.showMeters;
-    applyTourStepEffects(host2, prepareEffects(prep), snap);
+    applyTourStepEffects(host4, prepareEffects(prep), snap);
     return {
       snap,
-      restore: () => restoreTourUi(host2, snap, { keepMetersShown }),
+      restore: () => restoreTourUi(host4, snap, { keepMetersShown }),
       applyStep: (stepIndex, prevIndex) => {
         if (prevIndex != null && prevIndex !== stepIndex) {
           const prev = tour.steps[prevIndex];
-          if (prev == null ? void 0 : prev.exit) applyTourStepEffects(host2, prev.exit, snap);
+          if (prev == null ? void 0 : prev.exit) applyTourStepEffects(host4, prev.exit, snap);
         }
         const step = tour.steps[stepIndex];
-        if (step == null ? void 0 : step.enter) applyTourStepEffects(host2, step.enter, snap);
+        if (step == null ? void 0 : step.enter) applyTourStepEffects(host4, step.enter, snap);
       }
     };
   }
-  function endTourSession(session, tour, stepIndex, host2) {
+  function endTourSession(session, tour, stepIndex, host4) {
     if (!session) return;
-    if (tour && host2 != null && stepIndex != null && stepIndex >= 0) {
+    if (tour && host4 != null && stepIndex != null && stepIndex >= 0) {
       const step = tour.steps[stepIndex];
-      if (step == null ? void 0 : step.exit) applyTourStepEffects(host2, step.exit, session.snap);
+      if (step == null ? void 0 : step.exit) applyTourStepEffects(host4, step.exit, session.snap);
     }
     session.restore();
   }
@@ -37911,16 +38052,16 @@ button.comm-mail__stack-u {
         }
         sync(ev);
       };
-      const onBlur = () => setAltHeld(false);
+      const onBlur2 = () => setAltHeld(false);
       window.addEventListener("keydown", onKeyDown2, true);
       window.addEventListener("keyup", sync, true);
       window.addEventListener("mousemove", sync, true);
-      window.addEventListener("blur", onBlur);
+      window.addEventListener("blur", onBlur2);
       return () => {
         window.removeEventListener("keydown", onKeyDown2, true);
         window.removeEventListener("keyup", sync, true);
         window.removeEventListener("mousemove", sync, true);
-        window.removeEventListener("blur", onBlur);
+        window.removeEventListener("blur", onBlur2);
       };
     }, []);
     React.useEffect(() => {
@@ -38179,13 +38320,13 @@ button.comm-mail__stack-u {
     if (after === before) {
       return setWorldFov(after);
     }
-    const host2 = window;
-    const map = host2.map;
-    const view = host2.renderer && host2.renderer.view;
+    const host4 = window;
+    const map = host4.map;
+    const view = host4.renderer && host4.renderer.view;
     const realX = map && typeof map.real_x === "number" && Number.isFinite(map.real_x) ? map.real_x : 0;
     const realY = map && typeof map.real_y === "number" && Number.isFinite(map.real_y) ? map.real_y : 0;
-    const w0 = typeof host2.width === "number" && host2.width > 0 ? host2.width : css.w;
-    const h0 = typeof host2.height === "number" && host2.height > 0 ? host2.height : css.h;
+    const w0 = typeof host4.width === "number" && host4.width > 0 ? host4.width : css.w;
+    const h0 = typeof host4.height === "number" && host4.height > 0 ? host4.height : css.h;
     let fracX = 0.5;
     let fracY = 0.5;
     if (view && typeof view.getBoundingClientRect === "function") {
@@ -38197,8 +38338,8 @@ button.comm-mail__stack-u {
     }
     unlockCamera();
     const fov = setWorldFov(after);
-    const w1 = typeof host2.width === "number" && host2.width > 0 ? host2.width : w0;
-    const h1 = typeof host2.height === "number" && host2.height > 0 ? host2.height : h0;
+    const w1 = typeof host4.width === "number" && host4.width > 0 ? host4.width : w0;
+    const h1 = typeof host4.height === "number" && host4.height > 0 ? host4.height : h0;
     if (w1 === w0 && h1 === h0) {
       return fov;
     }
@@ -38901,8 +39042,8 @@ button.comm-mail__stack-u {
     state3.lastHeartAt = now;
     callStartAnimation(sprite, "hearts_single");
   }
-  function tickEnterRangeCue(target, range, host2, state3) {
-    if (host2) {
+  function tickEnterRangeCue(target, range, host4, state3) {
+    if (host4) {
       state3.wasInRange = true;
       return;
     }
@@ -38934,16 +39075,16 @@ button.comm-mail__stack-u {
       return;
     }
     const target = findAnniversaryTarget(entities, status);
-    const host2 = isHostOf(status, target);
+    const host4 = isHostOf(status, target);
     const range = kissRangePx();
     const origin = target ? entityMapXY(target) : status.x != null && status.y != null ? { x: status.x, y: status.y } : null;
     if (!origin) {
       resetAnniversaryKissFx();
       return;
     }
-    const color = host2 ? COLOR_HOST : COLOR_VISITOR;
-    const alpha = host2 ? 0.42 : 0.78;
-    const width = host2 ? 1.5 : 2;
+    const color = host4 ? COLOR_HOST : COLOR_VISITOR;
+    const alpha = host4 ? 0.42 : 0.78;
+    const width = host4 ? 1.5 : 2;
     strokeDashedCircle(
       gfx,
       origin.x,
@@ -38961,10 +39102,10 @@ button.comm-mail__stack-u {
       pulseHearts(
         target,
         now,
-        host2 ? HEART_MS_HOST : HEART_MS_VISITOR,
+        host4 ? HEART_MS_HOST : HEART_MS_VISITOR,
         state3
       );
-      tickEnterRangeCue(target, range, host2, state3);
+      tickEnterRangeCue(target, range, host4, state3);
     }
   }
 
@@ -48799,14 +48940,14 @@ ${parts.map(cssSlice).join("\n")}
     const paint = React.useCallback(
       (full) => {
         var _a;
-        const host2 = hostRef.current;
+        const host4 = hostRef.current;
         const scrollEl = scrollRef.current;
-        const listHost = scrollEl || host2;
+        const listHost = scrollEl || host4;
         if (!listHost) return;
         const p = propsRef.current;
         const app = getMeterAppearance();
-        if (host2) {
-          host2.style.setProperty("--meter-bar-row-h", `${meterBarRowHeightPx()}px`);
+        if (host4) {
+          host4.style.setProperty("--meter-bar-row-h", `${meterBarRowHeightPx()}px`);
         }
         const useTestBars = app.testBars && (p.query.kind === "players" || p.query.kind === "channel" || p.query.kind === "avoidance");
         let result = runMeterQuery(p.query, {
@@ -51350,7 +51491,7 @@ ${parts.map(cssSlice).join("\n")}
       ensure(id, a.name);
     }
   }
-  function laneDataSig(casts, conditions, gearSwaps, filter, start, rosterSig, deathCount, nowMs3 = 0) {
+  function laneDataSig(casts, conditions, gearSwaps, filter, start, rosterSig, deathCount, nowMs4 = 0) {
     const c0 = casts.length ? casts[0].at : 0;
     const c1 = casts.length ? casts[casts.length - 1].at : 0;
     const g1 = gearSwaps.length ? gearSwaps[gearSwaps.length - 1].at : 0;
@@ -51366,7 +51507,7 @@ ${parts.map(cssSlice).join("\n")}
       } else openUnknown++;
       if (c.startedAt > lastCond) lastCond = c.startedAt;
     }
-    const openTick = openUnknown > 0 && nowMs3 > 0 ? `|o${Math.floor(nowMs3 / 250)}` : "";
+    const openTick = openUnknown > 0 && nowMs4 > 0 ? `|o${Math.floor(nowMs4 / 250)}` : "";
     const expTick = maxExpected > 0 ? `|e${Math.floor(maxExpected / 250)}` : "";
     return `${filter}|${start}|${rosterSig}|${deathCount}|${casts.length}:${c0}:${c1}|${conditions.length}:${ended}:${lastCond}|${gearSwaps.length}:${g1}${openTick}${expTick}`;
   }
@@ -51422,8 +51563,8 @@ ${parts.map(cssSlice).join("\n")}
     }
     return start;
   }
-  function timelineHorizonSec(start, nowMs3, casts, conditions) {
-    let end = Math.max(0, (nowMs3 - start) / 1e3);
+  function timelineHorizonSec(start, nowMs4, casts, conditions) {
+    let end = Math.max(0, (nowMs4 - start) / 1e3);
     for (let i = 0; i < casts.length; i++) {
       const c = casts[i];
       const t0 = Math.max(0, (c.at - start) / 1e3);
@@ -51432,12 +51573,12 @@ ${parts.map(cssSlice).join("\n")}
     }
     for (let i = 0; i < conditions.length; i++) {
       const c = conditions[i];
-      const endAt = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs3;
+      const endAt = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs4;
       end = Math.max(end, Math.max(0, (endAt - start) / 1e3));
     }
     return end;
   }
-  function buildLanes(casts, conditions, deaths, gearSwaps, start, filter, names, ctypes, seg, partyFocus, nowMs3 = Date.now()) {
+  function buildLanes(casts, conditions, deaths, gearSwaps, start, filter, names, ctypes, seg, partyFocus, nowMs4 = Date.now()) {
     var _a;
     const byId = {};
     const ensure = (id, fallbackName) => {
@@ -51466,7 +51607,7 @@ ${parts.map(cssSlice).join("\n")}
         if (ck === "debuff" && !wantDebuffs) continue;
         const lane = ensure(c.actorId);
         const t0 = Math.max(0, (c.startedAt - start) / 1e3);
-        const endMs = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs3;
+        const endMs = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs4;
         const t1 = Math.max(t0, (endMs - start) / 1e3);
         lane.blocks.push({
           kind: "condition",
@@ -52102,17 +52243,17 @@ ${parts.map(cssSlice).join("\n")}
         shiftFreezeOkRef.current = true;
         endModFreeze();
       };
-      const onBlur = () => {
+      const onBlur2 = () => {
         shiftHeldRef.current = false;
         endModFreeze();
       };
       window.addEventListener("keydown", onKeyDown2);
       window.addEventListener("keyup", onKeyUp2);
-      window.addEventListener("blur", onBlur);
+      window.addEventListener("blur", onBlur2);
       return () => {
         window.removeEventListener("keydown", onKeyDown2);
         window.removeEventListener("keyup", onKeyUp2);
-        window.removeEventListener("blur", onBlur);
+        window.removeEventListener("blur", onBlur2);
       };
     }, [beginModFreeze, endModFreeze]);
     React.useEffect(() => {
@@ -55463,7 +55604,7 @@ ${parts.map(cssSlice).join("\n")}
   }
   function gridLine(axis, pct, tier, key) {
     const look = tierLook(tier);
-    const host2 = axis === "v" ? {
+    const host4 = axis === "v" ? {
       position: "absolute",
       left: `${pct}%`,
       top: 0,
@@ -55483,7 +55624,7 @@ ${parts.map(cssSlice).join("\n")}
       {
         key,
         className: `comm-layout-grid-line is-${tier}`,
-        style: host2
+        style: host4
       },
       e("div", {
         style: strokeStyle(axis, look.dark, look.dashed, 0)
@@ -60572,8 +60713,8 @@ html.ecu-phone-dock-on body {
   }
 
   // src/ui/frames/abilityTimelineMotion.ts
-  function tickAbilityMotion(host2, now = Date.now()) {
-    const nodes = host2.querySelectorAll("[data-abil-ends]");
+  function tickAbilityMotion(host4, now = Date.now()) {
+    const nodes = host4.querySelectorAll("[data-abil-ends]");
     for (let i = 0; i < nodes.length; i++) {
       const el = nodes[i];
       const ends = Number(el.getAttribute("data-abil-ends"));
@@ -60714,15 +60855,15 @@ html.ecu-phone-dock-on body {
   function useAbilityTimelineMotion(hostRef, hasActive, tickKey) {
     const React = getReact();
     React.useLayoutEffect(() => {
-      const host2 = hostRef.current;
-      if (!host2) return;
-      tickAbilityMotion(host2);
+      const host4 = hostRef.current;
+      if (!host4) return;
+      tickAbilityMotion(host4);
       if (!hasActive) return;
       let raf2 = 0;
       let live2 = true;
       const loop = () => {
         if (!live2) return;
-        tickAbilityMotion(host2);
+        tickAbilityMotion(host4);
         raf2 = window.requestAnimationFrame(loop);
       };
       raf2 = window.requestAnimationFrame(loop);
@@ -62776,8 +62917,8 @@ html.ecu-phone-dock-on body {
     if (a === 172 && b >= 16 && b <= 31) return 60;
     return 80;
   }
-  function isInstallQrHost(host2) {
-    const h = String(host2 || "").trim().toLowerCase();
+  function isInstallQrHost(host4) {
+    const h = String(host4 || "").trim().toLowerCase();
     if (h === "127.0.0.1" || h === "localhost") return true;
     const parts = h.split(".").map((p) => Number(p));
     if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return false;
@@ -62808,12 +62949,12 @@ html.ecu-phone-dock-on body {
     for (let i = 0; i < bases.length; i++) {
       const raw = String(bases[i] || "").replace(/\/$/, "");
       if (!raw) continue;
-      const host2 = hostFromBase(raw);
-      if (!isInstallQrHost(host2)) continue;
+      const host4 = hostFromBase(raw);
+      if (!isInstallQrHost(host4)) continue;
       const url = `${raw}${ECU_LAN_INSTALL_PATH}`;
       if (seen.has(url)) continue;
       seen.add(url);
-      const rank = host2 === "127.0.0.1" || host2 === "localhost" ? 500 : lanIpv4Rank(host2);
+      const rank = host4 === "127.0.0.1" || host4 === "localhost" ? 500 : lanIpv4Rank(host4);
       if (rank >= 900) continue;
       cands.push({ url, rank });
     }
@@ -63793,6 +63934,10 @@ html.ecu-phone-dock-on body {
       label: "Controls"
     },
     {
+      id: settingsSectionId("Experimental"),
+      label: "Experimental"
+    },
+    {
       id: settingsSectionId("Mobile install"),
       label: "Mobile install",
       // Desktop → phone handoff; useless once ECU is already running on the phone.
@@ -63839,6 +63984,223 @@ html.ecu-phone-dock-on body {
     return "joystick side left right thumb camera stick pan phone hand".includes(
       q
     );
+  }
+  function experimentalSectionMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return "fps frame rate cap limit 30 60 performance experimental gpu cpu battery youtube farm draw background tab hidden blur covered scale resolution".includes(
+      q
+    );
+  }
+  function readLiveFpsStats() {
+    const w = window;
+    if (typeof w.__ecuGameFpsCapStats !== "function") return null;
+    try {
+      return w.__ecuGameFpsCapStats();
+    } catch (e2) {
+      return null;
+    }
+  }
+  function GameFpsCapSettingsBlock() {
+    const React = getReact();
+    const [, bump] = React.useState(0);
+    const [stats, setStats] = React.useState(null);
+    React.useEffect(() => {
+      setStats(readLiveFpsStats());
+      const id = window.setInterval(() => setStats(readLiveFpsStats()), 400);
+      return () => window.clearInterval(id);
+    }, []);
+    const refresh = () => {
+      bump((n) => n + 1);
+      setStats(readLiveFpsStats());
+    };
+    const settings = getSettings();
+    const raw = settings.gameFpsCap;
+    const cap = raw === 30 || raw === 60 ? raw : 0;
+    const buttons = [];
+    for (let i = 0; i < GAME_FPS_CAPS.length; i++) {
+      const value = GAME_FPS_CAPS[i];
+      buttons.push(
+        e(
+          "button",
+          {
+            key: "fps-" + value,
+            type: "button",
+            className: cap === value ? "is-on" : "",
+            "aria-pressed": cap === value ? "true" : "false",
+            onClick: () => {
+              patchSettings({ gameFpsCap: value });
+              refresh();
+            }
+          },
+          gameFpsCapLabel(value)
+        )
+      );
+    }
+    const readout = stats ? formatGameFpsReadout({
+      fps: stats.fps,
+      policy: {
+        rate: stats.rate,
+        paused: stats.paused,
+        reason: stats.reason
+      },
+      foreignRaf: stats.foreignRaf
+    }) : "\u2014";
+    const kids = [
+      e(
+        "div",
+        { key: "game-fps-cap", className: "ecu-settings-row" },
+        e(
+          "div",
+          { className: "ecu-settings-row-copy" },
+          e(
+            "span",
+            { className: "ecu-settings-row-label" },
+            "Game FPS cap (while focused)"
+          ),
+          e(
+            "span",
+            { className: "ecu-settings-help" },
+            "Experimental. Limits the stock map draw loop only (not Comm UI). Off keeps the display rate while you are focused. Expect quirks with other FPS scripts."
+          )
+        ),
+        e(
+          "div",
+          {
+            className: "ecu-settings-seg",
+            role: "group",
+            "aria-label": "Game FPS cap"
+          },
+          ...buttons
+        )
+      ),
+      settingsCheckboxRow(
+        "fps-when-hidden",
+        "Cap at 60 when tab is hidden",
+        !!settings.gameFpsCapWhenHidden,
+        (next) => {
+          patchSettings({ gameFpsCapWhenHidden: next });
+          refresh();
+        },
+        {
+          help: "Other tab or minimized. Works even if the focused cap is Off."
+        }
+      ),
+      settingsCheckboxRow(
+        "fps-when-blurred",
+        "Cap at 60 when window is blurred",
+        !!settings.gameFpsCapWhenBlurred,
+        (next) => {
+          patchSettings({ gameFpsCapWhenBlurred: next });
+          refresh();
+        },
+        {
+          help: "Multi-monitor / clicked away but the tab may still be visible."
+        }
+      ),
+      settingsCheckboxRow(
+        "fps-pause-covered",
+        "Pause draws when map is off-screen",
+        !!settings.gameFpsPauseWhenCovered,
+        (next) => {
+          patchSettings({ gameFpsPauseWhenCovered: next });
+          refresh();
+        },
+        {
+          help: "Skips stock paints when the game canvas is scrolled away or fully covered. Keeps the loop alive."
+        }
+      ),
+      e(
+        "div",
+        {
+          key: "game-fps-readout",
+          className: "ecu-settings-row",
+          "data-ecu-fps-readout": "1"
+        },
+        e(
+          "div",
+          { className: "ecu-settings-row-copy" },
+          e("span", { className: "ecu-settings-row-label" }, "Live draw rate"),
+          e(
+            "span",
+            {
+              className: "ecu-settings-help",
+              "data-ecu-fps-readout-text": readout
+            },
+            readout
+          )
+        )
+      )
+    ];
+    if (stats && stats.foreignRaf && stats.foreignRafHint) {
+      kids.push(
+        e(
+          "p",
+          {
+            key: "fps-foreign",
+            className: "ecu-settings-help",
+            "data-ecu-fps-foreign": "1"
+          },
+          stats.foreignRafHint
+        )
+      );
+    }
+    void bump;
+    return e(React.Fragment, null, ...kids);
+  }
+  function GameRenderScaleSettingsBlock() {
+    const React = getReact();
+    const [, bump] = React.useState(0);
+    const settings = getSettings();
+    const scale = normalizeScale(settings.gameRenderScale);
+    const buttons = [];
+    for (let i = 0; i < GAME_RENDER_SCALES.length; i++) {
+      const value = GAME_RENDER_SCALES[i];
+      buttons.push(
+        e(
+          "button",
+          {
+            key: "scale-" + value,
+            type: "button",
+            className: scale === value ? "is-on" : "",
+            "aria-pressed": scale === value ? "true" : "false",
+            onClick: () => {
+              patchSettings({ gameRenderScale: value });
+              bump((n) => n + 1);
+            }
+          },
+          gameRenderScaleLabel(value)
+        )
+      );
+    }
+    void bump;
+    return e(
+      "div",
+      { key: "game-render-scale", className: "ecu-settings-row" },
+      e(
+        "div",
+        { className: "ecu-settings-row-copy" },
+        e("span", { className: "ecu-settings-row-label" }, "Map render scale"),
+        e(
+          "span",
+          { className: "ecu-settings-help" },
+          "Experimental. Lowers PIXI resolution to cut GPU fill. 1\xD7 is stock. Try \xBD if an FPS cap is not enough \u2014 zoom/FOV may look softer. Turn back to 1\xD7 if the map looks wrong."
+        )
+      ),
+      e(
+        "div",
+        {
+          className: "ecu-settings-seg",
+          role: "group",
+          "aria-label": "Map render scale"
+        },
+        ...buttons
+      )
+    );
+  }
+  function normalizeScale(raw) {
+    if (raw === 0.75 || raw === 0.5) return raw;
+    return 1;
   }
   function pushCameraJoystickSideRow(kids, bump) {
     const settings = getSettings();
@@ -63917,6 +64279,7 @@ html.ecu-phone-dock-on body {
       if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
     }
     if (wheelZoomRowMatches(query) || joystickSideRowMatches(query)) total += 1;
+    if (experimentalSectionMatches(query)) total += 1;
     if (installSectionMatches(query)) total += 1;
     if (dataSectionMatches(query)) total += 1;
     return total;
@@ -63990,6 +64353,18 @@ html.ecu-phone-dock-on body {
           )
         );
       }
+    }
+    if (experimentalSectionMatches(query)) {
+      kids.push(settingsSection("Experimental"));
+      kids.push(
+        e(
+          "p",
+          { key: "exp-lead", className: "ecu-settings-help" },
+          "Host hooks for farm machines. Defaults stay Off / 1\xD7. Turn these on only if you are okay debugging odd timing or softer zoom."
+        )
+      );
+      kids.push(e(GameFpsCapSettingsBlock, { key: "fps-block" }));
+      kids.push(e(GameRenderScaleSettingsBlock, { key: "render-scale" }));
     }
     if (installSectionMatches(query)) {
       kids.push(settingsSection("Mobile install"));
@@ -65186,7 +65561,7 @@ html.ecu-phone-dock-on body {
     {
       id: "commUi",
       label: "Comm UI",
-      description: "What's New, server notes, desktop camera controls, mobile install help (desktop only), factory-reset local Comm UI data, and guided tours.",
+      description: "What's New, server notes, desktop camera controls, experimental FPS / render scale, mobile install help (desktop only), factory-reset local Comm UI data, and guided tours.",
       countMatches: countCommUiSettingsMatches,
       subsections: COMM_UI_SUBSECTIONS,
       render: (props) => e(CommUiSettingsPane, {
@@ -65549,10 +65924,10 @@ html.ecu-phone-dock-on body {
   function canEditObservedBag() {
     return canEditObservedGear(window.observing);
   }
-  function isObservedCommBagEvent(host2, ev) {
+  function isObservedCommBagEvent(host4, ev) {
     if (!window.is_comm || !window.observing) return false;
     const target = ev.target;
-    return !!target && host2.contains(target);
+    return !!target && host4.contains(target);
   }
 
   // src/lib/panelClose.ts
@@ -65594,15 +65969,15 @@ html.ecu-phone-dock-on body {
   // src/host/uiInspect.ts
   function uiInspectEntity(entity) {
     if (!entity) return false;
-    const host2 = window;
-    if (typeof host2.ui_inspect !== "function") return false;
-    host2.ui_inspect(entity);
+    const host4 = window;
+    if (typeof host4.ui_inspect !== "function") return false;
+    host4.ui_inspect(entity);
     return true;
   }
   function uiInspectClick(event, entity) {
     event.stopPropagation();
-    const host2 = window;
-    if (typeof host2.btc === "function") host2.btc(event);
+    const host4 = window;
+    if (typeof host4.btc === "function") host4.btc(event);
     return uiInspectEntity(entity);
   }
 
@@ -66829,10 +67204,10 @@ html.ecu-phone-dock-on body {
         const crop = root.querySelector(
           "div[style*='overflow']"
         );
-        const host2 = crop && crop.parentElement || root.querySelector(
+        const host4 = crop && crop.parentElement || root.querySelector(
           "div[style*='position: absolute']"
         ) || root;
-        host2.appendChild(badge);
+        host4.appendChild(badge);
       }
       badge.textContent = text;
       const compact = iconSize < 34;
@@ -66916,10 +67291,10 @@ html.ecu-phone-dock-on body {
   }
   function ensureSkidLoader(wrap, rid) {
     const root = wrap.firstElementChild;
-    const host2 = wrap.querySelector(
+    const host4 = wrap.querySelector(
       "div[style*='position: absolute']"
     ) || wrap.querySelector("div[style*='overflow']") || root;
-    if (!host2) return null;
+    if (!host4) return null;
     const selector = ".skidloader" + rid;
     let loader = wrap.querySelector(selector);
     if (!loader) {
@@ -66929,7 +67304,7 @@ html.ecu-phone-dock-on body {
         "style",
         "position: absolute; bottom: 0px; right: 0px; width: 4px; height: 1px; background-color: yellow"
       );
-      host2.appendChild(loader);
+      host4.appendChild(loader);
     }
     return loader;
   }
@@ -70516,14 +70891,14 @@ html.ecu-phone-dock-on body {
       sheetRoot = null;
     }
   }
-  function appendRows(host2, actions, onDone) {
+  function appendRows(host4, actions, onDone) {
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
       if (action.separatorBefore) {
         const sep = document.createElement("div");
         sep.className = "ecu-phone-action-sheet__sep";
         sep.setAttribute("role", "separator");
-        host2.appendChild(sep);
+        host4.appendChild(sep);
       }
       const hasKids = Array.isArray(action.children) && action.children.length > 0;
       if (hasKids) {
@@ -70559,7 +70934,7 @@ html.ecu-phone-dock-on body {
         appendRows(kids, action.children, onDone);
         group.appendChild(btn2);
         group.appendChild(kids);
-        host2.appendChild(group);
+        host4.appendChild(group);
         continue;
       }
       const btn = document.createElement("button");
@@ -70581,7 +70956,7 @@ html.ecu-phone-dock-on body {
           (_a = action.run) == null ? void 0 : _a.call(action);
         });
       }
-      host2.appendChild(btn);
+      host4.appendChild(btn);
     }
   }
   function showPhoneActionSheet(opts) {
@@ -71583,9 +71958,9 @@ html.ecu-phone-dock-on body {
       title: resolvedItem.name ? String(resolvedItem.name) : "Bag"
     });
   }
-  function resolveInventorySlotNum(start, host2) {
+  function resolveInventorySlotNum(start, host4) {
     let node = start;
-    while (node && host2.contains(node)) {
+    while (node && host4.contains(node)) {
       const cnum = node.getAttribute && node.getAttribute("data-cnum");
       if (cnum != null && cnum !== "") {
         const n = parseInt(cnum, 10);
@@ -71608,8 +71983,8 @@ html.ecu-phone-dock-on body {
     }
     return null;
   }
-  function openBagMenuFromTarget(host2, t, clientX, clientY) {
-    const num = resolveInventorySlotNum(t, host2);
+  function openBagMenuFromTarget(host4, t, clientX, clientY) {
+    const num = resolveInventorySlotNum(t, host4);
     if (num == null || !Number.isFinite(num)) return false;
     const item = observingBagItem(num);
     const fp = fingerprintFromSlot(num, item);
@@ -71617,12 +71992,12 @@ html.ecu-phone-dock-on body {
     showBagItemContextMenu(clientX, clientY, fp, t, item);
     return true;
   }
-  function installBagItemContextMenu(host2) {
+  function installBagItemContextMenu(host4) {
     const onCtx = (ev) => {
       if (ev.shiftKey) return;
       const t = ev.target;
-      if (!t || !host2.contains(t)) return;
-      if (!openBagMenuFromTarget(host2, t, ev.clientX, ev.clientY)) return;
+      if (!t || !host4.contains(t)) return;
+      if (!openBagMenuFromTarget(host4, t, ev.clientX, ev.clientY)) return;
       ev.preventDefault();
       ev.stopPropagation();
     };
@@ -71630,8 +72005,8 @@ html.ecu-phone-dock-on body {
       if (ev.button !== 1) return;
       if (!canEditObservedBag()) return;
       const t = ev.target;
-      if (!t || !host2.contains(t)) return;
-      const num = resolveInventorySlotNum(t, host2);
+      if (!t || !host4.contains(t)) return;
+      const num = resolveInventorySlotNum(t, host4);
       if (num == null || !Number.isFinite(num)) return;
       const item = observingBagItem(num);
       const fp = fingerprintFromSlot(num, item);
@@ -71644,15 +72019,15 @@ html.ecu-phone-dock-on body {
         splitBagCommand(fp, q);
       });
     };
-    host2.addEventListener("contextmenu", onCtx, true);
-    host2.addEventListener("mousedown", onMiddle, true);
+    host4.addEventListener("contextmenu", onCtx, true);
+    host4.addEventListener("mousedown", onMiddle, true);
     let unLong = null;
     if (isCommTouchUi()) {
-      unLong = installLongPress(host2, {
+      unLong = installLongPress(host4, {
         onLongPress: (ev) => {
           const t = ev.target;
-          if (!t || !host2.contains(t)) return;
-          if (openBagMenuFromTarget(host2, t, ev.clientX, ev.clientY)) {
+          if (!t || !host4.contains(t)) return;
+          if (openBagMenuFromTarget(host4, t, ev.clientX, ev.clientY)) {
             ev.preventDefault();
             ev.stopPropagation();
           }
@@ -71660,8 +72035,8 @@ html.ecu-phone-dock-on body {
       });
     }
     return () => {
-      host2.removeEventListener("contextmenu", onCtx, true);
-      host2.removeEventListener("mousedown", onMiddle, true);
+      host4.removeEventListener("contextmenu", onCtx, true);
+      host4.removeEventListener("mousedown", onMiddle, true);
       if (unLong) unLong();
     };
   }
@@ -77069,7 +77444,7 @@ ${ESTIMATE_HINT}`,
     const onScroll = () => {
       if (popup) place();
     };
-    const onBlur = () => {
+    const onBlur2 = () => {
       window.setTimeout(() => {
         const ae = document.activeElement;
         if (popup && ae && popup.contains(ae)) return;
@@ -77079,7 +77454,7 @@ ${ESTIMATE_HINT}`,
     cm.on("change", onChange);
     cm.on("keydown", onKeyDown2);
     cm.on("scroll", onScroll);
-    cm.on("blur", onBlur);
+    cm.on("blur", onBlur2);
     void ensureRunnerApiNames().then(() => {
       if (popup) open();
     });
@@ -77092,7 +77467,7 @@ ${ESTIMATE_HINT}`,
           cm.off("change", onChange);
           cm.off("keydown", onKeyDown2);
           cm.off("scroll", onScroll);
-          cm.off("blur", onBlur);
+          cm.off("blur", onBlur2);
         }
       }
     };
@@ -77107,8 +77482,8 @@ ${ESTIMATE_HINT}`,
   }
   var COMMAND_CM_HEIGHT_PX = 320;
   var COMMAND_CM_MIN_HEIGHT_PX = COMMAND_CM_HEIGHT_PX;
-  function syncCommandCodeMirrorSize(cm, host2) {
-    const measured = Math.floor(host2.clientHeight || 0);
+  function syncCommandCodeMirrorSize(cm, host4) {
+    const measured = Math.floor(host4.clientHeight || 0);
     const h = Math.max(COMMAND_CM_MIN_HEIGHT_PX, measured || COMMAND_CM_HEIGHT_PX);
     cm.setSize("100%", h);
     try {
@@ -77116,18 +77491,18 @@ ${ESTIMATE_HINT}`,
     } catch (e2) {
     }
   }
-  function mountCommandCodeMirror(host2, opts) {
+  function mountCommandCodeMirror(host4, opts) {
     const CodeMirror = getHostCodeMirror();
     if (!CodeMirror) return null;
-    const prevHints = hintsByHost.get(host2);
+    const prevHints = hintsByHost.get(host4);
     if (prevHints) {
       prevHints.dispose();
-      hintsByHost.delete(host2);
+      hintsByHost.delete(host4);
     }
-    while (host2.firstChild) {
-      host2.removeChild(host2.firstChild);
+    while (host4.firstChild) {
+      host4.removeChild(host4.firstChild);
     }
-    const cm = CodeMirror(host2, {
+    const cm = CodeMirror(host4, {
       value: opts.value || "",
       mode: "javascript",
       indentUnit: 4,
@@ -77146,11 +77521,11 @@ ${ESTIMATE_HINT}`,
         },
         "Ctrl-Space": () => {
           var _a;
-          (_a = hintsByHost.get(host2)) == null ? void 0 : _a.open();
+          (_a = hintsByHost.get(host4)) == null ? void 0 : _a.open();
         },
         "Cmd-Space": () => {
           var _a;
-          (_a = hintsByHost.get(host2)) == null ? void 0 : _a.open();
+          (_a = hintsByHost.get(host4)) == null ? void 0 : _a.open();
         }
       }
     });
@@ -77160,24 +77535,24 @@ ${ESTIMATE_HINT}`,
     wrap.style.lineHeight = "1.45";
     wrap.style.boxSizing = "border-box";
     wrap.style.width = "100%";
-    syncCommandCodeMirrorSize(cm, host2);
+    syncCommandCodeMirrorSize(cm, host4);
     cm.on("change", () => {
       opts.onChange(cm.getValue());
     });
     if (typeof cm.getCursor === "function" && typeof cm.replaceRange === "function" && typeof cm.cursorCoords === "function") {
-      hintsByHost.set(host2, attachCommandCodeMirrorHints(cm));
+      hintsByHost.set(host4, attachCommandCodeMirrorHints(cm));
     }
     return cm;
   }
-  function disposeCodeMirror(host2) {
-    if (!host2) return;
-    const hints = hintsByHost.get(host2);
+  function disposeCodeMirror(host4) {
+    if (!host4) return;
+    const hints = hintsByHost.get(host4);
     if (hints) {
       hints.dispose();
-      hintsByHost.delete(host2);
+      hintsByHost.delete(host4);
     }
-    while (host2.firstChild) {
-      host2.removeChild(host2.firstChild);
+    while (host4.firstChild) {
+      host4.removeChild(host4.firstChild);
     }
   }
 
@@ -78135,18 +78510,18 @@ ${ESTIMATE_HINT}`,
     };
     const refreshEditor = () => {
       const cm = cmRef.current;
-      const host2 = editorHostRef.current;
-      if (!cm || !host2) return;
-      syncCommandCodeMirrorSize(cm, host2);
+      const host4 = editorHostRef.current;
+      if (!cm || !host4) return;
+      syncCommandCodeMirrorSize(cm, host4);
     };
     const onRun = () => {
       runCode(readEditorCode(), selectedId2);
     };
     React.useEffect(() => {
       if (!cmAvailable) return;
-      const host2 = editorHostRef.current;
-      if (!host2) return;
-      const cm = mountCommandCodeMirror(host2, {
+      const host4 = editorHostRef.current;
+      if (!host4) return;
+      const cm = mountCommandCodeMirror(host4, {
         value: draftRef.current,
         onChange: (value) => {
           skipCmSyncRef.current = true;
@@ -78160,7 +78535,7 @@ ${ESTIMATE_HINT}`,
       if (cm) {
         try {
           cm.focus();
-          syncCommandCodeMirrorSize(cm, host2);
+          syncCommandCodeMirrorSize(cm, host4);
         } catch (e2) {
         }
       }
@@ -78169,7 +78544,7 @@ ${ESTIMATE_HINT}`,
           syncCommandCodeMirrorSize(cmRef.current, editorHostRef.current);
         }
       }) : null;
-      if (ro) ro.observe(host2);
+      if (ro) ro.observe(host4);
       const onViewport = () => {
         window.requestAnimationFrame(() => refreshEditor());
       };
@@ -78180,7 +78555,7 @@ ${ESTIMATE_HINT}`,
         if (ro) ro.disconnect();
         window.removeEventListener("resize", onViewport);
         if (vv) vv.removeEventListener("resize", onViewport);
-        disposeCodeMirror(host2);
+        disposeCodeMirror(host4);
         cmRef.current = null;
       };
     }, [cmAvailable]);
@@ -81625,9 +82000,9 @@ ${ESTIMATE_HINT}`,
   var TRADE_DELIST_CLASS = "is-trade-delist-target";
   var BAG_SWAP_TARGET_CLASS = "is-bag-swap-target";
   var hoveredSwapSlotEl = null;
-  function findBagSlotElement(host2, ev) {
+  function findBagSlotElement(host4, ev) {
     let el = ev.target;
-    while (el && el !== host2) {
+    while (el && el !== host4) {
       if (el.hasAttribute("data-cnum")) return el;
       el = el.parentElement;
     }
@@ -81644,31 +82019,31 @@ ${ESTIMATE_HINT}`,
   function clearBagSwapHover() {
     setBagSwapHover(null);
   }
-  function resolveDragSourceSlot(transferId, host2) {
+  function resolveDragSourceSlot(transferId, host4) {
     if (!transferId) return null;
     const ecuMatch = /^inv:(\d+)$/.exec(transferId);
     if (ecuMatch) return parseInt(ecuMatch[1], 10);
     const el = document.getElementById(transferId);
-    if (!el || !host2.contains(el)) return null;
-    return resolveInventorySlotNum(el, host2);
+    if (!el || !host4.contains(el)) return null;
+    return resolveInventorySlotNum(el, host4);
   }
-  function readDragSourceSlot(ev, host2) {
+  function readDragSourceSlot(ev, host4) {
     const fromPayload = readBagDragPayload(ev);
     if (fromPayload != null) return fromPayload;
     const dt = ev.dataTransfer;
     if (!dt) return null;
-    return resolveDragSourceSlot(dt.getData("text") || "", host2);
+    return resolveDragSourceSlot(dt.getData("text") || "", host4);
   }
-  function setTradeDelistHover(host2, on) {
-    if (on) host2.classList.add(TRADE_DELIST_CLASS);
-    else host2.classList.remove(TRADE_DELIST_CLASS);
+  function setTradeDelistHover(host4, on) {
+    if (on) host4.classList.add(TRADE_DELIST_CLASS);
+    else host4.classList.remove(TRADE_DELIST_CLASS);
   }
-  function installBagDragDrop(host2) {
+  function installBagDragDrop(host4) {
     const onDragStart = (ev) => {
       if (!canEditObservedBag()) return;
       const target = ev.target;
-      if (!target || !host2.contains(target)) return;
-      const fromSlot = resolveInventorySlotNum(target, host2);
+      if (!target || !host4.contains(target)) return;
+      const fromSlot = resolveInventorySlotNum(target, host4);
       if (fromSlot == null || !Number.isFinite(fromSlot)) {
         ev.preventDefault();
         return;
@@ -81693,15 +82068,15 @@ ${ESTIMATE_HINT}`,
         ev.preventDefault();
         if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
         clearBagSwapHover();
-        setTradeDelistHover(host2, true);
+        setTradeDelistHover(host4, true);
         return;
       }
-      setTradeDelistHover(host2, false);
+      setTradeDelistHover(host4, false);
       if (hasBagDragPayload(ev)) {
         ev.preventDefault();
         if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
-        const slotEl = findBagSlotElement(host2, ev);
-        const toSlot = slotEl != null ? resolveInventorySlotNum(slotEl, host2) : null;
+        const slotEl = findBagSlotElement(host4, ev);
+        const toSlot = slotEl != null ? resolveInventorySlotNum(slotEl, host4) : null;
         const fromSlot = readBagDragPayload(ev);
         if (slotEl && toSlot != null && fromSlot != null && toSlot !== fromSlot) {
           setBagSwapHover(slotEl);
@@ -81713,68 +82088,68 @@ ${ESTIMATE_HINT}`,
       clearBagSwapHover();
     };
     const onDragLeave = (ev) => {
-      if (!host2.contains(ev.relatedTarget)) {
-        setTradeDelistHover(host2, false);
+      if (!host4.contains(ev.relatedTarget)) {
+        setTradeDelistHover(host4, false);
         clearBagSwapHover();
       }
     };
     const onDrop = (ev) => {
       var _a, _b;
-      setTradeDelistHover(host2, false);
+      setTradeDelistHover(host4, false);
       clearBagSwapHover();
-      if (isObservedCommBagEvent(host2, ev)) {
+      if (isObservedCommBagEvent(host4, ev)) {
         ev.preventDefault();
         ev.stopPropagation();
       }
       if (!canEditObservedBag()) return;
       const tradeSlot = readTradeDragPayload(ev);
       if (tradeSlot) {
-        if (!host2.contains(ev.target)) return;
+        if (!host4.contains(ev.target)) return;
         const obs = window.observing;
         const listing = (_b = (_a = obs == null ? void 0 : obs.slots) == null ? void 0 : _a[tradeSlot]) != null ? _b : null;
         handleBagDropOnTradeSlotDelist(tradeSlot, listing != null ? listing : null);
         return;
       }
       const target = ev.target;
-      if (!target || !host2.contains(target)) return;
-      const toSlot = resolveInventorySlotNum(target, host2);
+      if (!target || !host4.contains(target)) return;
+      const toSlot = resolveInventorySlotNum(target, host4);
       if (toSlot == null || !Number.isFinite(toSlot)) return;
-      const fromSlot = readDragSourceSlot(ev, host2);
+      const fromSlot = readDragSourceSlot(ev, host4);
       if (fromSlot == null || !Number.isFinite(fromSlot) || fromSlot === toSlot) {
         return;
       }
       if (!observingBagItem(fromSlot)) return;
       invSwapCommand(fromSlot, toSlot);
     };
-    host2.addEventListener("dragstart", onDragStart, true);
-    host2.addEventListener("dragover", onDragOver, true);
-    host2.addEventListener("dragleave", onDragLeave, true);
-    host2.addEventListener("drop", onDrop, true);
+    host4.addEventListener("dragstart", onDragStart, true);
+    host4.addEventListener("dragover", onDragOver, true);
+    host4.addEventListener("dragleave", onDragLeave, true);
+    host4.addEventListener("drop", onDrop, true);
     document.addEventListener("dragend", onDragEnd, true);
     return () => {
-      host2.removeEventListener("dragstart", onDragStart, true);
-      host2.removeEventListener("dragover", onDragOver, true);
-      host2.removeEventListener("dragleave", onDragLeave, true);
-      host2.removeEventListener("drop", onDrop, true);
+      host4.removeEventListener("dragstart", onDragStart, true);
+      host4.removeEventListener("dragover", onDragOver, true);
+      host4.removeEventListener("dragleave", onDragLeave, true);
+      host4.removeEventListener("drop", onDrop, true);
       document.removeEventListener("dragend", onDragEnd, true);
       setActiveBagDragSlot(null);
-      setTradeDelistHover(host2, false);
+      setTradeDelistHover(host4, false);
       clearBagSwapHover();
     };
   }
 
   // src/ui/bag/bagItemCooltip.ts
-  function slotRoot(host2, num) {
-    const nodes = host2.querySelectorAll("[data-cnum]");
+  function slotRoot(host4, num) {
+    const nodes = host4.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       if (node.getAttribute("data-cnum") === String(num)) return node;
     }
     const byId = document.getElementById("citem" + num);
-    if (byId && host2.contains(byId)) return byId;
+    if (byId && host4.contains(byId)) return byId;
     return null;
   }
-  function installBagItemCooltip(host2) {
+  function installBagItemCooltip(host4) {
     if (isCommTouchUi()) return () => {
     };
     let activeSlot = null;
@@ -81792,7 +82167,7 @@ ${ESTIMATE_HINT}`,
         dismiss();
         return;
       }
-      const root = slotRoot(host2, num);
+      const root = slotRoot(host4, num);
       if (root) stripNativeTitles(root);
       const key = "bag:" + num + ":" + item.name;
       if (activeSlot === num && activeKey2 === key && handlers) {
@@ -81817,39 +82192,39 @@ ${ESTIMATE_HINT}`,
     };
     const onOver = (ev) => {
       const t = ev.target;
-      if (!t || !host2.contains(t)) return;
-      const num = resolveInventorySlotNum(t, host2);
+      if (!t || !host4.contains(t)) return;
+      const num = resolveInventorySlotNum(t, host4);
       if (num == null || !Number.isFinite(num)) return;
       showForSlot(num, ev);
     };
     const onMove = (ev) => {
       if (activeSlot == null || !handlers) return;
       const t = ev.target;
-      if (!t || !host2.contains(t)) return;
-      const num = resolveInventorySlotNum(t, host2);
+      if (!t || !host4.contains(t)) return;
+      const num = resolveInventorySlotNum(t, host4);
       if (num !== activeSlot) return;
       handlers.onMouseMove(ev);
     };
     const onOut = (ev) => {
       if (activeSlot == null) return;
       const related = ev.relatedTarget;
-      const root = slotRoot(host2, activeSlot);
+      const root = slotRoot(host4, activeSlot);
       if (root && related && root.contains(related)) return;
-      if (related && host2.contains(related)) {
-        const next = resolveInventorySlotNum(related, host2);
+      if (related && host4.contains(related)) {
+        const next = resolveInventorySlotNum(related, host4);
         if (next === activeSlot) return;
         if (next != null) return;
       }
       dismiss();
     };
-    host2.addEventListener("pointerover", onOver);
-    host2.addEventListener("pointermove", onMove);
-    host2.addEventListener("pointerout", onOut);
+    host4.addEventListener("pointerover", onOver);
+    host4.addEventListener("pointermove", onMove);
+    host4.addEventListener("pointerout", onOut);
     return () => {
       dismiss();
-      host2.removeEventListener("pointerover", onOver);
-      host2.removeEventListener("pointermove", onMove);
-      host2.removeEventListener("pointerout", onOut);
+      host4.removeEventListener("pointerover", onOver);
+      host4.removeEventListener("pointermove", onMove);
+      host4.removeEventListener("pointerout", onOut);
     };
   }
 
@@ -85092,7 +85467,7 @@ ${ESTIMATE_HINT}`,
     if (n >= 1e4) return Math.floor(n / 1e3) + "k";
     return String(n);
   }
-  function mountItemIcon(host2, opts) {
+  function mountItemIcon(host4, opts) {
     const html = itemInstanceHtml(opts.name, {
       level: opts.level,
       // Tile chrome paints its own ×qty — don't nest stock q pip.
@@ -85101,8 +85476,8 @@ ${ESTIMATE_HINT}`,
       nativeTitle: true,
       bare: true
     });
-    host2.innerHTML = html || "";
-    const stockBadges = host2.querySelectorAll(".iqui, .iuui");
+    host4.innerHTML = html || "";
+    const stockBadges = host4.querySelectorAll(".iqui, .iuui");
     for (let i = 0; i < stockBadges.length; i++) {
       stockBadges[i].style.display = "none";
     }
@@ -85561,7 +85936,7 @@ ${ESTIMATE_HINT}`,
       chanceBox
     };
   }
-  function fillMini(host2, item, opts) {
+  function fillMini(host4, item, opts) {
     const wrap = document.createElement("div");
     wrap.className = "ecu-upg__mini-wrap";
     const mini = document.createElement("button");
@@ -85603,7 +85978,7 @@ ${ESTIMATE_HINT}`,
       key.title = item.name;
       wrap.appendChild(key);
     }
-    host2.appendChild(wrap);
+    host4.appendChild(wrap);
   }
   function paintTrialResult(trial, item, nextLevel) {
     trial.result.innerHTML = "";
@@ -85630,8 +86005,8 @@ ${ESTIMATE_HINT}`,
     if (pick.buy) return { slot: -1, name: pick.name };
     return fpFromPick(pick);
   }
-  function setTilesScrollMode(host2, count) {
-    host2.classList.toggle("is-scroll", count > 6);
+  function setTilesScrollMode(host4, count) {
+    host4.classList.toggle("is-scroll", count > 6);
   }
   function pulseSection(section3) {
     if (!section3) return;
@@ -85647,10 +86022,10 @@ ${ESTIMATE_HINT}`,
     key.title = name;
     wrap.appendChild(key);
   }
-  function appendScrollTiles(host2, scrolls, selectedId2, onPick, gold, opts) {
-    host2.innerHTML = "";
+  function appendScrollTiles(host4, scrolls, selectedId2, onPick, gold, opts) {
+    host4.innerHTML = "";
     const allowNone = !!(opts && opts.allowNone);
-    setTilesScrollMode(host2, scrolls.length + (allowNone ? 1 : 0));
+    setTilesScrollMode(host4, scrolls.length + (allowNone ? 1 : 0));
     if (allowNone) {
       const noneWrap = document.createElement("div");
       noneWrap.className = "ecu-upg__tile-wrap";
@@ -85661,14 +86036,14 @@ ${ESTIMATE_HINT}`,
       none.textContent = "None";
       none.addEventListener("click", () => onPick(null));
       noneWrap.appendChild(none);
-      host2.appendChild(noneWrap);
+      host4.appendChild(noneWrap);
     }
     if (!scrolls.length) {
       if (!allowNone) {
         const empty2 = document.createElement("div");
         empty2.className = "ecu-upg__empty";
         empty2.textContent = "No compatible scrolls in bag or at a vendor.";
-        host2.appendChild(empty2);
+        host4.appendChild(empty2);
       }
       return;
     }
@@ -85715,12 +86090,12 @@ ${ESTIMATE_HINT}`,
       });
       wrap.appendChild(btn);
       appendTileKey(wrap, s.name);
-      host2.appendChild(wrap);
+      host4.appendChild(wrap);
     }
   }
-  function appendOfferingTiles(host2, offerings, selectedId2, onPick, gold) {
-    host2.innerHTML = "";
-    setTilesScrollMode(host2, offerings.length + 1);
+  function appendOfferingTiles(host4, offerings, selectedId2, onPick, gold) {
+    host4.innerHTML = "";
+    setTilesScrollMode(host4, offerings.length + 1);
     const noneWrap = document.createElement("div");
     noneWrap.className = "ecu-upg__tile-wrap";
     const none = document.createElement("button");
@@ -85730,7 +86105,7 @@ ${ESTIMATE_HINT}`,
     none.textContent = "None";
     none.addEventListener("click", () => onPick(null));
     noneWrap.appendChild(none);
-    host2.appendChild(noneWrap);
+    host4.appendChild(noneWrap);
     for (let i = 0; i < offerings.length; i++) {
       const o = offerings[i];
       const id = shrinePickId(o);
@@ -85765,12 +86140,12 @@ ${ESTIMATE_HINT}`,
       });
       wrap.appendChild(btn);
       appendTileKey(wrap, o.name);
-      host2.appendChild(wrap);
+      host4.appendChild(wrap);
     }
   }
-  function appendPartnerTiles(host2, partners, selected, onToggle) {
-    host2.innerHTML = "";
-    setTilesScrollMode(host2, partners.length);
+  function appendPartnerTiles(host4, partners, selected, onToggle) {
+    host4.innerHTML = "";
+    setTilesScrollMode(host4, partners.length);
     for (let i = 0; i < partners.length; i++) {
       const p = partners[i];
       const btn = document.createElement("button");
@@ -85790,7 +86165,7 @@ ${ESTIMATE_HINT}`,
       });
       btn.appendChild(icon);
       btn.addEventListener("click", () => onToggle(p.slot));
-      host2.appendChild(btn);
+      host4.appendChild(btn);
     }
   }
   var ENTER_CONFIRM_BELOW = 0.5;
@@ -85836,21 +86211,21 @@ ${ESTIMATE_HINT}`,
     hint.appendChild(btn);
   }
   function installBagPickClick(onSlot) {
-    const host2 = document.getElementById("bottomleftcorner");
-    if (!host2) return () => {
+    const host4 = document.getElementById("bottomleftcorner");
+    if (!host4) return () => {
     };
     const onClick = (ev) => {
       if (ev.button !== 0) return;
       const t = ev.target;
-      if (!t || !host2.contains(t)) return;
-      const num = resolveInventorySlotNum(t, host2);
+      if (!t || !host4.contains(t)) return;
+      const num = resolveInventorySlotNum(t, host4);
       if (num == null || !Number.isFinite(num)) return;
       if (!onSlot(num)) return;
       ev.preventDefault();
       ev.stopPropagation();
     };
-    host2.addEventListener("click", onClick, true);
-    return () => host2.removeEventListener("click", onClick, true);
+    host4.addEventListener("click", onClick, true);
+    return () => host4.removeEventListener("click", onClick, true);
   }
   function bindChanceUi(trial) {
     return {
@@ -87035,7 +87410,7 @@ ${ESTIMATE_HINT}`,
     if (offer.cost > 0) text += " \xB7 " + formatCraftGold(offer.cost);
     return text;
   }
-  function mountCraftRecipeLabel(host2, offer, text) {
+  function mountCraftRecipeLabel(host4, offer, text) {
     const row3 = document.createElement("div");
     row3.className = "comm-bag-ctx__craft";
     const out = document.createElement("span");
@@ -87066,7 +87441,7 @@ ${ESTIMATE_HINT}`,
     if (offer.ingredients.length) body.appendChild(ings);
     row3.appendChild(out);
     row3.appendChild(body);
-    host2.appendChild(row3);
+    host4.appendChild(row3);
   }
   function buildStationBagMenuActions(ctx) {
     if (!canEditObservedBag()) return [];
@@ -87223,7 +87598,7 @@ ${ESTIMATE_HINT}`,
         title: craftTitle(offer),
         separatorBefore: first,
         disabled: !canCraft,
-        mountLabel: (host2) => mountCraftRecipeLabel(host2, offer, text),
+        mountLabel: (host4) => mountCraftRecipeLabel(host4, offer, text),
         run: () => {
           autoCraftCommand(offer.output, offer.station);
         }
@@ -87251,7 +87626,7 @@ ${ESTIMATE_HINT}`,
           label: text,
           title: craftTitle(offer),
           disabled: !canCraft,
-          mountLabel: (host2) => mountCraftRecipeLabel(host2, offer, text),
+          mountLabel: (host4) => mountCraftRecipeLabel(host4, offer, text),
           run: () => {
             autoCraftCommand(offer.output, offer.station);
           }
@@ -88314,10 +88689,10 @@ ${ESTIMATE_HINT}`,
         setCommandPending(isObserverCommandPending());
         setSortRunning(isBagSortRunning());
       });
-      const host2 = ensureInventoryHost();
-      const unsubMenu = installBagItemContextMenu(host2);
-      const unsubTip = installBagItemCooltip(host2);
-      const unsubDrag = installBagDragDrop(host2);
+      const host4 = ensureInventoryHost();
+      const unsubMenu = installBagItemContextMenu(host4);
+      const unsubTip = installBagItemCooltip(host4);
+      const unsubDrag = installBagDragDrop(host4);
       return () => {
         unsubInv();
         unsubSync();
@@ -102221,6 +102596,475 @@ ${ESTIMATE_HINT}`,
     }, 250);
   }
 
+  // src/host/gameFpsCap.ts
+  var WRAP_MARK = "__ecuGameFpsCapWrap";
+  var FPS_WINDOW_MS = 1e3;
+  var installed12 = false;
+  var stockDraw = null;
+  var currentOpts = {
+    cap: GAME_FPS_CAP_OFF,
+    whenHidden: false,
+    whenBlurred: false,
+    pauseWhenCovered: false
+  };
+  var nextDueMs = 0;
+  var skipScheduled = false;
+  var pollId = null;
+  var reassertId = null;
+  var statsRuns = 0;
+  var statsSkips = 0;
+  var statsForced = 0;
+  var runTimestamps = [];
+  var rafPatched = false;
+  var nativeRaf = null;
+  var nativeRafRaw = null;
+  var nativeCancelRaw = null;
+  var bgState = emptyGameFpsCapBg();
+  var bgOverride = null;
+  var windowBlurred = false;
+  var canvasCovered = false;
+  var coverObserver = null;
+  var foreignRaf = false;
+  var foreignRafHint = null;
+  function host2() {
+    return window;
+  }
+  function nowMs3() {
+    return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+  }
+  function liveBg() {
+    const hidden = typeof document !== "undefined" && !!document.hidden;
+    const base = {
+      hidden,
+      blurred: windowBlurred && !hidden,
+      covered: canvasCovered
+    };
+    if (!bgOverride) return base;
+    return {
+      hidden: bgOverride.hidden != null ? bgOverride.hidden : base.hidden,
+      blurred: bgOverride.blurred != null ? bgOverride.blurred : base.blurred,
+      covered: bgOverride.covered != null ? bgOverride.covered : base.covered
+    };
+  }
+  function readOptsFromSettings() {
+    const s = getSettings();
+    return {
+      cap: normalizeGameFpsCap(s.gameFpsCap),
+      whenHidden: !!s.gameFpsCapWhenHidden,
+      whenBlurred: !!s.gameFpsCapWhenBlurred,
+      pauseWhenCovered: !!s.gameFpsPauseWhenCovered
+    };
+  }
+  function syncOptsFromSettings() {
+    currentOpts = readOptsFromSettings();
+  }
+  function currentPolicy() {
+    bgState = liveBg();
+    return resolveGameFpsDrawPolicy(currentOpts, bgState);
+  }
+  function noteRun(ts) {
+    runTimestamps.push(ts);
+    const cut = ts - FPS_WINDOW_MS;
+    while (runTimestamps.length && runTimestamps[0] < cut) {
+      runTimestamps.shift();
+    }
+  }
+  function rollingFps() {
+    if (runTimestamps.length < 2) {
+      return runTimestamps.length > 0 ? runTimestamps.length : 0;
+    }
+    const first = runTimestamps[0];
+    const last = runTimestamps[runTimestamps.length - 1];
+    const span = last - first;
+    if (!(span > 0)) return runTimestamps.length;
+    return (runTimestamps.length - 1) * 1e3 / span;
+  }
+  function isOurWrap(fn) {
+    return typeof fn === "function" && !!fn[WRAP_MARK];
+  }
+  function runStockDraw(thisArg, args) {
+    if (!stockDraw) return void 0;
+    const forced = isForcedDrawArgs(args);
+    const policy = currentPolicy();
+    const interval = gameFpsCapIntervalMs(policy.rate);
+    const decision = shouldRunDrawFrame({
+      nowMs: nowMs3(),
+      nextDueMs,
+      intervalMs: interval,
+      forced,
+      paused: policy.paused
+    });
+    nextDueMs = decision.nextDueMs;
+    if (!decision.run) {
+      statsSkips += 1;
+      scheduleSkipRetry(policy.paused ? 250 : 0);
+      return void 0;
+    }
+    if (!(interval > 0) && !policy.paused) {
+    }
+    if (forced) statsForced += 1;
+    statsRuns += 1;
+    noteRun(nowMs3());
+    return stockDraw.apply(thisArg, args);
+  }
+  function scheduleSkipRetry(minDelayMs) {
+    if (skipScheduled || !nativeRaf) return;
+    skipScheduled = true;
+    const fire2 = () => {
+      skipScheduled = false;
+      const w = host2();
+      try {
+        runStockDraw(w, []);
+      } catch (e2) {
+      }
+    };
+    if (minDelayMs > 0 && typeof window.setTimeout === "function") {
+      window.setTimeout(() => nativeRaf(fire2), minDelayMs);
+      return;
+    }
+    nativeRaf(fire2);
+  }
+  function wrappedDraw(...args) {
+    return runStockDraw(this, args);
+  }
+  wrappedDraw[WRAP_MARK] = true;
+  function patchRaf() {
+    if (rafPatched || typeof window === "undefined") return;
+    if (typeof window.requestAnimationFrame !== "function") return;
+    nativeRafRaw = window.requestAnimationFrame;
+    nativeCancelRaw = typeof window.cancelAnimationFrame === "function" ? window.cancelAnimationFrame : null;
+    nativeRaf = nativeRafRaw.bind(window);
+    rafPatched = true;
+    window.requestAnimationFrame = function ecuFpsCapRaf(cb) {
+      if (stockDraw && typeof cb === "function" && cb === stockDraw) {
+        return nativeRaf(function ecuFpsCapTick(time) {
+          void time;
+          runStockDraw(host2(), []);
+        });
+      }
+      return nativeRaf(cb);
+    };
+  }
+  function unpatchRaf() {
+    if (!rafPatched || !nativeRafRaw) return;
+    window.requestAnimationFrame = nativeRafRaw;
+    if (nativeCancelRaw) window.cancelAnimationFrame = nativeCancelRaw;
+    rafPatched = false;
+    nativeRaf = null;
+    nativeRafRaw = null;
+    nativeCancelRaw = null;
+    skipScheduled = false;
+  }
+  function captureStockIfNeeded(w) {
+    if (typeof w.draw !== "function") return false;
+    if (isOurWrap(w.draw)) return !!stockDraw;
+    if (!stockDraw) stockDraw = w.draw;
+    return true;
+  }
+  function needsCap() {
+    return gameFpsCapNeedsHook(currentOpts);
+  }
+  function applyCap(w) {
+    if (!needsCap()) {
+      unpatchRaf();
+      if (isOurWrap(w.draw) && stockDraw) w.draw = stockDraw;
+      nextDueMs = 0;
+      skipScheduled = false;
+      return;
+    }
+    if (!captureStockIfNeeded(w)) return;
+    patchRaf();
+    if (!isOurWrap(w.draw)) w.draw = wrappedDraw;
+  }
+  function refreshPolicyPhase() {
+    nextDueMs = 0;
+    applyCap(host2());
+    if (needsCap()) ensureCoverObserver();
+    if (needsCap() && nativeRaf && !skipScheduled) {
+      scheduleSkipRetry(0);
+    }
+  }
+  function onFocus() {
+    windowBlurred = false;
+    refreshPolicyPhase();
+  }
+  function onBlur() {
+    windowBlurred = true;
+    refreshPolicyPhase();
+  }
+  function onVisibility() {
+    refreshPolicyPhase();
+  }
+  function findGameCanvas() {
+    const w = host2();
+    const view = w.renderer && w.renderer.view;
+    if (view && typeof view.getBoundingClientRect === "function") {
+      return view;
+    }
+    if (typeof document === "undefined") return null;
+    return document.querySelector("canvas");
+  }
+  function ensureCoverObserver() {
+    if (coverObserver || typeof IntersectionObserver !== "function") return;
+    const canvas = findGameCanvas();
+    if (!canvas) return;
+    coverObserver = new IntersectionObserver(
+      (entries) => {
+        let covered = true;
+        for (let i = 0; i < entries.length; i++) {
+          if (entries[i].intersectionRatio > 0.02) {
+            covered = false;
+            break;
+          }
+        }
+        if (covered === canvasCovered) return;
+        canvasCovered = covered;
+        refreshPolicyPhase();
+      },
+      { threshold: [0, 0.02, 0.1, 1] }
+    );
+    coverObserver.observe(canvas);
+  }
+  function scanForeignRaf() {
+    const w = host2();
+    if (w.__raf_orig) {
+      foreignRaf = true;
+      foreignRafHint = "Another script saved __raf_orig (startup FPS cap). ECU uses a draw-only shim \u2014 disable one to avoid stacking.";
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const raf2 = rafPatched && nativeRafRaw ? nativeRafRaw : window.requestAnimationFrame;
+    if (detectForeignRafWrapper(raf2)) {
+      foreignRaf = true;
+      foreignRafHint = "requestAnimationFrame is already wrapped. ECU still caps stock draw only; expect odd timing if another limiter is active.";
+      return;
+    }
+    foreignRaf = false;
+    foreignRafHint = null;
+  }
+  function setGameFpsCap(raw, opts) {
+    return setGameFpsCapOptions({ cap: normalizeGameFpsCap(raw) }, opts).cap;
+  }
+  function setGameFpsCapOptions(partial, opts) {
+    const next = { ...currentOpts };
+    if (partial.cap != null) next.cap = normalizeGameFpsCap(partial.cap);
+    if (typeof partial.whenHidden === "boolean") {
+      next.whenHidden = partial.whenHidden;
+    }
+    if (typeof partial.whenBlurred === "boolean") {
+      next.whenBlurred = partial.whenBlurred;
+    }
+    if (typeof partial.pauseWhenCovered === "boolean") {
+      next.pauseWhenCovered = partial.pauseWhenCovered;
+    }
+    currentOpts = next;
+    const w = host2();
+    if (typeof w.draw === "function") applyCap(w);
+    if (needsCap()) ensureCoverObserver();
+    if ((opts == null ? void 0 : opts.persist) !== false) {
+      const patch = {};
+      if (partial.cap != null) patch.gameFpsCap = next.cap;
+      if (typeof partial.whenHidden === "boolean") {
+        patch.gameFpsCapWhenHidden = next.whenHidden;
+      }
+      if (typeof partial.whenBlurred === "boolean") {
+        patch.gameFpsCapWhenBlurred = next.whenBlurred;
+      }
+      if (typeof partial.pauseWhenCovered === "boolean") {
+        patch.gameFpsPauseWhenCovered = next.pauseWhenCovered;
+      }
+      if (Object.keys(patch).length) patchSettings(patch);
+    } else {
+      refreshPolicyPhase();
+    }
+    return { ...currentOpts };
+  }
+  function getGameFpsCap() {
+    return currentOpts.cap;
+  }
+  function getGameFpsCapStats() {
+    const policy = currentPolicy();
+    return {
+      cap: currentOpts.cap,
+      whenHidden: currentOpts.whenHidden,
+      whenBlurred: currentOpts.whenBlurred,
+      pauseWhenCovered: currentOpts.pauseWhenCovered,
+      rate: policy.rate,
+      paused: policy.paused,
+      reason: policy.reason,
+      runs: statsRuns,
+      skips: statsSkips,
+      forced: statsForced,
+      fps: rollingFps(),
+      bg: { ...bgState },
+      foreignRaf,
+      foreignRafHint
+    };
+  }
+  function resetGameFpsCapStats() {
+    statsRuns = 0;
+    statsSkips = 0;
+    statsForced = 0;
+    runTimestamps.length = 0;
+  }
+  function onSettingsEvent(ev) {
+    const detail = ev.detail;
+    if (!detail || typeof detail !== "object") return;
+    const d = detail;
+    if (!("gameFpsCap" in d) && !("gameFpsCapWhenHidden" in d) && !("gameFpsCapWhenBlurred" in d) && !("gameFpsPauseWhenCovered" in d)) {
+      return;
+    }
+    syncOptsFromSettings();
+    if ("gameFpsCap" in d) {
+      currentOpts = {
+        ...currentOpts,
+        cap: normalizeGameFpsCap(d.gameFpsCap)
+      };
+    }
+    if (typeof d.gameFpsCapWhenHidden === "boolean") {
+      currentOpts = { ...currentOpts, whenHidden: d.gameFpsCapWhenHidden };
+    }
+    if (typeof d.gameFpsCapWhenBlurred === "boolean") {
+      currentOpts = { ...currentOpts, whenBlurred: d.gameFpsCapWhenBlurred };
+    }
+    if (typeof d.gameFpsPauseWhenCovered === "boolean") {
+      currentOpts = {
+        ...currentOpts,
+        pauseWhenCovered: d.gameFpsPauseWhenCovered
+      };
+    }
+    refreshPolicyPhase();
+  }
+  function tryBindDraw() {
+    const w = host2();
+    if (typeof w.draw !== "function") return false;
+    applyCap(w);
+    if (needsCap()) ensureCoverObserver();
+    return true;
+  }
+  function reassertWrap() {
+    if (!needsCap()) return;
+    const w = host2();
+    if (typeof w.draw !== "function") return;
+    if (!isOurWrap(w.draw) || !rafPatched) applyCap(w);
+    ensureCoverObserver();
+  }
+  function installGameFpsCap() {
+    if (installed12) return;
+    installed12 = true;
+    const w = host2();
+    w.__ecuGameFpsCapInstalled = true;
+    w.__ecuSetGameFpsCap = (cap) => setGameFpsCap(cap);
+    w.__ecuSetGameFpsCapOptions = (partial) => setGameFpsCapOptions(partial);
+    w.__ecuGetGameFpsCap = getGameFpsCap;
+    w.__ecuGameFpsCapStats = getGameFpsCapStats;
+    w.__ecuResetGameFpsCapStats = resetGameFpsCapStats;
+    w.__ecuSetGameFpsCapBgForTests = (bg) => {
+      bgOverride = bg;
+      refreshPolicyPhase();
+    };
+    syncOptsFromSettings();
+    scanForeignRaf();
+    if (typeof window !== "undefined") {
+      window.addEventListener("ecu:settings", onSettingsEvent);
+      window.addEventListener("focus", onFocus);
+      window.addEventListener("blur", onBlur);
+      windowBlurred = typeof document !== "undefined" && typeof document.hasFocus === "function" ? !document.hasFocus() : false;
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibility);
+    }
+    reassertId = window.setInterval(reassertWrap, 2e3);
+    if (tryBindDraw()) {
+      scanForeignRaf();
+      return;
+    }
+    const started2 = Date.now();
+    pollId = window.setInterval(() => {
+      if (tryBindDraw() || Date.now() - started2 > 6e4) {
+        if (pollId != null) {
+          window.clearInterval(pollId);
+          pollId = null;
+        }
+        scanForeignRaf();
+      }
+    }, 250);
+  }
+
+  // src/host/gameRenderScale.ts
+  var installed13 = false;
+  var currentScale = 1;
+  var savedResolution = null;
+  var pollId2 = null;
+  function host3() {
+    return window;
+  }
+  function applyToRenderer(scale) {
+    const w = host3();
+    const renderer = w.renderer;
+    if (!renderer || typeof renderer.resolution !== "number") return false;
+    if (savedResolution == null) savedResolution = renderer.resolution || 1;
+    const next = scale === 1 ? savedResolution : savedResolution * scale;
+    if (Math.abs((renderer.resolution || 1) - next) < 1e-6) return true;
+    renderer.resolution = next;
+    const rw = typeof w.width === "number" && w.width > 0 ? w.width : renderer.view ? renderer.view.width || 0 : 0;
+    const rh = typeof w.height === "number" && w.height > 0 ? w.height : renderer.view ? renderer.view.height || 0 : 0;
+    if (typeof renderer.resize === "function" && rw > 0 && rh > 0) {
+      try {
+        renderer.resize(rw, rh);
+      } catch (e2) {
+      }
+    }
+    if (typeof w.on_resize === "function") {
+      try {
+        w.on_resize();
+      } catch (e2) {
+      }
+    }
+    return true;
+  }
+  function setGameRenderScale(raw, opts) {
+    const scale = normalizeGameRenderScale(raw);
+    currentScale = scale;
+    applyToRenderer(scale);
+    if ((opts == null ? void 0 : opts.persist) !== false && getSettings().gameRenderScale !== scale) {
+      patchSettings({ gameRenderScale: scale });
+    }
+    return scale;
+  }
+  function getGameRenderScale() {
+    return currentScale;
+  }
+  function onSettingsEvent2(ev) {
+    const detail = ev.detail;
+    if (!detail || typeof detail !== "object") return;
+    if (!("gameRenderScale" in detail)) return;
+    setGameRenderScale(detail.gameRenderScale, {
+      persist: false
+    });
+  }
+  function installGameRenderScale() {
+    if (installed13) return;
+    installed13 = true;
+    const w = host3();
+    w.__ecuSetGameRenderScale = (s) => setGameRenderScale(s);
+    w.__ecuGetGameRenderScale = getGameRenderScale;
+    currentScale = normalizeGameRenderScale(getSettings().gameRenderScale);
+    if (typeof window !== "undefined") {
+      window.addEventListener("ecu:settings", onSettingsEvent2);
+    }
+    if (applyToRenderer(currentScale)) return;
+    const started2 = Date.now();
+    pollId2 = window.setInterval(() => {
+      if (applyToRenderer(currentScale) || Date.now() - started2 > 6e4) {
+        if (pollId2 != null) {
+          window.clearInterval(pollId2);
+          pollId2 = null;
+        }
+      }
+    }, 500);
+  }
+
   // src/debug/phoneOverlayFixtures.ts
   var BAG_SYNC_STAMP_KEY2 = "__ecuBagSyncedAt";
   function seedObservingBag() {
@@ -102765,6 +103609,8 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     installWorldZoom();
     installNameplateSharpness();
     installCameraPan();
+    installGameFpsCap();
+    installGameRenderScale();
     seedPhoneOverlayFixtures();
     let domContainer = document.querySelector("#comm-ui");
     if (!domContainer) {

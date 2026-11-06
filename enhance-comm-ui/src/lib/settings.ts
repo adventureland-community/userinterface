@@ -56,10 +56,22 @@ import {
   type HudDensity,
 } from "./perfPrefs";
 import {
+  GAME_FPS_CAP_OFF,
+  normalizeGameFpsCap,
+  type GameFpsCap,
+} from "./gameFpsCap";
+import {
+  normalizeGameRenderScale,
+  type GameRenderScale,
+} from "./gameRenderScale";
+import {
   mergePanelVisible,
   type PanelVisibleMap,
   DEFAULT_PANEL_VISIBLE,
 } from "./panelCatalog";
+
+export type { GameFpsCap } from "./gameFpsCap";
+export type { GameRenderScale } from "./gameRenderScale";
 
 export {
   CLOSABLE_PANEL_IDS,
@@ -260,6 +272,20 @@ export type CommUiSettings = {
    */
   worldOverlayEnabled: boolean;
   /**
+   * Fixed stock `draw()` FPS while focused (0 = off). Experimental.
+   */
+  gameFpsCap: GameFpsCap;
+  /** Cap at 60 while document.hidden. Independent of the fixed cap. */
+  gameFpsCapWhenHidden: boolean;
+  /** Cap at 60 while the window is blurred. Independent of the fixed cap. */
+  gameFpsCapWhenBlurred: boolean;
+  /** Pause stock draws when the map canvas is off-screen. */
+  gameFpsPauseWhenCovered: boolean;
+  /**
+   * PIXI renderer.resolution multiplier (1 = stock). Experimental GPU saver.
+   */
+  gameRenderScale: GameRenderScale;
+  /**
    * When false, ignore mouse-wheel / trackpad scroll for camera FOV zoom.
    * Pinch and Map out·in still work. Default on.
    */
@@ -328,6 +354,11 @@ const DEFAULTS: CommUiSettings = {
   setupWizardDone: false,
   hudDensity: "auto",
   worldOverlayEnabled: true,
+  gameFpsCap: GAME_FPS_CAP_OFF,
+  gameFpsCapWhenHidden: false,
+  gameFpsCapWhenBlurred: false,
+  gameFpsPauseWhenCovered: false,
+  gameRenderScale: 1,
   worldWheelZoomEnabled: true,
   cameraJoystickSide: "left",
   phoneHudVisible: {},
@@ -657,6 +688,11 @@ function migrate(parsed: any): CommUiSettings {
     metersHidden: !!parsed.metersHidden,
     hudDensity: normalizeHudDensity(parsed.hudDensity),
     worldOverlayEnabled: parsed.worldOverlayEnabled !== false,
+    gameFpsCap: normalizeGameFpsCap(parsed.gameFpsCap),
+    gameFpsCapWhenHidden: !!parsed.gameFpsCapWhenHidden,
+    gameFpsCapWhenBlurred: !!parsed.gameFpsCapWhenBlurred,
+    gameFpsPauseWhenCovered: !!parsed.gameFpsPauseWhenCovered,
+    gameRenderScale: normalizeGameRenderScale(parsed.gameRenderScale),
     worldWheelZoomEnabled: parsed.worldWheelZoomEnabled !== false,
     cameraJoystickSide: normalizeCameraJoystickSide(
       parsed.cameraJoystickSide,
@@ -906,6 +942,21 @@ export function patchSettings(partial: SettingsPatch): CommUiSettings {
   }
   if (typeof partial.worldOverlayEnabled === "boolean") {
     next.worldOverlayEnabled = partial.worldOverlayEnabled;
+  }
+  if (partial.gameFpsCap != null) {
+    next.gameFpsCap = normalizeGameFpsCap(partial.gameFpsCap);
+  }
+  if (typeof partial.gameFpsCapWhenHidden === "boolean") {
+    next.gameFpsCapWhenHidden = partial.gameFpsCapWhenHidden;
+  }
+  if (typeof partial.gameFpsCapWhenBlurred === "boolean") {
+    next.gameFpsCapWhenBlurred = partial.gameFpsCapWhenBlurred;
+  }
+  if (typeof partial.gameFpsPauseWhenCovered === "boolean") {
+    next.gameFpsPauseWhenCovered = partial.gameFpsPauseWhenCovered;
+  }
+  if (partial.gameRenderScale != null) {
+    next.gameRenderScale = normalizeGameRenderScale(partial.gameRenderScale);
   }
   if (typeof partial.worldWheelZoomEnabled === "boolean") {
     next.worldWheelZoomEnabled = partial.worldWheelZoomEnabled;

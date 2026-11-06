@@ -112,6 +112,29 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.19.0",
+    title: "0.19.0",
+    date: "2026-11-07",
+    summary:
+      "Experimental farm-machine knobs: cap the stock map draw loop (and optionally lower render scale) without slowing Comm UI.",
+    highlights: [
+      {
+        label: "Experimental FPS cap",
+        detail:
+          "Settings → Comm UI → Experimental: fixed Off / 30 / 60 while focused, plus separate toggles to cap at 60 when the tab is hidden, when the window is blurred, and to pause draws when the map canvas is off-screen. Live draw rate shows under the controls. Defaults all off — host hooks, so treat as experimental.",
+        kind: "feature",
+      },
+    ],
+    items: [
+      {
+        label: "Experimental map render scale",
+        detail:
+          "Same Experimental pane: optional ¾ or ½ PIXI resolution when an FPS cap is not enough. Zoom may look softer; set back to 1× if the map looks wrong.",
+        kind: "feature",
+      },
+    ],
+  },
+  {
     id: "0.18.0",
     title: "0.18.0",
     date: "2026-11-05",

@@ -1,7 +1,19 @@
 import { e, getReact } from "../../../host/react";
 import { confirmAndFactoryResetCommUi } from "../../../lib/factoryReset";
+import {
+  GAME_FPS_CAPS,
+  formatGameFpsReadout,
+  gameFpsCapLabel,
+  type GameFpsCap,
+} from "../../../lib/gameFpsCap";
+import {
+  GAME_RENDER_SCALES,
+  gameRenderScaleLabel,
+  type GameRenderScale,
+} from "../../../lib/gameRenderScale";
 import { isPhoneViewport } from "../../../lib/perfPrefs";
 import { getSettings, patchSettings } from "../../../lib/settings";
+import type { GameFpsCapStats } from "../../../host/gameFpsCap";
 import { TAMPERMONKEY_QR_CARDS } from "../../../lib/tampermonkeyQr";
 import {
   listGuidedTours,
@@ -58,6 +70,10 @@ export const COMM_UI_SUBSECTIONS: readonly SettingsSubsection[] = [
   {
     id: settingsSectionId("Controls"),
     label: "Controls",
+  },
+  {
+    id: settingsSectionId("Experimental"),
+    label: "Experimental",
   },
   {
     id: settingsSectionId("Mobile install"),
@@ -120,6 +136,240 @@ function joystickSideRowMatches(query: string): boolean {
   return "joystick side left right thumb camera stick pan phone hand".includes(
     q,
   );
+}
+
+function experimentalSectionMatches(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return "fps frame rate cap limit 30 60 performance experimental gpu cpu battery youtube farm draw background tab hidden blur covered scale resolution".includes(
+    q,
+  );
+}
+
+function readLiveFpsStats(): GameFpsCapStats | null {
+  const w = window as Window & {
+    __ecuGameFpsCapStats?: () => GameFpsCapStats;
+  };
+  if (typeof w.__ecuGameFpsCapStats !== "function") return null;
+  try {
+    return w.__ecuGameFpsCapStats();
+  } catch {
+    return null;
+  }
+}
+
+/** Game FPS cap + independent background toggles + live readout. */
+export function GameFpsCapSettingsBlock(): any {
+  const React = getReact();
+  const [, bump] = React.useState(0);
+  const [stats, setStats] = React.useState(null as GameFpsCapStats | null);
+  React.useEffect(() => {
+    setStats(readLiveFpsStats());
+    const id = window.setInterval(() => setStats(readLiveFpsStats()), 400);
+    return () => window.clearInterval(id);
+  }, []);
+  const refresh = () => {
+    bump((n: number) => n + 1);
+    setStats(readLiveFpsStats());
+  };
+  const settings = getSettings();
+  const raw = settings.gameFpsCap;
+  const cap: GameFpsCap = raw === 30 || raw === 60 ? raw : 0;
+  const buttons: any[] = [];
+  for (let i = 0; i < GAME_FPS_CAPS.length; i++) {
+    const value = GAME_FPS_CAPS[i] as GameFpsCap;
+    buttons.push(
+      e(
+        "button",
+        {
+          key: "fps-" + value,
+          type: "button",
+          className: cap === value ? "is-on" : "",
+          "aria-pressed": cap === value ? "true" : "false",
+          onClick: () => {
+            patchSettings({ gameFpsCap: value });
+            refresh();
+          },
+        },
+        gameFpsCapLabel(value),
+      ),
+    );
+  }
+  const readout = stats
+    ? formatGameFpsReadout({
+        fps: stats.fps,
+        policy: {
+          rate: stats.rate,
+          paused: stats.paused,
+          reason: stats.reason,
+        },
+        foreignRaf: stats.foreignRaf,
+      })
+    : "—";
+  const kids: any[] = [
+    e(
+      "div",
+      { key: "game-fps-cap", className: "ecu-settings-row" },
+      e(
+        "div",
+        { className: "ecu-settings-row-copy" },
+        e(
+          "span",
+          { className: "ecu-settings-row-label" },
+          "Game FPS cap (while focused)",
+        ),
+        e(
+          "span",
+          { className: "ecu-settings-help" },
+          "Experimental. Limits the stock map draw loop only (not Comm UI). Off keeps the display rate while you are focused. Expect quirks with other FPS scripts.",
+        ),
+      ),
+      e(
+        "div",
+        {
+          className: "ecu-settings-seg",
+          role: "group",
+          "aria-label": "Game FPS cap",
+        },
+        ...buttons,
+      ),
+    ),
+    settingsCheckboxRow(
+      "fps-when-hidden",
+      "Cap at 60 when tab is hidden",
+      !!settings.gameFpsCapWhenHidden,
+      (next) => {
+        patchSettings({ gameFpsCapWhenHidden: next });
+        refresh();
+      },
+      {
+        help: "Other tab or minimized. Works even if the focused cap is Off.",
+      },
+    ),
+    settingsCheckboxRow(
+      "fps-when-blurred",
+      "Cap at 60 when window is blurred",
+      !!settings.gameFpsCapWhenBlurred,
+      (next) => {
+        patchSettings({ gameFpsCapWhenBlurred: next });
+        refresh();
+      },
+      {
+        help: "Multi-monitor / clicked away but the tab may still be visible.",
+      },
+    ),
+    settingsCheckboxRow(
+      "fps-pause-covered",
+      "Pause draws when map is off-screen",
+      !!settings.gameFpsPauseWhenCovered,
+      (next) => {
+        patchSettings({ gameFpsPauseWhenCovered: next });
+        refresh();
+      },
+      {
+        help: "Skips stock paints when the game canvas is scrolled away or fully covered. Keeps the loop alive.",
+      },
+    ),
+    e(
+      "div",
+      {
+        key: "game-fps-readout",
+        className: "ecu-settings-row",
+        "data-ecu-fps-readout": "1",
+      },
+      e(
+        "div",
+        { className: "ecu-settings-row-copy" },
+        e("span", { className: "ecu-settings-row-label" }, "Live draw rate"),
+        e(
+          "span",
+          {
+            className: "ecu-settings-help",
+            "data-ecu-fps-readout-text": readout,
+          },
+          readout,
+        ),
+      ),
+    ),
+  ];
+  if (stats && stats.foreignRaf && stats.foreignRafHint) {
+    kids.push(
+      e(
+        "p",
+        {
+          key: "fps-foreign",
+          className: "ecu-settings-help",
+          "data-ecu-fps-foreign": "1",
+        },
+        stats.foreignRafHint,
+      ),
+    );
+  }
+  void bump;
+  return e(React.Fragment, null, ...kids);
+}
+
+/** @deprecated use GameFpsCapSettingsBlock */
+export function pushGameFpsCapRow(kids: any[], bump: () => void): void {
+  kids.push(e(GameFpsCapSettingsBlock, { key: "fps-block" }));
+  void bump;
+}
+
+/** Experimental PIXI resolution scale. */
+export function GameRenderScaleSettingsBlock(): any {
+  const React = getReact();
+  const [, bump] = React.useState(0);
+  const settings = getSettings();
+  const scale = normalizeScale(settings.gameRenderScale);
+  const buttons: any[] = [];
+  for (let i = 0; i < GAME_RENDER_SCALES.length; i++) {
+    const value = GAME_RENDER_SCALES[i] as GameRenderScale;
+    buttons.push(
+      e(
+        "button",
+        {
+          key: "scale-" + value,
+          type: "button",
+          className: scale === value ? "is-on" : "",
+          "aria-pressed": scale === value ? "true" : "false",
+          onClick: () => {
+            patchSettings({ gameRenderScale: value });
+            bump((n: number) => n + 1);
+          },
+        },
+        gameRenderScaleLabel(value),
+      ),
+    );
+  }
+  void bump;
+  return e(
+    "div",
+    { key: "game-render-scale", className: "ecu-settings-row" },
+    e(
+      "div",
+      { className: "ecu-settings-row-copy" },
+      e("span", { className: "ecu-settings-row-label" }, "Map render scale"),
+      e(
+        "span",
+        { className: "ecu-settings-help" },
+        "Experimental. Lowers PIXI resolution to cut GPU fill. 1× is stock. Try ½ if an FPS cap is not enough — zoom/FOV may look softer. Turn back to 1× if the map looks wrong.",
+      ),
+    ),
+    e(
+      "div",
+      {
+        className: "ecu-settings-seg",
+        role: "group",
+        "aria-label": "Map render scale",
+      },
+      ...buttons,
+    ),
+  );
+}
+
+function normalizeScale(raw: unknown): GameRenderScale {
+  if (raw === 0.75 || raw === 0.5) return raw;
+  return 1;
 }
 
 /** Shared camera joystick row (Comm UI Controls + phone Display pane). */
@@ -207,6 +457,7 @@ export function countCommUiSettingsMatches(query: string): number {
     if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
   }
   if (wheelZoomRowMatches(query) || joystickSideRowMatches(query)) total += 1;
+  if (experimentalSectionMatches(query)) total += 1;
   if (installSectionMatches(query)) total += 1;
   if (dataSectionMatches(query)) total += 1;
   return total;
@@ -283,6 +534,19 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
         ),
       );
     }
+  }
+
+  if (experimentalSectionMatches(query)) {
+    kids.push(settingsSection("Experimental"));
+    kids.push(
+      e(
+        "p",
+        { key: "exp-lead", className: "ecu-settings-help" },
+        "Host hooks for farm machines. Defaults stay Off / 1×. Turn these on only if you are okay debugging odd timing or softer zoom.",
+      ),
+    );
+    kids.push(e(GameFpsCapSettingsBlock, { key: "fps-block" }));
+    kids.push(e(GameRenderScaleSettingsBlock, { key: "render-scale" }));
   }
 
   if (installSectionMatches(query)) {

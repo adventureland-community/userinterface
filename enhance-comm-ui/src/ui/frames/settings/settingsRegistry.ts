@@ -68,7 +68,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: "commUi",
     label: "Comm UI",
     description:
-      "What's New, server notes, desktop camera controls, mobile install help (desktop only), factory-reset local Comm UI data, and guided tours.",
+      "What's New, server notes, desktop camera controls, experimental FPS / render scale, mobile install help (desktop only), factory-reset local Comm UI data, and guided tours.",
     countMatches: countCommUiSettingsMatches,
     subsections: COMM_UI_SUBSECTIONS,
     render: (props) =>
