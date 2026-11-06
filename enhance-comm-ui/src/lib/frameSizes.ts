@@ -314,6 +314,8 @@ export const CHAT_PANEL_STYLE: Record<string, any> = {
   maxWidth: "100%",
   maxHeight: "100%",
   boxSizing: "border-box",
+  // Fill shell is pointer-events:none by default — Chat must take hits.
+  pointerEvents: "auto",
 };
 
 export const MAIL_PANEL_STYLE: Record<string, any> = {
@@ -324,6 +326,8 @@ export const MAIL_PANEL_STYLE: Record<string, any> = {
   maxWidth: "100%",
   maxHeight: "100%",
   boxSizing: "border-box",
+  // Fill shell is pointer-events:none by default — Mail must take hits.
+  pointerEvents: "auto",
 };
 
 export const MARKET_PANEL_STYLE: Record<string, any> = {

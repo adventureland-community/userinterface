@@ -19,7 +19,7 @@ import {
   type CommandSnippet,
 } from "../../lib/settings";
 import { TYPE } from "../../lib/typeScale";
-import { detectViewportProfile } from "../../lib/viewport";
+import { resolveCommPhoneUi } from "../../lib/viewport";
 import { PanelExpandButton } from "../chrome/panelExpandControl";
 import { usePhoneShellExpand } from "../chrome/usePhoneShellExpand";
 import { ensureCommandPanelCss } from "./commandPanelCss";
@@ -33,6 +33,8 @@ export type CommandPanelProps = {
   onFrameSizeRestore?: (size: { w: number; h: number }) => void;
   /** Phone swipe-down closes the command panel. */
   onRequestClose?: () => void;
+  /** CommUI resolved profile — prefer over raw window size. */
+  phoneUi?: boolean;
 };
 
 type PhoneTab = "code" | "snippets";
@@ -95,14 +97,18 @@ export function CommandPanel(props: CommandPanelProps): any {
   const [treeHi, setTreeHi] = React.useState(0);
   const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
   const [narrow, setNarrow] = React.useState(false);
-  const [phoneUi] = React.useState(() => detectViewportProfile() === "phone");
-  const [expanded, setExpanded] = React.useState(
-    () => detectViewportProfile() === "phone",
-  );
+  const phoneUi =
+    typeof props.phoneUi === "boolean"
+      ? props.phoneUi
+      : resolveCommPhoneUi();
+  const [expanded, setExpanded] = React.useState(() => phoneUi);
+  React.useEffect(() => {
+    if (!phoneUi) setExpanded(false);
+    else setExpanded(true);
+  }, [phoneUi]);
   // Phone: Quick templates read denser than a mostly-empty CodeMirror.
   const [phoneTab, setPhoneTab] = React.useState(
-    () =>
-      (detectViewportProfile() === "phone" ? "snippets" : "code") as PhoneTab,
+    () => (phoneUi ? "snippets" : "code") as PhoneTab,
   );
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const headRef = React.useRef(null as HTMLDivElement | null);

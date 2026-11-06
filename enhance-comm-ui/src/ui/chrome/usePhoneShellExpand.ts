@@ -5,7 +5,6 @@
  */
 
 import { getReact } from "../../host/react";
-import { detectViewportProfile } from "../../lib/viewport";
 import { findPanelShell } from "./panelExpandControl";
 import { bindSwipeDownClose, syncPhoneSheetOpenClass } from "./phoneShell";
 
@@ -48,7 +47,13 @@ export function usePhoneShellExpand(args: UsePhoneShellExpandArgs): void {
         return;
       }
 
-      if (args.expanded) {
+      // Honor CommUI's resolved profile — raw window size can be phone-narrow
+      // under a locked desktop layoutProfileMode (DevTools device mode).
+      const commPhone =
+        typeof document !== "undefined" &&
+        document.getElementById("comm-ui")?.getAttribute("data-viewport") ===
+          "phone";
+      if (args.expanded && commPhone) {
         if (!preExpandSizeRef.current) {
           preExpandSizeRef.current = {
             w: Math.round(shell.offsetWidth),
@@ -103,7 +108,11 @@ export function usePhoneShellExpand(args: UsePhoneShellExpandArgs): void {
   ]);
 
   React.useEffect(() => {
-    if (!args.expanded || detectViewportProfile() !== "phone") return;
+    const commPhone =
+      typeof document !== "undefined" &&
+      document.getElementById("comm-ui")?.getAttribute("data-viewport") ===
+        "phone";
+    if (!args.expanded || !commPhone) return;
     const close = () => {
       if (typeof args.onRequestClose === "function") args.onRequestClose();
       else args.setExpanded(false);

@@ -496,6 +496,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         seedMerchant: deps.marketMerchant,
         seedDesk: deps.marketDesk,
         seedSeq: deps.marketOpenSeq,
+        phoneUi: deps.viewportProfile === "phone",
         onFrameSizeRestore: deps.onResizeFrame
           ? (size: { w: number; h: number }) =>
               deps.onResizeFrame!("market", size)
@@ -513,6 +514,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       "bank",
       e(BankPanel, {
         layoutEdit: deps.layoutEdit,
+        phoneUi: deps.viewportProfile === "phone",
         onFrameSizeRestore: deps.onResizeFrame
           ? (size: { w: number; h: number }) =>
               deps.onResizeFrame!("bank", size)
@@ -597,6 +599,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       e(CommandPanel, {
         seedDraft: deps.commandSeed,
         openSeq: deps.commandOpenSeq,
+        phoneUi: deps.viewportProfile === "phone",
         onFrameSizeRestore: deps.onResizeFrame
           ? (size: { w: number; h: number }) =>
               deps.onResizeFrame!("command", size)
@@ -616,6 +619,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         seedDraft: deps.chatSeed,
         seedWhisperTo: deps.chatWhisperTo,
         openSeq: deps.chatOpenSeq,
+        phoneUi: deps.viewportProfile === "phone",
         onFrameSizeRestore: deps.onResizeFrame
           ? (size: { w: number; h: number }) =>
               deps.onResizeFrame!("chat", size)
@@ -625,12 +629,14 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       {
         style: CHAT_PANEL_STYLE,
         hiddenBodyStyle: CHAT_PANEL_STYLE,
+        interactiveBody: true,
       },
     ),
 
     panel(
       "mail",
       e(MailPanel, {
+        phoneUi: deps.viewportProfile === "phone",
         onFrameSizeRestore: deps.onResizeFrame
           ? (size: { w: number; h: number }) =>
               deps.onResizeFrame!("mail", size)
@@ -640,6 +646,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       {
         style: MAIL_PANEL_STYLE,
         hiddenBodyStyle: MAIL_PANEL_STYLE,
+        interactiveBody: true,
       },
     ),
 
@@ -648,6 +655,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
           "bag",
           e(BagPanel, {
             layoutEdit: deps.layoutEdit,
+            phoneUi: deps.viewportProfile === "phone",
             tradeRevision: nearbyBuyOrdersRevision(
               snap.entities,
               snap.observing,
@@ -664,6 +672,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
               display: "flex",
               alignItems: "flex-start",
             }),
+            interactiveBody: true,
           },
         )
       : null,

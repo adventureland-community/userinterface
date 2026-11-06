@@ -366,8 +366,10 @@ export function closeInventory(): void {
 
 /** Close bag DOM without leaving window.character set. */
 function closeInventoryHost(): void {
-  const host = document.getElementById(HOST_ID);
-  if (host) host.innerHTML = "";
+  if (typeof document !== "undefined") {
+    const host = document.getElementById(HOST_ID);
+    if (host) host.innerHTML = "";
+  }
   window.inventory = false;
   bagRenderedForName = null;
   restoreCharacter();
@@ -463,6 +465,9 @@ export function refreshObservedInventory(): void {
 
 /** Apply saved/default bag panel position onto a free-floating host (pre-mount). */
 
+/** Free-floating bag host — above #bottom (201), below #comm-ui (260). */
+export const BAG_HOST_FLOAT_Z_INDEX = 210;
+
 export function applyBagLayoutPos(pos?: PanelPos | null): void {
   const host = document.getElementById(HOST_ID) as HTMLElement | null;
   if (!host) return;
@@ -473,17 +478,21 @@ export function applyBagLayoutPos(pos?: PanelPos | null): void {
     host.style.top = "";
     host.style.transform = "";
     host.style.zIndex = "";
+    host.style.pointerEvents = "auto";
     return;
   }
   const layout = mergeLayout(getSettings().panelLayout);
   const p = pos || layout.bag;
   const style = panelStyle(p, false);
+  const hasGrid = !!host.querySelector(".theinventory");
   host.style.position = "fixed";
   host.style.left = String(style.left);
   host.style.top = String(style.top);
   host.style.transform = String(style.transform);
-  host.style.zIndex = "240";
-  host.style.pointerEvents = "auto";
+  // Never stack above #comm-ui — that buried Mail/Market under an empty host.
+  host.style.zIndex = String(BAG_HOST_FLOAT_Z_INDEX);
+  // Empty host must not steal hits over the map / panels.
+  host.style.pointerEvents = hasGrid ? "auto" : "none";
   host.style.maxWidth = "min(96vw, 420px)";
   host.style.maxHeight = "min(70vh, calc(100vh - 72px))";
   host.style.overflow = "auto";
@@ -734,6 +743,8 @@ export function installInventoryFix(): void {
         window.inventory = false;
         bagRenderedForName = null;
         restoreCharacter();
+        // Drop empty-host hit target / keep z below #comm-ui.
+        applyBagLayoutPos();
         notifyInventory(false);
         notifyBagSync();
         return;

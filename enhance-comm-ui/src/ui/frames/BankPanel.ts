@@ -12,7 +12,7 @@ import {
   type BankViewMode,
 } from "../../host/bank";
 import { scalePollMs } from "../../lib/perfPrefs";
-import { detectViewportProfile } from "../../lib/viewport";
+import { resolveCommPhoneUi } from "../../lib/viewport";
 import { canEditObservedBag } from "../../host/gearObserved";
 import {
   BANK_SLOT_ATTR,
@@ -78,6 +78,8 @@ export type BankPanelProps = {
   onFrameSizeRestore?: (size: { w: number; h: number }) => void;
   /** Phone swipe-down closes the bank panel. */
   onRequestClose?: () => void;
+  /** CommUI resolved profile — prefer over raw window size. */
+  phoneUi?: boolean;
 };
 
 type ReadyKind = "combine" | "craft";
@@ -379,7 +381,10 @@ export function BankPanel(props: BankPanelProps): any {
     "ready" as ReadySection,
   );
   const [tick, setTick] = React.useState(0);
-  const phoneUi = detectViewportProfile() === "phone";
+  const phoneUi =
+    typeof props.phoneUi === "boolean"
+      ? props.phoneUi
+      : resolveCommPhoneUi();
   const [expanded, setExpanded] = React.useState(() => phoneUi);
   const [refreshSummary, setRefreshSummary] = React.useState(
     null as BankRefreshSummary | null,
@@ -401,6 +406,11 @@ export function BankPanel(props: BankPanelProps): any {
   const setReadySectionRef = React.useRef(setReadySection);
   setReadySectionRef.current = setReadySection;
 
+  React.useEffect(() => {
+    if (!phoneUi) setExpanded(false);
+    else setExpanded(true);
+  }, [phoneUi]);
+
   usePhoneShellExpand({
     panelId: "bank",
     shellClass: "ecu-bank-shell-expanded",
@@ -413,7 +423,7 @@ export function BankPanel(props: BankPanelProps): any {
   });
 
   React.useEffect(() => {
-    if (detectViewportProfile() !== "phone") return;
+    if (!phoneUi) return;
     const panelEl = rootRef.current;
     if (!panelEl) return;
     return installPeerPageGestures(panelEl, {
@@ -447,7 +457,7 @@ export function BankPanel(props: BankPanelProps): any {
         );
       },
     });
-  }, [expanded]);
+  }, [expanded, phoneUi]);
 
   const refresh = React.useCallback(
     (opts?: { force?: boolean; baseline?: BankSnapshot | null }) => {

@@ -209,10 +209,16 @@ function onLoad(): void {
     domContainer.id = "comm-ui";
     document.body.append(domContainer);
   }
-  // HACK(comm-ui): above /comm #bottom (z-index 201) so panels receive clicks;
-  // empty overlay stays pointer-events:none so map + #bottom buttons still work.
-  domContainer.style.zIndex = "220";
+  // Above /comm #bottom (201), phone-dock #bottom (230), and the free-floating
+  // bag host (210). Empty overlay stays pointer-events:none so map + chrome
+  // still receive hits through transparent areas.
+  // Pin to the viewport — fixed without top/left uses the static position, so
+  // on tall /comm pages #comm-ui sat below the fold and absolute Bag/Mail/
+  // Market panels were invisible until phone sheet CSS forced top/left.
+  domContainer.style.zIndex = "260";
   domContainer.style.position = "fixed";
+  domContainer.style.top = "0";
+  domContainer.style.left = "0";
   domContainer.style.width = "100%";
   domContainer.style.height = "100%";
   domContainer.style.pointerEvents = "none";

@@ -13,7 +13,21 @@ function isOnScreen(el: HTMLElement | null): boolean {
   if (cs.display === "none" || cs.visibility === "hidden") return false;
   if (cs.opacity === "0") return false;
   const r = el.getBoundingClientRect();
-  return r.width > 40 && r.height > 40;
+  if (!(r.width > 40 && r.height > 40)) return false;
+  // Off-viewport shells used to count as open → chrome toggle closed them
+  // (looked like a dead click) until a resize brought them on-screen.
+  const vw =
+    typeof window !== "undefined" && window.innerWidth > 0
+      ? window.innerWidth
+      : 0;
+  const vh =
+    typeof window !== "undefined" && window.innerHeight > 0
+      ? window.innerHeight
+      : 0;
+  if (!(vw > 0 && vh > 0)) return true;
+  // Any real intersection with the viewport counts (avoid tight insets that
+  // false-negatived the bottom-anchored bag).
+  return r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
 }
 
 export function panelActuallyOpen(id: string): boolean {

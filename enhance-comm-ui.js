@@ -3595,7 +3595,9 @@ var EnhanceCommUI = (() => {
     minHeight: "240px",
     maxWidth: "100%",
     maxHeight: "100%",
-    boxSizing: "border-box"
+    boxSizing: "border-box",
+    // Fill shell is pointer-events:none by default — Chat must take hits.
+    pointerEvents: "auto"
   };
   var MAIL_PANEL_STYLE = {
     width: "100%",
@@ -3604,7 +3606,9 @@ var EnhanceCommUI = (() => {
     minHeight: "360px",
     maxWidth: "100%",
     maxHeight: "100%",
-    boxSizing: "border-box"
+    boxSizing: "border-box",
+    // Fill shell is pointer-events:none by default — Mail must take hits.
+    pointerEvents: "auto"
   };
   var MARKET_PANEL_STYLE = {
     width: "100%",
@@ -5226,6 +5230,19 @@ var EnhanceCommUI = (() => {
   }
   function isTouchishProfile(profile) {
     return profile === "tablet" || profile === "phone";
+  }
+  function resolveCommPhoneUi(viewportProfile) {
+    var _a;
+    if (viewportProfile === "phone") return true;
+    if (viewportProfile === "desktop" || viewportProfile === "tablet") {
+      return false;
+    }
+    if (typeof document !== "undefined") {
+      const attr = (_a = document.getElementById("comm-ui")) == null ? void 0 : _a.getAttribute("data-viewport");
+      if (attr === "phone") return true;
+      if (attr === "desktop" || attr === "tablet") return false;
+    }
+    return detectViewportProfile() === "phone";
   }
   var VIEWPORT_PROFILES = [
     "desktop",
@@ -16082,7 +16099,8 @@ html.ecu-phone-dock-on #bottom {
   padding-left: 0;
   padding-right: 0;
   padding-bottom: 0;
-  /* Above #comm-ui panels (220); below the Material dock (240). */
+  /* Below #comm-ui (260) \u2014 empty overlay is pointer-events:none so dock
+   * chips still receive hits; above desktop #bottom (201). */
   z-index: 230;
 }
 /* Character chips + server dropdown live on the dock \u2014 drop the duplicate stack. */
@@ -19667,8 +19685,10 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     closeInventoryHost();
   }
   function closeInventoryHost() {
-    const host2 = document.getElementById(HOST_ID4);
-    if (host2) host2.innerHTML = "";
+    if (typeof document !== "undefined") {
+      const host2 = document.getElementById(HOST_ID4);
+      if (host2) host2.innerHTML = "";
+    }
     window.inventory = false;
     bagRenderedForName = null;
     restoreCharacter();
@@ -19739,6 +19759,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       }
     }, 250);
   }
+  var BAG_HOST_FLOAT_Z_INDEX = 210;
   function applyBagLayoutPos(pos) {
     const host2 = document.getElementById(HOST_ID4);
     if (!host2) return;
@@ -19748,17 +19769,19 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       host2.style.top = "";
       host2.style.transform = "";
       host2.style.zIndex = "";
+      host2.style.pointerEvents = "auto";
       return;
     }
     const layout = mergeLayout(getSettings().panelLayout);
     const p = pos || layout.bag;
     const style = panelStyle(p, false);
+    const hasGrid = !!host2.querySelector(".theinventory");
     host2.style.position = "fixed";
     host2.style.left = String(style.left);
     host2.style.top = String(style.top);
     host2.style.transform = String(style.transform);
-    host2.style.zIndex = "240";
-    host2.style.pointerEvents = "auto";
+    host2.style.zIndex = String(BAG_HOST_FLOAT_Z_INDEX);
+    host2.style.pointerEvents = hasGrid ? "auto" : "none";
     host2.style.maxWidth = "min(96vw, 420px)";
     host2.style.maxHeight = "min(70vh, calc(100vh - 72px))";
     host2.style.overflow = "auto";
@@ -19928,6 +19951,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
           window.inventory = false;
           bagRenderedForName = null;
           restoreCharacter();
+          applyBagLayoutPos();
           notifyInventory(false);
           notifyBagSync();
           return;
@@ -19989,7 +20013,11 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     if (cs.display === "none" || cs.visibility === "hidden") return false;
     if (cs.opacity === "0") return false;
     const r = el.getBoundingClientRect();
-    return r.width > 40 && r.height > 40;
+    if (!(r.width > 40 && r.height > 40)) return false;
+    const vw = typeof window !== "undefined" && window.innerWidth > 0 ? window.innerWidth : 0;
+    const vh = typeof window !== "undefined" && window.innerHeight > 0 ? window.innerHeight : 0;
+    if (!(vw > 0 && vh > 0)) return true;
+    return r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
   }
   function panelActuallyOpen(id) {
     if (typeof document === "undefined") return false;
@@ -28071,16 +28099,24 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     subscribeFollowCamera(sync);
     subscribeFreeCamera(sync);
   }
+  var bagClickLockUntil = 0;
   function onBagClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
     if (!gateObservedBagOpen()) return;
+    const now = Date.now();
+    if (now < bagClickLockUntil) return;
+    bagClickLockUntil = now + 280;
     if (isInventoryOpen() && !panelActuallyOpen("bag")) {
       closeInventory();
       openInventory();
       return;
     }
-    toggleInventory();
+    if (isInventoryOpen()) {
+      closeInventory();
+      return;
+    }
+    openInventory();
   }
   function onCommandClick(ev) {
     ev.preventDefault();
@@ -32271,7 +32307,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-06T11:24:17.566Z" : "unknown";
+    const builtAt = true ? "2026-11-06T12:29:20.790Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -76916,6 +76952,7 @@ ${ESTIMATE_HINT}`,
       let timer = 0;
       const maxTries = 80;
       const apply = () => {
+        var _a;
         if (cancelled) return;
         let shell = findPanelShell(args.rootRef.current, args.panelId);
         if (!shell && typeof document !== "undefined") {
@@ -76930,7 +76967,8 @@ ${ESTIMATE_HINT}`,
           }
           return;
         }
-        if (args.expanded) {
+        const commPhone = typeof document !== "undefined" && ((_a = document.getElementById("comm-ui")) == null ? void 0 : _a.getAttribute("data-viewport")) === "phone";
+        if (args.expanded && commPhone) {
           if (!preExpandSizeRef.current) {
             preExpandSizeRef.current = {
               w: Math.round(shell.offsetWidth),
@@ -76976,7 +77014,9 @@ ${ESTIMATE_HINT}`,
       args.shellClass
     ]);
     React.useEffect(() => {
-      if (!args.expanded || detectViewportProfile() !== "phone") return;
+      var _a;
+      const commPhone = typeof document !== "undefined" && ((_a = document.getElementById("comm-ui")) == null ? void 0 : _a.getAttribute("data-viewport")) === "phone";
+      if (!args.expanded || !commPhone) return;
       const close = () => {
         if (typeof args.onRequestClose === "function") args.onRequestClose();
         else args.setExpanded(false);
@@ -77665,12 +77705,14 @@ ${ESTIMATE_HINT}`,
     const [treeHi, setTreeHi] = React.useState(0);
     const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
     const [narrow, setNarrow] = React.useState(false);
-    const [phoneUi] = React.useState(() => detectViewportProfile() === "phone");
-    const [expanded, setExpanded] = React.useState(
-      () => detectViewportProfile() === "phone"
-    );
+    const phoneUi = typeof props.phoneUi === "boolean" ? props.phoneUi : resolveCommPhoneUi();
+    const [expanded, setExpanded] = React.useState(() => phoneUi);
+    React.useEffect(() => {
+      if (!phoneUi) setExpanded(false);
+      else setExpanded(true);
+    }, [phoneUi]);
     const [phoneTab, setPhoneTab] = React.useState(
-      () => detectViewportProfile() === "phone" ? "snippets" : "code"
+      () => phoneUi ? "snippets" : "code"
     );
     const rootRef = React.useRef(null);
     const headRef = React.useRef(null);
@@ -80081,10 +80123,12 @@ ${ESTIMATE_HINT}`,
     const [listLoaded, setListLoaded] = React.useState(false);
     const [narrow, setNarrow] = React.useState(false);
     const [sidebarOpen, setSidebarOpen] = React.useState(true);
-    const [expanded, setExpanded] = React.useState(
-      () => detectViewportProfile() === "phone"
-    );
-    const [phoneUi] = React.useState(() => detectViewportProfile() === "phone");
+    const phoneUi = typeof props.phoneUi === "boolean" ? props.phoneUi : resolveCommPhoneUi();
+    const [expanded, setExpanded] = React.useState(() => phoneUi);
+    React.useEffect(() => {
+      if (!phoneUi) setExpanded(false);
+      else setExpanded(true);
+    }, [phoneUi]);
     const [keyboardOpen, setKeyboardOpen] = React.useState(false);
     const [serverSheetOpen, setServerSheetOpen] = React.useState(false);
     const [listFilter, setListFilter] = React.useState("all");
@@ -80332,7 +80376,7 @@ ${ESTIMATE_HINT}`,
           }
           return;
         }
-        if (expanded) {
+        if (expanded && phoneUi) {
           if (!preExpandSizeRef.current) {
             preExpandSizeRef.current = {
               w: Math.round(shell.offsetWidth),
@@ -80366,15 +80410,15 @@ ${ESTIMATE_HINT}`,
         }
         syncPhoneSheetOpenClass();
       };
-    }, [expanded, props.onFrameSizeRestore]);
+    }, [expanded, phoneUi, props.onFrameSizeRestore]);
     React.useEffect(() => {
-      if (!expanded || detectViewportProfile() !== "phone") return;
+      if (!expanded || !phoneUi) return;
       const close = () => {
         if (typeof props.onRequestClose === "function") props.onRequestClose();
         else setExpanded(false);
       };
       return bindSwipeDownClose(titleRef.current, close);
-    }, [expanded, props.onRequestClose]);
+    }, [expanded, phoneUi, props.onRequestClose]);
     React.useEffect(() => {
       if (props.openSeq == null) return;
       if (typeof props.seedDraft === "string") setDraft(props.seedDraft);
@@ -80450,7 +80494,7 @@ ${ESTIMATE_HINT}`,
     activeTypeRef.current = (active == null ? void 0 : active.type) || "";
     React.useEffect(() => {
       if (!narrow) return;
-      if (detectViewportProfile() !== "phone") return;
+      if (!phoneUi) return;
       const main = mainRef.current;
       if (!main) return;
       return installChatServerPageGestures(main, {
@@ -80474,7 +80518,7 @@ ${ESTIMATE_HINT}`,
           }
         }
       });
-    }, [narrow]);
+    }, [narrow, phoneUi]);
     const startNewWhisper = (to) => {
       persistActiveDraft(draft, fromName, whisperTo);
       const chat = setHubActiveNew(to);
@@ -87866,8 +87910,12 @@ ${ESTIMATE_HINT}`,
     const mountRef = React.useRef(null);
     const rootRef = React.useRef(null);
     const headRef = React.useRef(null);
-    const phoneUi = detectViewportProfile() === "phone";
+    const phoneUi = typeof props.phoneUi === "boolean" ? props.phoneUi : resolveCommPhoneUi();
     const [expanded, setExpanded] = React.useState(() => phoneUi);
+    React.useEffect(() => {
+      if (!phoneUi) setExpanded(false);
+      else setExpanded(true);
+    }, [phoneUi]);
     const [open, setOpen] = React.useState(() => isInventoryOpen());
     const [syncedAt, setSyncedAt] = React.useState(() => getBagSyncedAt());
     const [syncedName, setSyncedName] = React.useState(() => getBagSyncedName());
@@ -92013,10 +92061,14 @@ ${ESTIMATE_HINT}`,
     const rootRef = React.useRef(null);
     const headRef = React.useRef(null);
     const bodyRef = React.useRef(null);
-    const phoneUi = detectViewportProfile() === "phone";
+    const phoneUi = typeof props.phoneUi === "boolean" ? props.phoneUi : resolveCommPhoneUi();
     const [expanded, setExpanded] = React.useState(() => phoneUi);
     const [filtersOpen, setFiltersOpen] = React.useState(() => phoneUi);
     const [youOpen, setYouOpen] = React.useState(false);
+    React.useEffect(() => {
+      if (!phoneUi) setExpanded(false);
+      else setExpanded(true);
+    }, [phoneUi]);
     usePhoneShellExpand({
       panelId: "market",
       shellClass: "ecu-market-shell-expanded",
@@ -95473,7 +95525,7 @@ ${ESTIMATE_HINT}`,
       "ready"
     );
     const [tick3, setTick] = React.useState(0);
-    const phoneUi = detectViewportProfile() === "phone";
+    const phoneUi = typeof props.phoneUi === "boolean" ? props.phoneUi : resolveCommPhoneUi();
     const [expanded, setExpanded] = React.useState(() => phoneUi);
     const [refreshSummary, setRefreshSummary] = React.useState(
       null
@@ -95494,6 +95546,10 @@ ${ESTIMATE_HINT}`,
     setViewRef.current = setView;
     const setReadySectionRef = React.useRef(setReadySection);
     setReadySectionRef.current = setReadySection;
+    React.useEffect(() => {
+      if (!phoneUi) setExpanded(false);
+      else setExpanded(true);
+    }, [phoneUi]);
     usePhoneShellExpand({
       panelId: "bank",
       shellClass: "ecu-bank-shell-expanded",
@@ -95505,7 +95561,7 @@ ${ESTIMATE_HINT}`,
       onRequestClose: props.onRequestClose
     });
     React.useEffect(() => {
-      if (detectViewportProfile() !== "phone") return;
+      if (!phoneUi) return;
       const panelEl = rootRef.current;
       if (!panelEl) return;
       return installPeerPageGestures(panelEl, {
@@ -95532,7 +95588,7 @@ ${ESTIMATE_HINT}`,
           return !!(target.closest(".BankPanel-body") || target.closest(".BankPanel-slots") || target.closest(".BankPanel-grid") || target.closest(".ecu-peer-page-dots"));
         }
       });
-    }, [expanded]);
+    }, [expanded, phoneUi]);
     const refresh = React.useCallback(
       (opts) => {
         const force = !(opts && opts.force === false);
@@ -98947,12 +99003,16 @@ ${ESTIMATE_HINT}`,
     ensureMailCss();
     const snap = useMailSnap();
     const mailObs = useMailObservingSnap();
-    const phoneUi = detectViewportProfile() === "phone";
+    const phoneUi = typeof props.phoneUi === "boolean" ? props.phoneUi : resolveCommPhoneUi();
     const [expanded, setExpanded] = React.useState(() => phoneUi);
     const [filtersScreenOpen, setFiltersScreenOpen] = React.useState(false);
     const rootRef = React.useRef(null);
     const headRef = React.useRef(null);
     const bodyRef = React.useRef(null);
+    React.useEffect(() => {
+      if (!phoneUi) setExpanded(false);
+      else setExpanded(true);
+    }, [phoneUi]);
     usePhoneShellExpand({
       panelId: "mail",
       shellClass: "ecu-mail-shell-expanded",
@@ -99669,6 +99729,7 @@ ${ESTIMATE_HINT}`,
           seedMerchant: deps.marketMerchant,
           seedDesk: deps.marketDesk,
           seedSeq: deps.marketOpenSeq,
+          phoneUi: deps.viewportProfile === "phone",
           onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("market", size) : void 0,
           onRequestClose: () => deps.setVisible("market", false)
         }),
@@ -99682,6 +99743,7 @@ ${ESTIMATE_HINT}`,
         "bank",
         e(BankPanel, {
           layoutEdit: deps.layoutEdit,
+          phoneUi: deps.viewportProfile === "phone",
           onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("bank", size) : void 0,
           onRequestClose: () => deps.setVisible("bank", false)
         }),
@@ -99755,6 +99817,7 @@ ${ESTIMATE_HINT}`,
         e(CommandPanel, {
           seedDraft: deps.commandSeed,
           openSeq: deps.commandOpenSeq,
+          phoneUi: deps.viewportProfile === "phone",
           onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("command", size) : void 0,
           onRequestClose: () => deps.setVisible("command", false)
         }),
@@ -99770,29 +99833,34 @@ ${ESTIMATE_HINT}`,
           seedDraft: deps.chatSeed,
           seedWhisperTo: deps.chatWhisperTo,
           openSeq: deps.chatOpenSeq,
+          phoneUi: deps.viewportProfile === "phone",
           onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("chat", size) : void 0,
           onRequestClose: () => deps.setVisible("chat", false)
         }),
         {
           style: CHAT_PANEL_STYLE,
-          hiddenBodyStyle: CHAT_PANEL_STYLE
+          hiddenBodyStyle: CHAT_PANEL_STYLE,
+          interactiveBody: true
         }
       ),
       panel(
         "mail",
         e(MailPanel, {
+          phoneUi: deps.viewportProfile === "phone",
           onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("mail", size) : void 0,
           onRequestClose: () => deps.setVisible("mail", false)
         }),
         {
           style: MAIL_PANEL_STYLE,
-          hiddenBodyStyle: MAIL_PANEL_STYLE
+          hiddenBodyStyle: MAIL_PANEL_STYLE,
+          interactiveBody: true
         }
       ),
       deps.bagOpen || deps.bagRefreshing || deps.layoutEdit ? panel(
         "bag",
         e(BagPanel, {
           layoutEdit: deps.layoutEdit,
+          phoneUi: deps.viewportProfile === "phone",
           tradeRevision: nearbyBuyOrdersRevision(
             snap.entities,
             snap.observing
@@ -99805,7 +99873,8 @@ ${ESTIMATE_HINT}`,
           hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
             display: "flex",
             alignItems: "flex-start"
-          })
+          }),
+          interactiveBody: true
         }
       ) : null,
       framePlayer || deps.layoutEdit ? panel(
@@ -102312,8 +102381,10 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
       domContainer.id = "comm-ui";
       document.body.append(domContainer);
     }
-    domContainer.style.zIndex = "220";
+    domContainer.style.zIndex = "260";
     domContainer.style.position = "fixed";
+    domContainer.style.top = "0";
+    domContainer.style.left = "0";
     domContainer.style.width = "100%";
     domContainer.style.height = "100%";
     domContainer.style.pointerEvents = "none";

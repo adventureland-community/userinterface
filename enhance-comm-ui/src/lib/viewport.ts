@@ -38,6 +38,29 @@ export function isTouchishProfile(profile: ViewportProfile): boolean {
   return profile === "tablet" || profile === "phone";
 }
 
+/**
+ * Phone UI for overlay panels (Mail/Market/Chat/…). Prefer CommUI's resolved
+ * `viewportProfile` / `#comm-ui[data-viewport]` so `layoutProfileMode: desktop`
+ * stays desktop even when DevTools device mode shrinks the window — raw
+ * `detectViewportProfile()` alone caused desktop chrome + phone sheet expand.
+ */
+export function resolveCommPhoneUi(
+  viewportProfile?: ViewportProfile | null,
+): boolean {
+  if (viewportProfile === "phone") return true;
+  if (viewportProfile === "desktop" || viewportProfile === "tablet") {
+    return false;
+  }
+  if (typeof document !== "undefined") {
+    const attr = document
+      .getElementById("comm-ui")
+      ?.getAttribute("data-viewport");
+    if (attr === "phone") return true;
+    if (attr === "desktop" || attr === "tablet") return false;
+  }
+  return detectViewportProfile() === "phone";
+}
+
 export const VIEWPORT_PROFILES: ViewportProfile[] = [
   "desktop",
   "tablet",

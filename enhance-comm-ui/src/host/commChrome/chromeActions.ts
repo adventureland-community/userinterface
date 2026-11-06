@@ -13,7 +13,6 @@ import {
   closeInventory,
   isInventoryOpen,
   openInventory,
-  toggleInventory,
 } from "../inventory";
 import { panelActuallyOpen } from "../../lib/panelActuallyOpen";
 import { syncMailBadge } from "../mail/mailUnread";
@@ -202,18 +201,28 @@ function ensureFollowChromeSync(): void {
   subscribeFreeCamera(sync);
 }
 
+let bagClickLockUntil = 0;
+
 function onBagClick(ev: Event): void {
   ev.preventDefault();
   ev.stopPropagation();
   if (!gateObservedBagOpen()) return;
-  // Stuck open: inventory flag true but grid gone — clear then ensure-open
-  // (idempotent openInventory). Do not raw-toggle: queued sync can race.
+  // One gesture → one open/close. Raw toggleInventory via draw_trigger could
+  // queue twice (sync + click) and blink-close the bag.
+  const now = Date.now();
+  if (now < bagClickLockUntil) return;
+  bagClickLockUntil = now + 280;
+  // Stuck open: inventory flag true but grid gone — clear then ensure-open.
   if (isInventoryOpen() && !panelActuallyOpen("bag")) {
     closeInventory();
     openInventory();
     return;
   }
-  toggleInventory();
+  if (isInventoryOpen()) {
+    closeInventory();
+    return;
+  }
+  openInventory();
 }
 
 function onCommandClick(ev: Event): void {

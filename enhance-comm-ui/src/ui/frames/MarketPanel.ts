@@ -110,7 +110,7 @@ import { ensureMarketPanelCss } from "./marketPanelCss";
 import { PanelExpandButton } from "../chrome/panelExpandControl";
 import { installPeerPageGestures } from "../chrome/peerPageGestures";
 import { usePhoneShellExpand } from "../chrome/usePhoneShellExpand";
-import { detectViewportProfile } from "../../lib/viewport";
+import { resolveCommPhoneUi } from "../../lib/viewport";
 import { stepPeerPage } from "../../lib/peerPages";
 
 export type MarketPanelProps = {
@@ -124,6 +124,8 @@ export type MarketPanelProps = {
   onFrameSizeRestore?: (size: { w: number; h: number }) => void;
   /** Phone swipe-down / close control. */
   onRequestClose?: () => void;
+  /** CommUI resolved profile — prefer over raw window size. */
+  phoneUi?: boolean;
 };
 
 const CATALOG_REFRESH_MS = 45000;
@@ -411,11 +413,19 @@ export function MarketPanel(props: MarketPanelProps): any {
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const headRef = React.useRef(null as HTMLDivElement | null);
   const bodyRef = React.useRef(null as HTMLDivElement | null);
-  const phoneUi = detectViewportProfile() === "phone";
+  const phoneUi =
+    typeof props.phoneUi === "boolean"
+      ? props.phoneUi
+      : resolveCommPhoneUi();
   const [expanded, setExpanded] = React.useState(() => phoneUi);
   const [filtersOpen, setFiltersOpen] = React.useState(() => phoneUi);
   /** Phone: Bag/Stand sheet collapsed so the catalog keeps the viewport. */
   const [youOpen, setYouOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!phoneUi) setExpanded(false);
+    else setExpanded(true);
+  }, [phoneUi]);
 
   usePhoneShellExpand({
     panelId: "market",

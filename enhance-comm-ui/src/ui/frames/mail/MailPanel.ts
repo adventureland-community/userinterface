@@ -23,7 +23,7 @@ import {
 } from "../../../host/mail";
 import { loadSettings, saveSettings } from "../../../lib/settings";
 import { scalePollMs } from "../../../lib/perfPrefs";
-import { detectViewportProfile } from "../../../lib/viewport";
+import { resolveCommPhoneUi } from "../../../lib/viewport";
 import { PanelExpandButton } from "../../chrome/panelExpandControl";
 import { installDrillBackSwipe } from "../../chrome/peerPageGestures";
 import { usePhoneShellExpand } from "../../chrome/usePhoneShellExpand";
@@ -40,6 +40,8 @@ import { MailToolbar, type MailBrowseMode } from "./MailToolbar";
 export type MailPanelProps = {
   onFrameSizeRestore?: (size: { w: number; h: number }) => void;
   onRequestClose?: () => void;
+  /** CommUI resolved profile — prefer over raw window size. */
+  phoneUi?: boolean;
 };
 
 function useMailSnap() {
@@ -78,12 +80,20 @@ export function MailPanel(props: MailPanelProps = {}): any {
   ensureMailCss();
   const snap = useMailSnap();
   const mailObs = useMailObservingSnap();
-  const phoneUi = detectViewportProfile() === "phone";
+  const phoneUi =
+    typeof props.phoneUi === "boolean"
+      ? props.phoneUi
+      : resolveCommPhoneUi();
   const [expanded, setExpanded] = React.useState(() => phoneUi);
   const [filtersScreenOpen, setFiltersScreenOpen] = React.useState(false);
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const headRef = React.useRef(null as HTMLDivElement | null);
   const bodyRef = React.useRef(null as HTMLDivElement | null);
+
+  React.useEffect(() => {
+    if (!phoneUi) setExpanded(false);
+    else setExpanded(true);
+  }, [phoneUi]);
 
   usePhoneShellExpand({
     panelId: "mail",

@@ -9,9 +9,9 @@ export const STOCK_BOTTOM_TOGGLE_HIDE =
   "#bottom > .gamebutton:not(.disconnected)";
 
 /**
- * Below #comm-ui (220) so panels/modals (bag, Layout toggles) paint and win
+ * Below #comm-ui (260) so panels/modals (bag, Layout toggles) paint and win
  * hits over empty chrome. Interactive targets keep pointer-events:auto.
- * Phone dock (240) and modal portals sit above both.
+ * Phone dock (240) and modal portals sit above desktop #bottom.
  */
 export const BOTTOM_CHROME_Z_INDEX = 201;
 
@@ -34,7 +34,7 @@ export function injectChromeCss(): void {
     style.id = STYLE_ID;
     document.head.append(style);
   }
-  // #bottom below #comm-ui (220): panels win over the strip; empty #bottom is
+  // #bottom below #comm-ui (260): panels win over the strip; empty #bottom is
   // pointer-events:none so chrome buttons still receive hits in their boxes.
   style.textContent = `
 /* Hide stock observe gamebuttons — never restyle .gamebutton.block into the strip */
@@ -1031,7 +1031,8 @@ html.ecu-phone-dock-on #bottom {
   padding-left: 0;
   padding-right: 0;
   padding-bottom: 0;
-  /* Above #comm-ui panels (220); below the Material dock (240). */
+  /* Below #comm-ui (260) — empty overlay is pointer-events:none so dock
+   * chips still receive hits; above desktop #bottom (201). */
   z-index: 230;
 }
 /* Character chips + server dropdown live on the dock — drop the duplicate stack. */

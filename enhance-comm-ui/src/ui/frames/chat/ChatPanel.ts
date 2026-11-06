@@ -39,7 +39,7 @@ import {
   listServerChatKeys,
   stepServerPage,
 } from "../../../lib/chatServerPages";
-import { detectViewportProfile } from "../../../lib/viewport";
+import { resolveCommPhoneUi } from "../../../lib/viewport";
 import { PeerPageDots } from "../../chrome/PeerPageDots";
 import {
   bindSwipeDownClose,
@@ -345,6 +345,8 @@ export type ChatPanelProps = {
   onFrameSizeRestore?: (size: { w: number; h: number }) => void;
   /** Phone swipe-down closes the chat panel. */
   onRequestClose?: () => void;
+  /** CommUI resolved profile — prefer over raw window size. */
+  phoneUi?: boolean;
 };
 
 export function ChatPanel(props: ChatPanelProps = {}): any {
@@ -373,10 +375,15 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
   const [listLoaded, setListLoaded] = React.useState(false);
   const [narrow, setNarrow] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
-  const [expanded, setExpanded] = React.useState(
-    () => detectViewportProfile() === "phone",
-  );
-  const [phoneUi] = React.useState(() => detectViewportProfile() === "phone");
+  const phoneUi =
+    typeof props.phoneUi === "boolean"
+      ? props.phoneUi
+      : resolveCommPhoneUi();
+  const [expanded, setExpanded] = React.useState(() => phoneUi);
+  React.useEffect(() => {
+    if (!phoneUi) setExpanded(false);
+    else setExpanded(true);
+  }, [phoneUi]);
   const [keyboardOpen, setKeyboardOpen] = React.useState(false);
   const [serverSheetOpen, setServerSheetOpen] = React.useState(false);
   const [listFilter, setListFilter] = React.useState("all" as SidebarFilter);
@@ -666,7 +673,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
         return;
       }
 
-      if (expanded) {
+      if (expanded && phoneUi) {
         if (!preExpandSizeRef.current) {
           preExpandSizeRef.current = {
             w: Math.round(shell.offsetWidth),
@@ -708,16 +715,16 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
       }
       syncPhoneSheetOpenClass();
     };
-  }, [expanded, props.onFrameSizeRestore]);
+  }, [expanded, phoneUi, props.onFrameSizeRestore]);
 
   React.useEffect(() => {
-    if (!expanded || detectViewportProfile() !== "phone") return;
+    if (!expanded || !phoneUi) return;
     const close = () => {
       if (typeof props.onRequestClose === "function") props.onRequestClose();
       else setExpanded(false);
     };
     return bindSwipeDownClose(titleRef.current, close);
-  }, [expanded, props.onRequestClose]);
+  }, [expanded, phoneUi, props.onRequestClose]);
 
   React.useEffect(() => {
     if (props.openSeq == null) return;
@@ -801,7 +808,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
 
   React.useEffect(() => {
     if (!narrow) return;
-    if (detectViewportProfile() !== "phone") return;
+    if (!phoneUi) return;
     const main = mainRef.current;
     if (!main) return;
     return installChatServerPageGestures(main, {
@@ -828,7 +835,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
         }
       },
     });
-  }, [narrow]);
+  }, [narrow, phoneUi]);
 
   const startNewWhisper = (to?: string) => {
     persistActiveDraft(draft, fromName, whisperTo);

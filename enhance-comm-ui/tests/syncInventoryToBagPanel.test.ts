@@ -46,8 +46,10 @@ describe("syncInventoryToBagPanel", () => {
       },
     });
     syncInventoryToBagPanel(false);
+    // Close clears the host flag directly — must not toggle via render_inventory
+    // (that raced open+close and blinked the bag).
     assert.equal(isInventoryOpen(), false);
-    assert.equal(renders, 1);
+    assert.equal(renders, 0);
   });
 
   it("is a no-op when already matching", () => {

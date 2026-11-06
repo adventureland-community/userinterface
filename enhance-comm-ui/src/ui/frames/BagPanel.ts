@@ -24,7 +24,7 @@ import {
   BAG_SYNC_CHROME_HEIGHT,
 } from "../../lib/frameSizes";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
-import { detectViewportProfile } from "../../lib/viewport";
+import { resolveCommPhoneUi } from "../../lib/viewport";
 import { installBagDragDrop } from "../bag/bagDragDrop";
 import { installBagItemCooltip } from "../bag/bagItemCooltip";
 import { installBagItemContextMenu } from "../bag/bagItemContextMenu";
@@ -57,6 +57,8 @@ export type BagPanelProps = {
   onFrameSizeRestore?: (size: { w: number; h: number }) => void;
   /** Phone swipe-down closes the bag panel. */
   onRequestClose?: () => void;
+  /** CommUI resolved profile — prefer over raw window size. */
+  phoneUi?: boolean;
 };
 
 /** Live relative age from bagSyncedAt (ticked while bag chrome is open). */
@@ -345,8 +347,15 @@ export function BagPanel(props: BagPanelProps): any {
   const mountRef = React.useRef(null as HTMLDivElement | null);
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const headRef = React.useRef(null as HTMLDivElement | null);
-  const phoneUi = detectViewportProfile() === "phone";
+  const phoneUi =
+    typeof props.phoneUi === "boolean"
+      ? props.phoneUi
+      : resolveCommPhoneUi();
   const [expanded, setExpanded] = React.useState(() => phoneUi);
+  React.useEffect(() => {
+    if (!phoneUi) setExpanded(false);
+    else setExpanded(true);
+  }, [phoneUi]);
   const [open, setOpen] = React.useState(() => isInventoryOpen());
   const [syncedAt, setSyncedAt] = React.useState(() => getBagSyncedAt());
   const [syncedName, setSyncedName] = React.useState(() => getBagSyncedName());

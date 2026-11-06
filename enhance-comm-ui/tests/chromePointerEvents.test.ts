@@ -19,8 +19,9 @@ const chromeCssSrc = readFileSync(
 describe("bottom chrome pointer-events", () => {
   it("keeps #bottom below #comm-ui so bag/toggles paint above chrome", () => {
     assert.equal(BOTTOM_CHROME_Z_INDEX, 201);
-    assert.ok(BOTTOM_CHROME_Z_INDEX < 220);
-    // Phone Material dock must stay above the strip.
+    // #comm-ui is 260 — strip must stay under panels.
+    assert.ok(BOTTOM_CHROME_Z_INDEX < 260);
+    // Phone Material dock (240) stays above the strip.
     assert.ok(BOTTOM_CHROME_Z_INDEX < 240);
   });
 

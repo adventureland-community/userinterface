@@ -10,7 +10,9 @@ import {
   panelStyle,
 } from "../src/lib/layout";
 import {
+  CHAT_PANEL_STYLE,
   COMMAND_PANEL_STYLE,
+  MAIL_PANEL_STYLE,
   MARKET_PANEL_STYLE,
 } from "../src/lib/frameSizes";
 
@@ -21,6 +23,11 @@ describe("command shell pointer-events", () => {
 
   it("MARKET_PANEL_STYLE opts into hits (Market + Bank fill shells)", () => {
     assert.equal(MARKET_PANEL_STYLE.pointerEvents, "auto");
+  });
+
+  it("MAIL_PANEL_STYLE and CHAT_PANEL_STYLE opt into hits", () => {
+    assert.equal(MAIL_PANEL_STYLE.pointerEvents, "auto");
+    assert.equal(CHAT_PANEL_STYLE.pointerEvents, "auto");
   });
 
   it("panelStyle alone is click-through (idle HUD default)", () => {
