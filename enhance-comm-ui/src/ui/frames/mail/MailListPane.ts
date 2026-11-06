@@ -8,7 +8,13 @@ import {
   type MailStoreSnapshot,
 } from "../../../host/mail";
 import { resolveMailActivity } from "./mailActivity";
-import { mailItemIcon, mailWhenColumn, rowMeta } from "./mailRowShared";
+import {
+  mailItemIcon,
+  mailRowTitle,
+  mailRowTitleTip,
+  mailWhenColumn,
+  rowMeta,
+} from "./mailRowShared";
 import { MailStackRow } from "./MailStackRow";
 
 export type MailListPaneProps = {
@@ -98,8 +104,11 @@ function renderMailRow(opts: {
         { className: "comm-mail__sub" },
         e(
           "span",
-          { className: "comm-mail__title" },
-          m.subject || "(no subject)",
+          {
+            className: "comm-mail__title",
+            title: mailRowTitleTip(m),
+          },
+          mailRowTitle(m),
         ),
         chips.length
           ? e("span", { className: "comm-mail__chips" }, ...chips)

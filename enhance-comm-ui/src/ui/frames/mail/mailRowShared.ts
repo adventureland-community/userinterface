@@ -16,6 +16,27 @@ export function rowMeta(m: MailRow): string {
   return bits.join(" · ");
 }
 
+/**
+ * List title: prefer attachment id (+level) over subject so bot subjects
+ * like `[overflow] ringsj` are not noise on single-item rows.
+ */
+export function mailRowTitle(m: MailRow): string {
+  if (m.item && m.item.name) {
+    const bits = [String(m.item.name)];
+    if (typeof m.item.level === "number") bits.push("+" + m.item.level);
+    return bits.join(" ");
+  }
+  return m.subject || "(no subject)";
+}
+
+/** Native hover tip when the visible title hides a non-empty subject. */
+export function mailRowTitleTip(m: MailRow): string | undefined {
+  if (!m.item || !m.item.name) return undefined;
+  const sub = m.subject != null ? String(m.subject).trim() : "";
+  if (!sub) return undefined;
+  return sub;
+}
+
 export function stackMeta(g: MailCollapseGroup): string {
   return g.head.fro + " → " + g.head.to;
 }

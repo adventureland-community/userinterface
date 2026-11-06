@@ -6,6 +6,7 @@ import {
   cueMailItemsRecipient,
   formatCapFraction,
   formatDeleteProgressLabel,
+  formatLiveMailLoadedStatus,
   formatMailRoute,
   formatMailWhat,
   formatRefreshProgressLabel,
@@ -189,7 +190,11 @@ export function MailBannerBar(props: MailBannerBarProps): any {
         ? snap.undoCount === 1
           ? "Deleted"
           : "Deleted " + snap.undoCount
-        : snap.status;
+        : formatLiveMailLoadedStatus(
+            snap.status,
+            snap.mails.length,
+            snap.hasMore,
+          );
   const observeLine = caps.observeName
     ? "Observing " + caps.observeName
     : caps.reason || "Not observing · inbox only";

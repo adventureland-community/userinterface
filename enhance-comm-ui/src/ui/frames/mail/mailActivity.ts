@@ -30,6 +30,12 @@ export function resolveMailActivity(snap: MailStoreSnapshot): {
   if (snap.loading) {
     return { mode: "pull", label: "Refreshing inbox" };
   }
+  if (snap.warmThrash && (snap.prefetchArmed || snap.loadingMore)) {
+    return {
+      mode: "warm",
+      label: "Inbox busy · still warming",
+    };
+  }
   if (snap.loadingMore) {
     return {
       mode: "warm",

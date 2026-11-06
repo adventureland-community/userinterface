@@ -13,6 +13,8 @@ import {
   CAMERA_PAN_SPEED,
   followCameraLockSmoothToward,
   followLockNeedsRecenter,
+  followRetileStepWorld,
+  followShouldForceRetileAhead,
   followSubjectOffScreen,
   followViewHalfExtents,
   keysToPan,
@@ -67,21 +69,26 @@ let mapFlushRafId: number | null = null;
 /** Stock default — restored when ECU is not driving the camera. */
 const STOCK_MDRAW_BORDER = 40;
 /**
- * Widen stock's retile early-out while the ECU camera lock is actively
- * moving (Follow recenter / free-cam pan). Idle Follow keeps stock border.
+ * Widen stock's retile early-out while free-cam is panning or Follow is
+ * recentering. Forced step-ahead retiles cover the path; wide border avoids
+ * thrash between those primes. Idle Follow keeps stock 40.
  * Phone/tablet use a milder bump (battery); large desktop buffers go wider.
  */
 const PHONE_ECU_MDRAW_BORDER = 100;
 const DESKTOP_ECU_MDRAW_BORDER = 140;
 /** Logical px² at/above which we treat the buffer as desktop-sized. */
 const LARGE_VIEW_AREA = 900 * 700;
-/** Hold wide border briefly after a lock snap so the next retile sees it. */
+/** Hold wide border briefly after a free-cam pan so the next retile sees it. */
 const LOCK_MOVED_HOLD_MS = 250;
 /** Slow fallback while free-cam — position_map already syncs on draw. */
 const REALM_FALLBACK_MS = 2000;
 let origRetileTheMap: (() => void) | null = null;
 let lockMovedUntil = 0;
 let realmFallbackId: number | null = null;
+/** Last lock XY where Follow forced an uncached retile. */
+let lastFollowRetileX = 0;
+let lastFollowRetileY = 0;
+let hasFollowRetileMark = false;
 
 type FreeListener = (free: boolean) => void;
 const freeListeners: FreeListener[] = [];
@@ -187,6 +194,7 @@ function schedulePositionMapFlush(): void {
 function clearFollowRecenter(): void {
   followRecenter = false;
   followRecenterLastTs = 0;
+  hasFollowRetileMark = false;
 }
 
 function nowMs(): number {
@@ -196,17 +204,73 @@ function nowMs(): number {
     : Date.now();
 }
 
-/** Mark that lockX/Y moved — widen retile border for a short hold. */
-function noteCameraLockMoved(): void {
+type HostMapRetile = HostMap & {
+  last_max_x?: number;
+  last_max_y?: number;
+};
+
+/** Bust stock's retile early-out and rebuild tiles around current map.real_*. */
+function forceUncachedRetile(): void {
+  const map = hostMap() as HostMapRetile | null;
+  if (!map) return;
+  map.last_max_x = undefined;
+  map.last_max_y = undefined;
+  const w = window as Window & { retile_the_map?: () => void };
+  if (typeof w.retile_the_map !== "function") return;
+  try {
+    w.retile_the_map();
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Force retile at the Follow lock and remember the mark for step-ahead. */
+function forceFollowRetileAtLock(): void {
+  const map = hostMap();
+  if (map) {
+    map.real_x = lockX;
+    map.real_y = lockY;
+  }
+  forceUncachedRetile();
+  lastFollowRetileX = lockX;
+  lastFollowRetileY = lockY;
+  hasFollowRetileMark = true;
+}
+
+/**
+ * During Follow recenter: prime on first need, then again after the lock
+ * travels {@link followRetileStepWorld} so tiles stay ahead of the ease.
+ */
+function maybeForceFollowRetileAlongPath(halfW: number, halfH: number): void {
+  const step = followRetileStepWorld(halfW, halfH);
+  if (!hasFollowRetileMark) {
+    forceFollowRetileAtLock();
+    return;
+  }
+  if (
+    followShouldForceRetileAhead(
+      lockX,
+      lockY,
+      lastFollowRetileX,
+      lastFollowRetileY,
+      step,
+    )
+  ) {
+    forceFollowRetileAtLock();
+  }
+}
+
+/** Mark free-cam pan — widen retile border for a short hold (not Follow). */
+function noteFreeCamLockMoved(): void {
+  if (!freeCamera) return;
   lockMovedUntil = nowMs() + LOCK_MOVED_HOLD_MS;
 }
 
 /**
- * True while ECU is actively driving the camera lock (not idle Follow).
- * Pure-ish for tests — pass live flags + whether the lock recently moved.
+ * True while free-cam input is driving the lock (not Follow recenter).
+ * Pure-ish for tests — pass live free-cam pan flags.
  */
-export function ecuCameraLockMoving(opts: {
-  followRecenter: boolean;
+export function ecuFreeCamPanMoving(opts: {
   mousePanActive: boolean;
   mapFlushPending: boolean;
   keyPan: boolean;
@@ -214,7 +278,6 @@ export function ecuCameraLockMoving(opts: {
   lockMovedHold: boolean;
 }): boolean {
   return (
-    opts.followRecenter ||
     opts.mousePanActive ||
     opts.mapFlushPending ||
     opts.keyPan ||
@@ -223,15 +286,15 @@ export function ecuCameraLockMoving(opts: {
   );
 }
 
-function readCameraLockMoving(): boolean {
+function readFreeCamPanMoving(): boolean {
+  if (!freeCamera) return false;
   const keys = keysToPan({
     up: keyUp,
     down: keyDown,
     left: keyLeft,
     right: keyRight,
   });
-  return ecuCameraLockMoving({
-    followRecenter,
+  return ecuFreeCamPanMoving({
     mousePanActive,
     mapFlushPending: mapFlushRafId != null,
     keyPan: keys.x !== 0 || keys.y !== 0,
@@ -262,6 +325,7 @@ function syncRealmFallbackTimer(): void {
 /**
  * Follow: idle while the subject stays in the viewport dead zone; once they
  * near the edge, ease the lock onto them (true center) instead of edge-nudging.
+ * Step-ahead forced retiles keep map tiles in front of the ease.
  */
 function panLockToObserved(): void {
   const at = readObservedWorldXY();
@@ -273,14 +337,17 @@ function panLockToObserved(): void {
   ) {
     lockX = at.x;
     lockY = at.y;
-    noteCameraLockMoved();
     clearFollowRecenter();
+    forceFollowRetileAtLock();
     return;
   }
   if (
     followLockNeedsRecenter(lockX, lockY, at.x, at.y, half.halfW, half.halfH)
   ) {
+    const starting = !followRecenter;
     followRecenter = true;
+    // First frame of recenter — cover tiles under the lock before easing.
+    if (starting) maybeForceFollowRetileAlongPath(half.halfW, half.halfH);
   }
   if (!followRecenter) return;
 
@@ -293,7 +360,7 @@ function panLockToObserved(): void {
   const next = followCameraLockSmoothToward(lockX, lockY, at.x, at.y, dt);
   lockX = next.x;
   lockY = next.y;
-  noteCameraLockMoved();
+  maybeForceFollowRetileAlongPath(half.halfW, half.halfH);
   if (next.arrived) clearFollowRecenter();
 }
 
@@ -323,7 +390,7 @@ export function setCameraWorldXY(x: number, y: number): void {
   if (!map) return;
   lockX = x;
   lockY = y;
-  noteCameraLockMoved();
+  noteFreeCamLockMoved();
   map.real_x = x;
   map.real_y = y;
   const pos = (window as Window & { position_map?: () => void }).position_map;
@@ -504,7 +571,7 @@ function snapMapToObserved(): boolean {
   if (map && at) {
     lockX = at.x;
     lockY = at.y;
-    noteCameraLockMoved();
+    noteFreeCamLockMoved();
     map.real_x = at.x;
     map.real_y = at.y;
     const pos = (window as Window & { position_map?: () => void }).position_map;
@@ -537,7 +604,7 @@ export function panCamera(pan: CameraPanVec, dtSec: number): void {
   });
   lockX = next.x;
   lockY = next.y;
-  noteCameraLockMoved();
+  noteFreeCamLockMoved();
   map.real_x = lockX;
   map.real_y = lockY;
 }
@@ -564,7 +631,7 @@ export function panCameraByWorldDelta(dx: number, dy: number): void {
   if (!map) return;
   lockX += dx;
   lockY += dy;
-  noteCameraLockMoved();
+  noteFreeCamLockMoved();
   map.real_x = lockX;
   map.real_y = lockY;
   schedulePositionMapFlush();
@@ -966,14 +1033,14 @@ export function stockMapScreenWouldChange(
 }
 
 /**
- * Retile border while the ECU lock is moving. Idle Follow / idle free-cam
- * keep stock 40 so standing still does not keep the expensive rebuild path.
+ * Retile border while free-cam is panning or Follow is recentering. Idle
+ * Follow / idle free-cam keep stock 40; step-ahead forces cover the path.
  */
 export function ecuRetileBorderForView(opts: {
-  lockMoving: boolean;
+  widenMoving: boolean;
   viewArea: number;
 }): number {
-  if (!opts.lockMoving) return STOCK_MDRAW_BORDER;
+  if (!opts.widenMoving) return STOCK_MDRAW_BORDER;
   if (opts.viewArea >= LARGE_VIEW_AREA) return DESKTOP_ECU_MDRAW_BORDER;
   return PHONE_ECU_MDRAW_BORDER;
 }
@@ -981,9 +1048,9 @@ export function ecuRetileBorderForView(opts: {
 function readEcuRetileBorder(): number {
   const size = readHostSize();
   // Do not multiply border by FOV — zoom-out already multiplies tile count
-  // with the logical buffer; a wider border makes Follow lag worse.
+  // with the logical buffer; a wider border without step-ahead makes Follow lag.
   return ecuRetileBorderForView({
-    lockMoving: readCameraLockMoving(),
+    widenMoving: followRecenter || readFreeCamPanMoving(),
     viewArea: size.w * size.h,
   });
 }

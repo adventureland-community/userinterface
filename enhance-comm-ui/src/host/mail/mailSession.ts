@@ -3,6 +3,7 @@
  */
 
 import {
+  clearWarmThrash,
   requestMailHead,
   resetPrefetchPages,
   schedulePrefetch,
@@ -36,6 +37,7 @@ export function clearMailSession(): void {
   openGen += 1;
   stopPrefetch();
   resetPrefetchPages();
+  clearWarmThrash();
   clearPendingOutcome();
   void flushPendingMailDeletes();
   resetMailAccountKeyPin();
@@ -49,6 +51,7 @@ export function setMailPanelOpen(open: boolean): void {
     commit({ panelOpen: false });
     setMailSearchBurst(false);
     stopPrefetch();
+    clearWarmThrash();
     void flushPendingMailDeletes().then(() => {
       schedulePersistMailCache();
     });
@@ -63,7 +66,7 @@ export function setMailPanelOpen(open: boolean): void {
     if (!isCurrentOpenGen(gen) || !getMailSnapshot().panelOpen) return;
     await requestMailHead("open");
     if (!isCurrentOpenGen(gen) || !getMailSnapshot().panelOpen) return;
-    schedulePrefetch();
+    schedulePrefetch({ forceRestart: true });
   })();
 }
 

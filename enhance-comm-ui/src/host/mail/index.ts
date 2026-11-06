@@ -184,12 +184,17 @@ export type {
 } from "./mailCaps";
 export {
   clearNewMailBanner,
+  clearWarmThrash,
   loadOlderMail,
+  prefetchRemainingMs,
   refreshMailIds,
   requestMailCacheRefresh,
   requestMailHead,
+  schedulePrefetch,
   setMailSearchBurst,
+  stopPrefetch,
 } from "./mailCache";
+export { formatLiveMailLoadedStatus } from "./mailStatusFormat";
 export {
   mailSearchEmptyHint,
   mailSearchWantsBurst,

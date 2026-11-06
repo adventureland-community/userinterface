@@ -9,7 +9,13 @@ import {
 } from "../../../host/mail";
 import { itemInstanceLabel } from "../../../lib/gameIcon";
 import { ItemInstance } from "../../chrome/ItemInstance";
-import { mailItemIcon, mailWhenColumn, rowMeta } from "./mailRowShared";
+import {
+  mailItemIcon,
+  mailRowTitle,
+  mailRowTitleTip,
+  mailWhenColumn,
+  rowMeta,
+} from "./mailRowShared";
 
 export type MailItemMailsPaneProps = {
   snap: MailStoreSnapshot;
@@ -181,8 +187,11 @@ export function MailItemMailsPane(props: MailItemMailsPaneProps): any {
               { className: "comm-mail__sub" },
               e(
                 "span",
-                { className: "comm-mail__title" },
-                m.subject || "(no subject)",
+                {
+                  className: "comm-mail__title",
+                  title: mailRowTitleTip(m),
+                },
+                mailRowTitle(m),
               ),
             ),
             e("div", { className: "comm-mail__meta" }, rowMeta(m)),

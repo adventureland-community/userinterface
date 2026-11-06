@@ -27,6 +27,11 @@ export type MailStoreSnapshot = {
   loadingMore: boolean;
   /** Prefetch timer armed between background page pulls. */
   prefetchArmed: boolean;
+  /**
+   * Recent X.unread heads are starving background warm — ACTIVITY shows
+   * inbox-busy instead of “next page…”.
+   */
+  warmThrash: boolean;
   panelOpen: boolean;
   view: MailView;
   lastScript: string;
@@ -80,6 +85,7 @@ const state: MailStateFields = {
   loading: false,
   loadingMore: false,
   prefetchArmed: false,
+  warmThrash: false,
   panelOpen: false,
   view: { kind: "list" },
   lastScript: "",
@@ -166,6 +172,7 @@ export function getMailSnapshot(): MailStoreSnapshot {
     loading: state.loading,
     loadingMore: state.loadingMore,
     prefetchArmed: state.prefetchArmed,
+    warmThrash: state.warmThrash,
     panelOpen: state.panelOpen,
     view: state.view,
     lastScript: state.lastScript,
@@ -283,6 +290,7 @@ export function clearMailSessionCore(): void {
       loading: false,
       loadingMore: false,
       prefetchArmed: false,
+      warmThrash: false,
       view: { kind: "list" },
       lastScript: "",
       lastSeenUnread: -1,

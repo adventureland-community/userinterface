@@ -8,6 +8,8 @@ import {
   JOYSTICK_RADIUS_PX,
   followCameraLockSmoothToward,
   followLockNeedsRecenter,
+  followRetileStepWorld,
+  followShouldForceRetileAhead,
   followSubjectOffScreen,
   followViewHalfExtents,
   keysToPan,
@@ -18,7 +20,7 @@ import {
 } from "../src/lib/cameraPan";
 import {
   centerOnObservedCamera,
-  ecuCameraLockMoving,
+  ecuFreeCamPanMoving,
   ecuRetileBorderForView,
   isFollowCamera,
   isFreeCamera,
@@ -281,28 +283,27 @@ describe("cameraPan stock position_map change gate", () => {
     );
   });
 
-  it("widens retile border only while the camera lock is moving", () => {
+  it("widens retile border while free-cam pans or Follow recenters", () => {
     assert.equal(
-      ecuRetileBorderForView({ lockMoving: false, viewArea: 390 * 844 }),
+      ecuRetileBorderForView({ widenMoving: false, viewArea: 390 * 844 }),
       40,
       "idle Follow keeps stock border",
     );
     assert.equal(
-      ecuRetileBorderForView({ lockMoving: true, viewArea: 390 * 844 }),
+      ecuRetileBorderForView({ widenMoving: true, viewArea: 390 * 844 }),
       100,
-      "phone lock move must widen (battery)",
+      "phone widen while moving",
     );
     assert.equal(
-      ecuRetileBorderForView({ lockMoving: true, viewArea: 1440 * 900 }),
+      ecuRetileBorderForView({ widenMoving: true, viewArea: 1440 * 900 }),
       140,
-      "desktop lock move widens further",
+      "desktop widen while moving",
     );
   });
 
-  it("treats idle Follow as not lock-moving", () => {
+  it("treats stick/key pan as free-cam moving", () => {
     assert.equal(
-      ecuCameraLockMoving({
-        followRecenter: false,
+      ecuFreeCamPanMoving({
         mousePanActive: false,
         mapFlushPending: false,
         keyPan: false,
@@ -312,15 +313,27 @@ describe("cameraPan stock position_map change gate", () => {
       false,
     );
     assert.equal(
-      ecuCameraLockMoving({
-        followRecenter: true,
+      ecuFreeCamPanMoving({
         mousePanActive: false,
         mapFlushPending: false,
         keyPan: false,
-        stickPan: false,
+        stickPan: true,
         lockMovedHold: false,
       }),
       true,
     );
+  });
+});
+
+describe("Follow retile step-ahead", () => {
+  it("scales the force-retile step with view half-extents", () => {
+    const step = followRetileStepWorld(200, 100);
+    assert.ok(step >= 35 && step <= 40, "0.35 × shorter half");
+  });
+
+  it("forces again only after the lock travels the step", () => {
+    assert.equal(followShouldForceRetileAhead(0, 0, 0, 0, 80), false);
+    assert.equal(followShouldForceRetileAhead(80, 0, 0, 0, 80), true);
+    assert.equal(followShouldForceRetileAhead(79, 0, 0, 0, 80), false);
   });
 });

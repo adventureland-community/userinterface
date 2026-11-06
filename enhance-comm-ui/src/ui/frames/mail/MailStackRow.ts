@@ -5,7 +5,12 @@ import {
   type MailCollapseGroup,
   type MailRow,
 } from "../../../host/mail";
-import { mailItemIcon, mailWhenColumn, stackMeta } from "./mailRowShared";
+import {
+  mailItemIcon,
+  mailRowTitle,
+  mailWhenColumn,
+  stackMeta,
+} from "./mailRowShared";
 
 export type MailStackRowProps = {
   g: MailCollapseGroup;
@@ -46,13 +51,6 @@ function stackOpenTarget(g: MailCollapseGroup): MailRow {
   return g.head;
 }
 
-function itemLabel(m: MailRow): string {
-  if (!m.item || !m.item.name) return m.subject || "(no subject)";
-  const bits = [String(m.item.name)];
-  if (typeof m.item.level === "number") bits.push("+" + m.item.level);
-  return bits.join(" ");
-}
-
 export function MailStackRow(props: MailStackRowProps): any {
   const {
     g,
@@ -65,9 +63,7 @@ export function MailStackRow(props: MailStackRowProps): any {
   const allOn = groupChecked(g, selectedIds);
   const someOn = groupSomeChecked(g, selectedIds);
   const headSel = !!selected && g.mails.some((m) => m.id === selected.id);
-  const title = g.head.item
-    ? itemLabel(g.head)
-    : g.head.subject || "(no subject)";
+  const title = mailRowTitle(g.head);
   const qtyTotal = mailStackItemQuantity(g);
   const showQtyPill = qtyTotal != null && qtyTotal !== g.untaken;
   const allTaken = !!g.head.item && g.untaken === 0 && g.mails.length > 0;

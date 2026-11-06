@@ -49,9 +49,13 @@ import { applyXUnread, getXUnread } from "./mailUnread";
 
 let pullInFlight = false;
 let prefetchTimer = 0;
+/** Absolute ms when the armed prefetch timer should fire. */
+let prefetchDeadline = 0;
 let prefetchPages = 0;
 /** Consecutive background pull failures — backs off further. */
 let prefetchFailStreak = 0;
+/** Last head reconcile strategy — unchanged heads keep the warm timer. */
+let lastHeadStrategy: string = "";
 /** Shared head/cursor pull so Refresh waits instead of no-op while in flight. */
 let activePull: Promise<PullMailPage | null> | null = null;
 /** Bumps to cancel an in-flight full cache Refresh. */
@@ -62,12 +66,17 @@ let refreshSeq = 0;
  */
 let searchBurst = false;
 const MAIL_SEARCH_BURST_GAP_MS = 120;
+/** X.unread head timestamps — thrash when many land inside this window. */
+const WARM_THRASH_WINDOW_MS = 8000;
+const WARM_THRASH_HEAD_COUNT = 3;
+const recentUnreadHeadAt: number[] = [];
 
 export function stopPrefetch(): void {
   if (prefetchTimer) {
     window.clearTimeout(prefetchTimer);
     prefetchTimer = 0;
   }
+  prefetchDeadline = 0;
   commit({ prefetchArmed: false });
 }
 
@@ -92,22 +101,51 @@ function prefetchDelayMs(): number {
   );
 }
 
+function noteUnreadHeadReason(reason: string): void {
+  if (reason.indexOf("X.unread") !== 0) return;
+  const now = Date.now();
+  recentUnreadHeadAt.push(now);
+  while (
+    recentUnreadHeadAt.length > 0 &&
+    now - recentUnreadHeadAt[0] > WARM_THRASH_WINDOW_MS
+  ) {
+    recentUnreadHeadAt.shift();
+  }
+  let n = 0;
+  for (let i = 0; i < recentUnreadHeadAt.length; i++) {
+    if (now - recentUnreadHeadAt[i] <= WARM_THRASH_WINDOW_MS) n += 1;
+  }
+  const thrash = n >= WARM_THRASH_HEAD_COUNT && getHasMore() && getPanelOpen();
+  commit({ warmThrash: thrash });
+}
+
+export function clearWarmThrash(): void {
+  if (recentUnreadHeadAt.length) recentUnreadHeadAt.length = 0;
+  commit({ warmThrash: false });
+}
+
 /** Enable fast older-page pulls while a mail search query is active. */
 export function setMailSearchBurst(on: boolean): void {
   const next = !!on;
   if (searchBurst === next) {
-    if (next && getPanelOpen() && getHasMore()) schedulePrefetch();
+    if (next && getPanelOpen() && getHasMore()) {
+      schedulePrefetch({ forceRestart: true });
+    }
     return;
   }
   searchBurst = next;
   if (next && getPanelOpen() && getHasMore()) {
-    schedulePrefetch();
+    schedulePrefetch({ forceRestart: true });
   }
 }
 
-/** Keep pulling older pages while the panel is open and the server has more. */
-export function schedulePrefetch(): void {
-  stopPrefetch();
+/**
+ * Keep pulling older pages while the panel is open and the server has more.
+ * Quiet/unchanged heads pass `forceRestart: false` so the countdown survives
+ * bot X.unread thrash.
+ */
+export function schedulePrefetch(opts?: { forceRestart?: boolean }): void {
+  const forceRestart = !!(opts && opts.forceRestart);
   if (
     !getPanelOpen() ||
     !getHasMore() ||
@@ -115,14 +153,30 @@ export function schedulePrefetch(): void {
     pullInFlight ||
     getRefreshProgress()
   ) {
+    stopPrefetch();
     return;
   }
+  const now = Date.now();
+  if (!forceRestart && prefetchTimer && prefetchDeadline > now) {
+    commit({ prefetchArmed: true });
+    return;
+  }
+  stopPrefetch();
+  const delay = prefetchDelayMs();
+  prefetchDeadline = now + delay;
   commit({ prefetchArmed: true });
   prefetchTimer = window.setTimeout(() => {
     prefetchTimer = 0;
+    prefetchDeadline = 0;
     commit({ prefetchArmed: false });
     void loadOlderMail({ background: true });
-  }, prefetchDelayMs());
+  }, delay);
+}
+
+/** Test seam — remaining ms on the armed prefetch timer (0 if idle). */
+export function prefetchRemainingMs(now = Date.now()): number {
+  if (!prefetchTimer || prefetchDeadline <= now) return 0;
+  return prefetchDeadline - now;
 }
 
 async function runPull(
@@ -200,29 +254,28 @@ async function runPull(
         if (reason.indexOf("X.unread↑") === 0 && assigned.newIds.length) {
           patch.newMailCount = assigned.newIds.length;
         }
+        lastHeadStrategy = reconciled.strategy;
         // Full Refresh owns the status card via refreshProgress.
+        // Count is applied live in the STATUS card (warm grows past head).
         if (!getCommandBusy() && !getRefreshProgress()) {
-          let strat = "";
-          if (reconciled.strategy === "unchanged") strat = " · cache ok";
+          let stratLabel = "";
+          if (reconciled.strategy === "unchanged") stratLabel = "cache ok";
           else if (reconciled.strategy === "prepend") {
-            strat = " · pushed new";
+            stratLabel = "pushed new";
           } else if (reconciled.strategy === "stitch") {
-            strat = " · kept older";
+            stratLabel = "kept older";
           } else if (reconciled.strategy === "truncate") {
-            strat = " · refreshed head";
+            stratLabel = "refreshed head";
           } else if (reconciled.strategy === "replace") {
-            strat = " · replaced";
+            stratLabel = "replaced";
           }
-          patch.status =
-            "Loaded " +
-            assigned.rows.length +
-            (reconciled.hasMore ? "+" : "") +
-            strat +
-            " · " +
-            reason;
+          patch.status = stratLabel
+            ? stratLabel + " · " + reason
+            : reason;
           patch.statusKind = "";
         }
         commit(patch);
+        noteUnreadHeadReason(reason);
       } else if (mode === "patch") {
         // Mid-list re-verify (take settle): update taken flags by id only.
         const assigned = assignLocalReadFlags(
@@ -249,10 +302,7 @@ async function runPull(
         };
         // Prefetch progress lives in the activity chrome — avoid status spam.
         if (!reason.startsWith("prefetch")) {
-          patch.status =
-            "Loaded · " +
-            assigned.rows.length +
-            (meta.hasMore ? "+" : "");
+          patch.status = "cursor · " + reason;
           patch.statusKind = "";
         }
         commit(patch);
@@ -289,7 +339,15 @@ export async function requestMailHead(
     Date.now() - lastHeadAt >= MAIL_HEAD_TTL_MS;
   if (!should && reason !== "Refresh" && !force) return;
   await runPull("head", reason);
-  if (getPanelOpen()) schedulePrefetch();
+  if (getPanelOpen()) {
+    // Unchanged head: keep the warm countdown so X.unread thrash cannot
+    // starve older-page pulls. Cursor/shape changes restart the gap.
+    const restart =
+      reason === "Refresh" ||
+      reason === "open" ||
+      lastHeadStrategy !== "unchanged";
+    schedulePrefetch({ forceRestart: restart });
+  }
 }
 
 function sleepMs(ms: number): Promise<void> {
@@ -368,7 +426,7 @@ export async function requestMailCacheRefresh(): Promise<void> {
   if (seq !== refreshSeq) return;
   if (!headPage) {
     commitRefreshProgress(null);
-    if (getPanelOpen()) schedulePrefetch();
+    if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
     return;
   }
   addMailPageIdsToSeen([headPage], seenIds);
@@ -425,7 +483,7 @@ export async function requestMailCacheRefresh(): Promise<void> {
           if (!retryPages[i]) {
             commitRefreshProgress(null);
             setStatus("Cache refresh stopped — pull failed", "err");
-            if (getPanelOpen()) schedulePrefetch();
+            if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
             return;
           }
           recovered.push(retryPages[i]!);
@@ -440,7 +498,7 @@ export async function requestMailCacheRefresh(): Promise<void> {
     } else if (failed) {
       commitRefreshProgress(null);
       setStatus("Cache refresh stopped — pull failed", "err");
-      if (getPanelOpen()) schedulePrefetch();
+      if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
       return;
     } else {
       const okPages: PullMailPage[] = [];
@@ -485,7 +543,8 @@ export async function requestMailCacheRefresh(): Promise<void> {
     lastHeadReason: "Refresh",
   });
   schedulePersistMailCache();
-  if (getPanelOpen()) schedulePrefetch();
+  clearWarmThrash();
+  if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
 }
 
 /**
@@ -518,11 +577,12 @@ export async function loadOlderMail(opts?: {
     if (ok) {
       prefetchPages += 1;
       prefetchFailStreak = 0;
+      clearWarmThrash();
     } else {
       prefetchFailStreak += 1;
     }
     // Only auto-chain background warming — manual Load older is one page.
-    if (getPanelOpen()) schedulePrefetch();
+    if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
   }
 }
 

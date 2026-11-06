@@ -158,6 +158,11 @@ export const FOLLOW_EDGE_MARGIN = 0.22;
 export const FOLLOW_RECENTER_SPEED = 5.5;
 /** World units — treat lock as arrived on the subject. */
 export const FOLLOW_RECENTER_SNAP = 3;
+/**
+ * Fraction of the shorter view half-extent between forced Follow retiles.
+ * Keeps tiles ahead of the lock without thrashing every frame.
+ */
+export const FOLLOW_RETILE_STEP_FRAC = 0.35;
 
 /** World half-extents of the logical buffer (stock width/height ÷ scale). */
 export function followViewHalfExtents(
@@ -213,6 +218,36 @@ export function followSubjectOffScreen(
   return (
     Math.abs(subjectX - lockX) > halfW || Math.abs(subjectY - lockY) > halfH
   );
+}
+
+/** World step between forced Follow retiles (FOV/zoom aware). */
+export function followRetileStepWorld(
+  halfW: number,
+  halfH: number,
+  frac: number = FOLLOW_RETILE_STEP_FRAC,
+): number {
+  const short = Math.min(
+    halfW > 0 && Number.isFinite(halfW) ? halfW : 1,
+    halfH > 0 && Number.isFinite(halfH) ? halfH : 1,
+  );
+  const f = frac > 0 && Number.isFinite(frac) ? frac : FOLLOW_RETILE_STEP_FRAC;
+  return Math.max(FOLLOW_RECENTER_SNAP * 2, short * f);
+}
+
+/**
+ * True when the Follow lock has traveled far enough since the last forced
+ * retile that we should rebuild tiles ahead again.
+ */
+export function followShouldForceRetileAhead(
+  lockX: number,
+  lockY: number,
+  lastRetileX: number,
+  lastRetileY: number,
+  stepWorld: number,
+): boolean {
+  if (!(stepWorld > 0) || !Number.isFinite(stepWorld)) return false;
+  const dist = Math.hypot(lockX - lastRetileX, lockY - lastRetileY);
+  return dist >= stepWorld;
 }
 
 /**
