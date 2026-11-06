@@ -16368,6 +16368,30 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     };
   }
   var MOUSE_PAN_DRAG_THRESHOLD_PX = 4;
+  var FOLLOW_EDGE_MARGIN = 0.22;
+  function followViewHalfExtents(width, height, scale) {
+    const s = scale > 0 && Number.isFinite(scale) ? scale : 1;
+    const w = width > 0 && Number.isFinite(width) ? width : 1;
+    const h = height > 0 && Number.isFinite(height) ? height : 1;
+    return { halfW: Math.max(1, w / (2 * s)), halfH: Math.max(1, h / (2 * s)) };
+  }
+  function followCameraLockForSubject(lockX2, lockY2, subjectX, subjectY, halfW, halfH, edgeMargin = FOLLOW_EDGE_MARGIN) {
+    const dx = subjectX - lockX2;
+    const dy = subjectY - lockY2;
+    if (Math.abs(dx) > halfW || Math.abs(dy) > halfH) {
+      return { x: subjectX, y: subjectY };
+    }
+    const m = Math.max(0, Math.min(0.49, edgeMargin));
+    const maxOffX = Math.max(0, halfW * (1 - m));
+    const maxOffY = Math.max(0, halfH * (1 - m));
+    let x = lockX2;
+    let y = lockY2;
+    if (dx > maxOffX) x = subjectX - maxOffX;
+    else if (dx < -maxOffX) x = subjectX + maxOffX;
+    if (dy > maxOffY) y = subjectY - maxOffY;
+    else if (dy < -maxOffY) y = subjectY + maxOffY;
+    return { x, y };
+  }
 
   // src/host/cameraPan.ts
   var installed = false;
@@ -16469,8 +16493,18 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   function panLockToObserved() {
     const at = readObservedWorldXY();
     if (!at) return;
-    lockX = at.x;
-    lockY = at.y;
+    const size = readHostSize();
+    const half = followViewHalfExtents(size.w, size.h, readHostWorldZoom());
+    const next = followCameraLockForSubject(
+      lockX,
+      lockY,
+      at.x,
+      at.y,
+      half.halfW,
+      half.halfH
+    );
+    lockX = next.x;
+    lockY = next.y;
   }
   function syncLockFromMap() {
     const map = hostMap();
@@ -28089,7 +28123,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     const following = isFollowCamera();
     btn.classList.toggle("is-on", following);
     btn.setAttribute("aria-pressed", following ? "true" : "false");
-    btn.title = following ? "Following observed \u2014 tap to free camera" : "Follow observed character";
+    btn.title = following ? "Following near screen edge \u2014 tap to free camera" : "Follow observed \u2014 pans when they near the screen edge";
   }
   var followChromeBound = false;
   function ensureFollowChromeSync() {
@@ -28224,7 +28258,12 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     };
     actions.append(
       mk("center", "Center", "Center on observed character", onCenterClick),
-      mk("follow", "Follow", "Follow observed character", onFollowClick),
+      mk(
+        "follow",
+        "Follow",
+        "Follow observed \u2014 pans when they near the screen edge",
+        onFollowClick
+      ),
       mk("bag", "Bag", "Observed inventory", onBagClick),
       mk("chat", "Chat", "Server chat \u2014 send as observed character", onChatClick),
       mk("mail", "Mail", "Account mail", onMailClick),
@@ -32307,7 +32346,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-06T12:29:20.790Z" : "unknown";
+    const builtAt = true ? "2026-11-06T13:24:43.315Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,

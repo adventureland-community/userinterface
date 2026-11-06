@@ -11,6 +11,8 @@
 
 import {
   CAMERA_PAN_SPEED,
+  followCameraLockForSubject,
+  followViewHalfExtents,
   keysToPan,
   mouseDragWorldDelta,
   MOUSE_PAN_DRAG_THRESHOLD_PX,
@@ -104,7 +106,10 @@ export function isFreeCamera(): boolean {
   return freeCamera;
 }
 
-/** True when the camera is locked to continuously track the observed character. */
+/**
+ * True when Follow is on (edge-of-viewport track of the observed character).
+ * Pans only near the screen edge — not a hard center lock every frame.
+ */
 export function isFollowCamera(): boolean {
   return followCamera && !freeCamera;
 }
@@ -169,12 +174,25 @@ function schedulePositionMapFlush(): void {
   });
 }
 
-/** Pan the lock onto the live observed entity (Follow = free-cam lock update). */
+/**
+ * Nudge the Follow lock only when the observed entity nears the viewport edge.
+ * Staying still while they roam the center avoids stock map.x/y churn → retile.
+ */
 function panLockToObserved(): void {
   const at = readObservedWorldXY();
   if (!at) return;
-  lockX = at.x;
-  lockY = at.y;
+  const size = readHostSize();
+  const half = followViewHalfExtents(size.w, size.h, readHostWorldZoom());
+  const next = followCameraLockForSubject(
+    lockX,
+    lockY,
+    at.x,
+    at.y,
+    half.halfW,
+    half.halfH,
+  );
+  lockX = next.x;
+  lockY = next.y;
 }
 
 function syncLockFromMap(): void {
@@ -657,8 +675,8 @@ function stopRafIfIdle(): void {
 
 /**
  * Keep the ECU lock across stock `position_map` / `draw`.
- * Follow pans the lock onto the observed entity once, then uses the same
- * write path as free-cam (f87cdab). Never re-read live XY after stock.
+ * Follow edge-tracks the observed entity (dead zone in the viewport center),
+ * then uses the same write path as free-cam. Never re-read live XY after stock.
  */
 function patchedPositionMap(this: unknown): void {
   syncFreeCameraAfterRealmChange();
@@ -732,8 +750,8 @@ export function centerOnObservedCamera(): void {
 }
 
 /**
- * Toggle continuous track of the observed character (exits free-cam when on).
- * Panning / joystick clears Follow via unlockCamera.
+ * Toggle Follow (exits free-cam when on). Snaps once onto the subject, then
+ * only pans when they near the viewport edge. Pan / joystick clears Follow.
  */
 export function setFollowCamera(on: boolean): void {
   if (on) {

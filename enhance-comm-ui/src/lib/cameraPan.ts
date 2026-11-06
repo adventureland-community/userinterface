@@ -147,3 +147,55 @@ export function mouseDragWorldDelta(
 
 /** Ignore tiny pointer jitter before a left-drag becomes a pan. */
 export const MOUSE_PAN_DRAG_THRESHOLD_PX = 4;
+
+/**
+ * Follow soft edge — fraction of each half-viewport kept as a push band.
+ * Subject may roam the center; the lock only moves when they enter the band,
+ * and then only enough to sit them on the inner edge (no continuous centering).
+ * Cuts Follow retiles vs locking map.real_* to the entity every frame.
+ */
+export const FOLLOW_EDGE_MARGIN = 0.22;
+
+/** World half-extents of the logical buffer (stock width/height ÷ scale). */
+export function followViewHalfExtents(
+  width: number,
+  height: number,
+  scale: number,
+): { halfW: number; halfH: number } {
+  const s = scale > 0 && Number.isFinite(scale) ? scale : 1;
+  const w = width > 0 && Number.isFinite(width) ? width : 1;
+  const h = height > 0 && Number.isFinite(height) ? height : 1;
+  return { halfW: Math.max(1, w / (2 * s)), halfH: Math.max(1, h / (2 * s)) };
+}
+
+/**
+ * Next Follow camera lock for a subject. Pure — tested.
+ * - Inside the safe rect → same lock (no retile churn).
+ * - In the edge band → nudge lock so they sit on the inner edge.
+ * - Fully off-screen (teleport / bad lock) → hard-center on the subject.
+ */
+export function followCameraLockForSubject(
+  lockX: number,
+  lockY: number,
+  subjectX: number,
+  subjectY: number,
+  halfW: number,
+  halfH: number,
+  edgeMargin: number = FOLLOW_EDGE_MARGIN,
+): { x: number; y: number } {
+  const dx = subjectX - lockX;
+  const dy = subjectY - lockY;
+  if (Math.abs(dx) > halfW || Math.abs(dy) > halfH) {
+    return { x: subjectX, y: subjectY };
+  }
+  const m = Math.max(0, Math.min(0.49, edgeMargin));
+  const maxOffX = Math.max(0, halfW * (1 - m));
+  const maxOffY = Math.max(0, halfH * (1 - m));
+  let x = lockX;
+  let y = lockY;
+  if (dx > maxOffX) x = subjectX - maxOffX;
+  else if (dx < -maxOffX) x = subjectX + maxOffX;
+  if (dy > maxOffY) y = subjectY - maxOffY;
+  else if (dy < -maxOffY) y = subjectY + maxOffY;
+  return { x, y };
+}

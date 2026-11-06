@@ -187,8 +187,8 @@ function syncFollowPressed(): void {
   btn.classList.toggle("is-on", following);
   btn.setAttribute("aria-pressed", following ? "true" : "false");
   btn.title = following
-    ? "Following observed — tap to free camera"
-    : "Follow observed character";
+    ? "Following near screen edge — tap to free camera"
+    : "Follow observed — pans when they near the screen edge";
 }
 
 let followChromeBound = false;
@@ -388,7 +388,12 @@ export function buildActionsEl(): HTMLElement {
 
   actions.append(
     mk("center", "Center", "Center on observed character", onCenterClick),
-    mk("follow", "Follow", "Follow observed character", onFollowClick),
+    mk(
+      "follow",
+      "Follow",
+      "Follow observed — pans when they near the screen edge",
+      onFollowClick,
+    ),
     mk("bag", "Bag", "Observed inventory", onBagClick),
     mk("chat", "Chat", "Server chat — send as observed character", onChatClick),
     mk("mail", "Mail", "Account mail", onMailClick),
