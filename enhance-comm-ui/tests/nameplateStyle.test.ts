@@ -38,8 +38,8 @@ describe("softPlateFill", () => {
     assert.ok(border);
     assert.ok(fill);
     assert.equal(border!.color, rim.color);
-    assert.ok(border!.alpha >= 0.45 && border!.alpha <= 0.7);
-    assert.ok(fill!.alpha >= 0.45 && fill!.alpha <= 0.6);
+    assert.ok(border!.alpha >= 0.38 && border!.alpha <= 0.55);
+    assert.ok(fill!.alpha >= 0.3 && fill!.alpha <= 0.45);
     assert.ok(
       hexLuminance("#" + border!.color.toString(16).padStart(6, "0")) <
         hexLuminance("#" + fill!.color.toString(16).padStart(6, "0")),
@@ -56,9 +56,9 @@ describe("ghostPlateForClassColor", () => {
     const merchant = ghostPlateForClassColor(classColors.merchant);
     const paladin = ghostPlateForClassColor(classColors.paladin);
     const npc = ghostPlateForClassColor("#ffffff");
-    assert.ok(mage.alpha >= 0.45 && mage.alpha <= 0.6);
-    assert.ok(ranger.alpha >= 0.45 && ranger.alpha <= 0.6);
-    assert.ok(merchant.alpha >= 0.45 && merchant.alpha <= 0.6);
+    assert.ok(mage.alpha >= 0.3 && mage.alpha <= 0.45);
+    assert.ok(ranger.alpha >= 0.3 && ranger.alpha <= 0.45);
+    assert.ok(merchant.alpha >= 0.3 && merchant.alpha <= 0.45);
     assert.equal(npc.color, 0x080a10);
     // Paladin plate must be darker than raw so white text reads.
     assert.ok(
@@ -101,7 +101,7 @@ describe("nameplate luminance bands", () => {
       ghostAlphaForLuminanceBand("mid"),
       NAMEPLATE_GHOST_ALPHA_BASE,
     );
-    assert.ok(ghostAlphaForLuminanceBand("bright") >= 0.7);
+    assert.ok(ghostAlphaForLuminanceBand("bright") >= 0.5);
     assert.ok(srgbLuminance(255, 255, 255) > srgbLuminance(40, 120, 40));
   });
 
@@ -183,8 +183,8 @@ describe("softTextStylePatch", () => {
     const phone = softTextStylePatch("#ffffff", "phone");
     assert.equal(desk.strokeThickness, 7);
     assert.equal(desk.dropShadow, true);
-    assert.equal(phone.strokeThickness, 0);
-    assert.equal(phone.dropShadow, false);
+    assert.equal(phone.strokeThickness, 5);
+    assert.equal(phone.dropShadow, true);
     assert.equal(phone.fontFamily, "pixel");
   });
 });
@@ -251,7 +251,7 @@ describe("nameBand padding", () => {
       children: [name],
     };
     const grow = nameBandGrowUp(7, 8);
-    assert.equal(grow, 4);
+    assert.equal(grow, Math.min(4, Math.ceil(8 + 2 * NAMEPLATE_BAND_PAD - 7)));
     assert.equal(fitNameTextInGhostBand(plate), true);
     assert.ok(plate.graphicsData[0].shape.height <= 9 + 4);
     assert.equal(plate.graphicsData[0].shape.y, -grow);

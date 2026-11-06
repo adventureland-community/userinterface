@@ -16777,20 +16777,10 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     }
     lastTs = 0;
   }
-  var FOLLOW_MAP_MIN_INTERVAL_MS = 33;
-  var lastFollowMapApplyMs = 0;
   function applyFollowMapLock(map) {
     const at = readObservedWorldXY();
     if (!at) return;
     const y = at.y + phoneFollowYBias();
-    const now = typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
-    const moved = lockX !== at.x || lockY !== y;
-    if (moved && now - lastFollowMapApplyMs < FOLLOW_MAP_MIN_INTERVAL_MS && Number.isFinite(lockX + lockY)) {
-      map.real_x = lockX;
-      map.real_y = lockY;
-      return;
-    }
-    if (moved) lastFollowMapApplyMs = now;
     lockX = at.x;
     lockY = y;
     map.real_x = at.x;
@@ -32223,7 +32213,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-06T09:09:03.237Z" : "unknown";
+    const builtAt = true ? "2026-11-06T09:28:56.282Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,

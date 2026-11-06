@@ -6,6 +6,13 @@
 const STYLE_ID = "ecu-phone-nav-css";
 
 const CSS = `
+html.ecu-phone-dock-on,
+html.ecu-phone-dock-on body {
+  overflow: hidden;
+  /* Fixed PIXI view escapes overflow:hidden; clip-path keeps cover-scale in-frame. */
+  clip-path: inset(0);
+  background: #0a0a0c;
+}
 .ecu-phone-dock {
   position: fixed;
   left: 0;
@@ -14,6 +21,17 @@ const CSS = `
   z-index: 240;
   pointer-events: none;
   font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* Soft fade into the bar — no hard chrome shelf over the floor. */
+  background: linear-gradient(
+    180deg,
+    rgba(10, 10, 12, 0) 0%,
+    rgba(10, 10, 12, 0.28) 40%,
+    rgba(10, 10, 12, 0.55) 100%
+  );
+  padding-top: 16px;
 }
 .ecu-phone-dock__bar {
   pointer-events: auto;
@@ -22,24 +40,18 @@ const CSS = `
   justify-content: space-around;
   flex-wrap: wrap;
   gap: 0;
-  min-height: 44px;
-  padding: 10px 2px calc(2px + env(safe-area-inset-bottom, 0px));
-  background: #1c1b1f;
-  border-top: 1px solid rgba(230, 225, 229, 0.12);
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.45);
+  min-height: 34px;
+  padding: 2px 2px calc(2px + env(safe-area-inset-bottom, 0px));
+  background: rgba(18, 17, 22, 0.5);
+  border-top: 1px solid rgba(230, 225, 229, 0.1);
+  box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   touch-action: pan-y;
   position: relative;
 }
 .ecu-phone-dock__nub {
-  position: absolute;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(230, 225, 229, 0.35);
-  pointer-events: none;
+  display: none;
 }
 .ecu-phone-dock__btn {
   position: relative;
@@ -93,10 +105,10 @@ const CSS = `
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  min-height: 44px;
+  min-height: 36px;
   min-width: 0;
   margin: 0 2px;
-  padding: 6px 10px;
+  padding: 4px 6px;
   border: none;
   border-radius: 14px;
   background: rgba(232, 222, 248, 0.04);
@@ -135,12 +147,7 @@ const CSS = `
   font-weight: 500;
 }
 .ecu-phone-dock__eyebrow {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #938f99;
-  line-height: 1.2;
+  display: none;
 }
 .ecu-phone-dock__status.is-on .ecu-phone-dock__eyebrow {
   color: #9dd4ec;
@@ -148,9 +155,11 @@ const CSS = `
 .ecu-phone-dock__status-title {
   display: block;
   width: 100%;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.92);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -159,10 +168,10 @@ const CSS = `
   display: block;
   width: 100%;
   min-width: 0;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.2;
-  color: #938f99;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: #f0ebf0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -229,33 +238,35 @@ const CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 22px;
-  border-radius: 8px;
-  font-size: 14px;
+  width: 32px;
+  height: 26px;
+  border-radius: 9px;
+  font-size: 15px;
   line-height: 1;
-  background: rgba(232, 222, 248, 0.08);
+  background: rgba(232, 222, 248, 0.12);
+  box-shadow: 0 0 0 1px rgba(230, 225, 229, 0.12);
 }
 .ecu-phone-dock__apps.is-on .ecu-phone-dock__apps-glyph {
   background: rgba(157, 212, 236, 0.16);
 }
 .ecu-phone-dock__mail-badge {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 18px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
+  top: -4px;
+  right: -2px;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
   background: #d33;
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
-  line-height: 16px;
+  line-height: 14px;
   text-align: center;
   box-shadow: 0 0 0 1px #1a1a1a;
   pointer-events: none;
+  z-index: 2;
 }
 .ecu-phone-pick__banner {
   display: flex;
@@ -706,38 +717,51 @@ const CSS = `
   transform: translateX(-50%) translateY(8px);
 }
 .ecu-phone-home-dots {
-  /* Strip itself does not steal stick hits — sides + dots do. */
   pointer-events: none;
-  position: fixed;
-  left: 0;
-  right: 0;
-  /* Sit just above the Material dock (chrome stack is hidden on phone). */
-  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 2px);
-  z-index: 235;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: 1;
+  transform: none;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 2px 6px;
-  /* Leave room for the camera stick on either thumb side. */
-  padding: 2px max(88px, env(safe-area-inset-right, 0px)) 4px
-    max(88px, env(safe-area-inset-left, 0px));
+  gap: 3px;
+  width: 100%;
+  max-width: none;
+  padding: 4px 96px 2px;
+  box-sizing: border-box;
+}
+.ecu-phone-home-dots.is-stack {
+  /* Lives in the dock column so Home + dock read as one bottom system. */
+}
+.ecu-phone-home-dots__links {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
 }
 .ecu-phone-home-dots__side {
   pointer-events: auto;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  width: auto;
   min-width: 0;
-  min-height: 32px;
-  max-width: min(36vw, 112px);
+  min-height: 34px;
   margin: 0;
-  padding: 3px 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  padding: 4px 12px;
+  border: 1px solid rgba(230, 225, 229, 0.16);
+  border-radius: 10px;
   background: rgba(28, 27, 31, 0.72);
-  color: #cac4d0;
+  color: #e6e1e5;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
@@ -746,17 +770,24 @@ const CSS = `
   -webkit-appearance: none;
 }
 .ecu-phone-home-dots__side.is-prev {
-  justify-self: start;
   justify-content: flex-start;
 }
 .ecu-phone-home-dots__side.is-next {
-  justify-self: end;
   justify-content: flex-end;
 }
 .ecu-phone-home-dots__side:disabled,
 .ecu-phone-home-dots__side.is-empty {
-  opacity: 0.28;
+  opacity: 0.55;
+  color: #cac4d0;
+  border-color: rgba(230, 225, 229, 0.1);
+  background: rgba(28, 27, 31, 0.45);
   cursor: default;
+}
+.ecu-phone-home-dots__side.is-spacer {
+  visibility: hidden;
+  pointer-events: none;
+  border: none;
+  background: transparent;
 }
 .ecu-phone-home-dots__side-label {
   min-width: 0;
@@ -773,36 +804,32 @@ const CSS = `
   padding: 0 4px;
 }
 .ecu-phone-home-dots__current {
-  /* Keep for a11y; visual weight is the dots — label was eating map. */
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  display: none;
 }
 .ecu-phone-home-dots__track {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-height: 28px;
 }
 .ecu-phone-home-dots__dot {
-  /* Visual stays the original 8px pill; ::after only expands the tap target. */
+  /* Visual 10px pill; ::after expands the tap target to ~44px. */
   pointer-events: auto;
   position: relative;
   box-sizing: border-box;
   flex: 0 0 auto;
-  width: 8px !important;
-  height: 8px !important;
-  min-width: 8px !important;
-  min-height: 8px !important;
-  max-width: 8px !important;
-  max-height: 8px !important;
+  width: 10px !important;
+  height: 10px !important;
+  min-width: 10px !important;
+  min-height: 10px !important;
+  max-width: 10px !important;
+  max-height: 10px !important;
   padding: 0 !important;
   margin: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.5);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -820,7 +847,7 @@ const CSS = `
 }
 .ecu-phone-home-dots__dot.is-on {
   background: #ffffff;
-  transform: scale(1.25);
+  transform: scale(1.35);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .ecu-phone-shade-scrim {

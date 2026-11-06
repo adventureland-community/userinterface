@@ -34,7 +34,7 @@ export const NAMEPLATE_FONT_FAMILY = "Consolas";
 
 /**
  * Desktop/tablet: system mono (Consolas…).
- * Phone: stock AL pixel face — Consolas at 8px turns to mush under CSS FOV fit.
+ * Phone: stock AL pixel face — densified Consolas salts under cover CSS.
  */
 export function resolveNameplateFontFamily(
   profile?: ViewportProfile,
@@ -105,7 +105,13 @@ export function mixHexTowardBlack(hex: string, t: number): string {
  * Base ghost-plate opacity — dense enough for desert sand / light stone while
  * still reading as a soft wash over map art.
  */
-export const NAMEPLATE_GHOST_ALPHA_BASE = 0.52;
+/**
+ * Soft wash — desktop needs denser sand contrast; phone uses a thinner wash
+ * via {@link ghostPlateForClassColor} so bands don’t read as UI slabs.
+ */
+export const NAMEPLATE_GHOST_ALPHA_BASE = 0.34;
+/** Phone ghost fill — 0 = stroke-first text only (wash read as class-tinted bars). */
+export const NAMEPLATE_PHONE_GHOST_ALPHA = 0;
 
 export type NameplateLuminanceBand = "dark" | "mid" | "bright";
 
@@ -125,10 +131,10 @@ export function ghostAlphaForLuminanceBand(
 ): number {
   const b =
     typeof base === "number" && Number.isFinite(base)
-      ? Math.max(0.28, Math.min(0.75, base))
+      ? Math.max(0, Math.min(0.75, base))
       : NAMEPLATE_GHOST_ALPHA_BASE;
   if (band === "bright") return Math.min(0.78, b + 0.2);
-  if (band === "dark") return Math.max(0.34, b - 0.1);
+  if (band === "dark") return Math.max(0.22, b - 0.1);
   return b;
 }
 
@@ -149,15 +155,18 @@ export function srgbLuminance(r: number, g: number, b: number): number {
 export function ghostPlateForClassColor(classHex?: string): SoftFill {
   const raw = String(classHex || "").trim() || "#ffffff";
   const key = raw.charAt(0) === "#" ? raw : "#" + raw;
+  const phone =
+    typeof window !== "undefined" && detectViewportProfile() === "phone";
+  const alpha = phone ? NAMEPLATE_PHONE_GHOST_ALPHA : NAMEPLATE_GHOST_ALPHA_BASE;
   if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
-    return { color: 0x080a10, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
+    return { color: 0x080a10, alpha };
   }
   const L = hexLuminance(key);
   // Darken hard enough for white text on desert; keep a class tint.
   const darken = L > 0.4 ? 0.58 : L > 0.3 ? 0.4 : L > 0.2 ? 0.28 : 0.18;
   const mixed = mixHexTowardBlack(key, darken);
   const n = parseInt(mixed.slice(1), 16);
-  return { color: n >>> 0, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
+  return { color: n >>> 0, alpha };
 }
 
 /**
@@ -168,11 +177,11 @@ export function ghostPlateRimForClassColor(classHex?: string): SoftFill {
   const raw = String(classHex || "").trim() || "#ffffff";
   const key = raw.charAt(0) === "#" ? raw : "#" + raw;
   if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
-    return { color: 0x020304, alpha: 0.55 };
+    return { color: 0x020304, alpha: 0.42 };
   }
   const mixed = mixHexTowardBlack(key, 0.72);
   const n = parseInt(mixed.slice(1), 16);
-  return { color: n >>> 0, alpha: 0.58 };
+  return { color: n >>> 0, alpha: 0.44 };
 }
 
 /** @deprecated Prefer {@link ghostPlateForClassColor}. */
@@ -189,7 +198,13 @@ export function softPlateFill(
   classHex?: string,
 ): SoftFill | null {
   const c = stockColor >>> 0;
-  if (c === STOCK_NAME_BORDER) return ghostPlateRimForClassColor(classHex);
+  if (c === STOCK_NAME_BORDER) {
+    // Phone: kill the stock rim — double-band read as opaque slabs under cover.
+    if (detectViewportProfile() === "phone") {
+      return { color: 0x000000, alpha: 0 };
+    }
+    return ghostPlateRimForClassColor(classHex);
+  }
   if (c === STOCK_NAME_FILL) return ghostPlateForClassColor(classHex);
   return null;
 }
@@ -259,9 +274,8 @@ export function nameplatePlateClassColor(ctype?: string | null): string {
  * Stroke for stock 64px Text (scaled ~0.125). System mono face, white fill,
  * black edge so glyphs hold on bright sand when the plate is soft.
  *
- * Phone: light stroke (not zero). Zero-stroke Consolas at stock 8px was mush
- * on handsets; heavy stroke + CSS `pixelated` used to salt-and-pepper — phone
- * FOV view stays on `image-rendering: auto`, so a thin edge is safe.
+ * Phone: Pixel face, no stroke (stroke salts the bitmap under cover).
+ * Desktop: heavy Consolas stroke + shadow.
  *
  * `dense` matches glyph denseness (fontSize×d). Stroke grows with d so after
  * scale÷d the screen edge weight stays ~constant.
@@ -284,13 +298,13 @@ export function softTextStylePatch(
       fontFamily: resolveNameplateFontFamily("phone"),
       fill: fillColor || "#ffffff",
       stroke: "#000000",
-      // Pixel face — stroke just muddies the bitmap.
-      strokeThickness: 0,
-      dropShadow: false,
+      // Stroke-first + shadow for pale sand (no ghost plate).
+      strokeThickness: 5,
+      dropShadow: true,
       dropShadowColor: "#000000",
-      dropShadowDistance: 0,
+      dropShadowDistance: 1,
       dropShadowBlur: 0,
-      dropShadowAlpha: 0,
+      dropShadowAlpha: 0.9,
       dropShadowAngle: Math.PI / 4,
     };
   }
@@ -370,7 +384,8 @@ function readFillAlpha(d: GraphicsDataLike): number | null {
 export function setNameBandFillAlpha(gfx: GraphicsLike, alpha: number): number {
   const data = getGraphicsData(gfx);
   if (!data) return 0;
-  const a = Math.max(0.2, Math.min(0.82, alpha));
+  // Allow phone stroke-first (alpha 0).
+  const a = Math.max(0, Math.min(0.82, alpha));
   let changed = 0;
   for (let i = 0; i < data.length; i++) {
     const d = data[i];
@@ -398,7 +413,8 @@ export function ensureNameBandAlphaFloor(
 ): number {
   const data = getGraphicsData(gfx);
   if (!data) return 0;
-  const a = Math.max(0.2, Math.min(0.82, floor));
+  // Allow phone stroke-first (alpha 0); don't force opaque slabs.
+  const a = Math.max(0, Math.min(0.82, floor));
   let changed = 0;
   for (let i = 0; i < data.length; i++) {
     const d = data[i];
@@ -419,6 +435,32 @@ export function ensureNameBandAlphaFloor(
   return changed;
 }
 
+/**
+ * Phone stroke-first: clear every plate Graphics fill + stroke (HP/MP flanks
+ * use non-stock greens that softPlateFill skips, so wipe all fills).
+ */
+export function hidePhoneNameplateMeterBars(gfx: GraphicsLike): number {
+  if (detectViewportProfile() !== "phone") return 0;
+  const data = getGraphicsData(gfx);
+  if (!data) return 0;
+  let changed = 0;
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i];
+    if (!d.shape) continue;
+    if (typeof d.lineAlpha === "number" && d.lineAlpha > 0) {
+      d.lineAlpha = 0;
+      changed++;
+    }
+    if (readFillColor(d) == null) continue;
+    const prev = readFillAlpha(d);
+    if (prev != null && prev <= 0.01) continue;
+    writeFill(d, { color: 0x000000, alpha: 0 });
+    changed++;
+  }
+  if (changed) bumpGraphicsDirty(gfx);
+  return changed;
+}
+
 /** Ghost name-band fills in-place (border cleared). Returns count changed. */
 export function softenNameBandGraphics(
   gfx: GraphicsLike,
@@ -426,7 +468,7 @@ export function softenNameBandGraphics(
 ): number {
   const data = getGraphicsData(gfx);
   if (!data) return 0;
-  let changed = 0;
+  let changed = hidePhoneNameplateMeterBars(gfx);
   for (let i = 0; i < data.length; i++) {
     const d = data[i];
     const shape = d.shape;
@@ -509,7 +551,7 @@ function looksLikeGraphics(node: unknown): node is GraphicsLike {
 }
 
 /** Even padding (local px) between name glyphs and the ghost fill edge. */
-export const NAMEPLATE_BAND_PAD = 1.5;
+export const NAMEPLATE_BAND_PAD = 1;
 
 /** Hard cap — never tower the plate if height metrics are wrong. */
 export const NAMEPLATE_BAND_GROW_MAX = 4;
@@ -705,10 +747,20 @@ export function beautifyNameTag(
     if (!node) return;
     if (looksLikeGraphics(node)) {
       if (!plateDone) softenNameBandGraphics(node, plateClass);
-      else ensureNameBandAlphaFloor(node as GraphicsLike);
+      else {
+        const phoneFloor =
+          detectViewportProfile() === "phone"
+            ? NAMEPLATE_PHONE_GHOST_ALPHA
+            : NAMEPLATE_GHOST_ALPHA_BASE;
+        ensureNameBandAlphaFloor(node as GraphicsLike, phoneFloor);
+      }
     }
     if (looksLikeText(node)) applySoftTextStyle(node, textFill);
-    if (looksLikeGraphics(node)) {
+    // Phone Pixel stays stock band height — grow-up towers into billboards.
+    if (
+      looksLikeGraphics(node) &&
+      detectViewportProfile() !== "phone"
+    ) {
       fitNameTextInGhostBand(node as PadPlateNode);
     }
     const kids = node.children;

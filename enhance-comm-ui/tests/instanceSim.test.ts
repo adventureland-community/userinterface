@@ -63,4 +63,39 @@ describe("instanceSim", () => {
       setInstanceSimEnabled(false);
     }
   });
+
+  it("open-world scenarios respect G.maps spawn counts", () => {
+    const snap: GameSnapshot = {
+      entities: [{ id: "p1", type: "character", player: true, visible: true }],
+      observingId: "p1",
+      observing: { id: "p1", type: "character", player: true },
+      target: undefined,
+      now: Date.now(),
+    };
+    setInstanceSimEnabled(true);
+    try {
+      setInstanceSimScenario("main-crabs");
+      assert.equal(getInstanceSimMapOverride(), "main");
+      const crabs = applyInstanceSim(snap).entities.filter(
+        (e) => e.mtype === "crab",
+      );
+      assert.equal(crabs.length, 8);
+
+      setInstanceSimScenario("cave-bats");
+      assert.equal(getInstanceSimMapOverride(), "cave");
+      const bats = applyInstanceSim(snap).entities.filter(
+        (e) => e.mtype === "bat",
+      );
+      assert.equal(bats.length, 6);
+
+      setInstanceSimScenario("main-goos");
+      assert.equal(getInstanceSimMapOverride(), "main");
+      const goos = applyInstanceSim(snap).entities.filter(
+        (e) => e.mtype === "goo",
+      );
+      assert.equal(goos.length, 9);
+    } finally {
+      setInstanceSimEnabled(false);
+    }
+  });
 });

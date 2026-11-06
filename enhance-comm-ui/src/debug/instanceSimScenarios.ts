@@ -8,7 +8,14 @@ import { getInstanceMobLabel } from "../instance/labels";
 import { getInstanceConfig, type InstanceConfig } from "../instance/configs";
 
 export type InstanceSimScenarioId =
-  "crypt-pull" | "crypt-boss" | "tomb" | "spider" | "winter";
+  | "crypt-pull"
+  | "crypt-boss"
+  | "tomb"
+  | "spider"
+  | "winter"
+  | "main-crabs"
+  | "cave-bats"
+  | "main-goos";
 
 export type InstanceSimScenario = {
   id: InstanceSimScenarioId;
@@ -244,6 +251,103 @@ function winterLair(opts: SimBuildOpts): EntityLike[] {
   ];
 }
 
+/**
+ * Scatter count points on a ring around a spawn center.
+ * Never places a mob on (cx,cy) — party stands there; a center fill buried
+ * Preview under bats/crabs in council shots.
+ */
+function scatterAround(
+  count: number,
+  cx: number,
+  cy: number,
+  radius: number,
+): Array<{ x: number; y: number }> {
+  const out: Array<{ x: number; y: number }> = [];
+  if (count <= 0) return out;
+  for (let i = 0; i < count; i++) {
+    const a = (Math.PI * 2 * i) / count + Math.PI / count;
+    const r = radius * (0.7 + (i % 3) * 0.15);
+    out.push({
+      x: Math.round(cx + Math.cos(a) * r),
+      y: Math.round(cy + Math.sin(a) * r),
+    });
+  }
+  return out;
+}
+
+/**
+ * Mainland crab beach — G.maps.main crab pack count:8,
+ * boundary [-1353,-254,-1052,122].
+ */
+function mainCrabs(opts: SimBuildOpts): EntityLike[] {
+  const cx = -1203;
+  const cy = -66;
+  const pts = scatterAround(8, cx, cy, 110);
+  const out: EntityLike[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    out.push(
+      monsterBase(`ecu-sim-crab-${i}`, "crab", opts, {
+        cooperative: false,
+        level: 1,
+        hp: 400,
+        max_hp: 400,
+        x: pts[i].x,
+        y: pts[i].y,
+      }),
+    );
+  }
+  return out;
+}
+
+/**
+ * Cave of Darkness first bat pack — G.maps.cave bat count:6,
+ * boundary [-396,-594,8,-328].
+ */
+function caveBats(opts: SimBuildOpts): EntityLike[] {
+  // Sit south of the north wall so FOV 2× shows floor, not ceiling void.
+  const cx = -194;
+  const cy = -400;
+  const pts = scatterAround(6, cx, cy, 150);
+  const out: EntityLike[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    out.push(
+      monsterBase(`ecu-sim-bat-${i}`, "bat", opts, {
+        cooperative: false,
+        level: 8,
+        hp: 9600,
+        max_hp: 9600,
+        x: pts[i].x,
+        y: pts[i].y,
+      }),
+    );
+  }
+  return out;
+}
+
+/**
+ * Mainland goo field near town — G.maps.main goo pack count:9,
+ * boundary [-282,702,218,872].
+ */
+function mainGoos(opts: SimBuildOpts): EntityLike[] {
+  const cx = -32;
+  const cy = 787;
+  const pts = scatterAround(9, cx, cy, 100);
+  const out: EntityLike[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    out.push(
+      monsterBase(`ecu-sim-goo-${i}`, "goo", opts, {
+        cooperative: false,
+        level: 1,
+        hp: 100,
+        max_hp: 100,
+        x: pts[i].x,
+        y: pts[i].y,
+      }),
+    );
+  }
+  return out;
+}
+
 export const INSTANCE_SIM_SCENARIOS: InstanceSimScenario[] = [
   {
     id: "crypt-pull",
@@ -264,6 +368,24 @@ export const INSTANCE_SIM_SCENARIOS: InstanceSimScenario[] = [
     label: "Winter — fire phase",
     map: "winter_instance",
     build: winterLair,
+  },
+  {
+    id: "main-crabs",
+    label: "Main — crab beach (×8)",
+    map: "main",
+    build: mainCrabs,
+  },
+  {
+    id: "cave-bats",
+    label: "Cave — bat pack (×6)",
+    map: "cave",
+    build: caveBats,
+  },
+  {
+    id: "main-goos",
+    label: "Main — goo field (×9)",
+    map: "main",
+    build: mainGoos,
   },
 ];
 

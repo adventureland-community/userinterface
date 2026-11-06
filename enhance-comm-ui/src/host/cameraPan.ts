@@ -318,10 +318,11 @@ function snapMapToObserved(): boolean {
   const map = hostMap();
   const at = readObservedWorldXY();
   if (map && at) {
+    const y = at.y + phoneFollowYBias();
     lockX = at.x;
-    lockY = at.y;
+    lockY = y;
     map.real_x = at.x;
-    map.real_y = at.y;
+    map.real_y = y;
     const pos = (window as Window & { position_map?: () => void }).position_map;
     if (typeof pos === "function") {
       try {
@@ -411,6 +412,23 @@ function mousePanAllowed(): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * Phone dock: bias follow so the party sits upper-mid, leaving floor for the
+ * thumb stick instead of parking chrome on sprites.
+ */
+/** Party upper-mid; leave floor for stick without parking mid-frame too low. */
+/** Pull follow framing south so phone cover shows floor tiles, not ceiling void. */
+/** Mild lift — heavy bias parked top crabs under the FOV cluster. */
+const PHONE_FOLLOW_Y_BIAS = 40;
+
+function phoneFollowYBias(): number {
+  if (typeof document === "undefined") return 0;
+  if (!document.documentElement.classList.contains("ecu-phone-dock-on")) {
+    return 0;
+  }
+  return PHONE_FOLLOW_Y_BIAS;
 }
 
 function endMousePan(): void {
@@ -602,6 +620,22 @@ function stopRafIfIdle(): void {
 }
 
 /**
+ * Follow must track the observed sprite every draw. A time throttle held a
+ * stale lock while the entity kept moving — desktop reads that as the UI
+ * "lagging around." Stock position_map is cheap; map.x/y only change when
+ * real_* moves enough to cross a pixel after c_round.
+ */
+function applyFollowMapLock(map: HostMap): void {
+  const at = readObservedWorldXY();
+  if (!at) return;
+  const y = at.y + phoneFollowYBias();
+  lockX = at.x;
+  lockY = y;
+  map.real_x = at.x;
+  map.real_y = y;
+}
+
+/**
  * Keep free-cam lock across stock `position_map` / `draw`.
  * Temporarily clear `character` so stock does not yank `map.real_*` back
  * while still running the map.x/y + dtile path on our lock.
@@ -615,13 +649,7 @@ function patchedPositionMap(this: unknown): void {
     map.real_x = lockX;
     map.real_y = lockY;
   } else if (followCamera && map) {
-    const at = readObservedWorldXY();
-    if (at) {
-      lockX = at.x;
-      lockY = at.y;
-      map.real_x = at.x;
-      map.real_y = at.y;
-    }
+    applyFollowMapLock(map);
   }
   const savedChar = freeCamera && w.character ? w.character : null;
   if (savedChar) w.character = undefined;
@@ -636,13 +664,9 @@ function patchedPositionMap(this: unknown): void {
     map.real_x = lockX;
     map.real_y = lockY;
   } else if (followCamera && map) {
-    const at = readObservedWorldXY();
-    if (at) {
-      lockX = at.x;
-      lockY = at.y;
-      map.real_x = at.x;
-      map.real_y = at.y;
-    }
+    // Re-assert after stock — avoid a second XY read/throttle pass.
+    map.real_x = lockX;
+    map.real_y = lockY;
   }
 }
 

@@ -214,8 +214,9 @@ type HostMap = { last_max_y?: number; last_max_x?: number };
 
 /**
  * CSS `image-rendering` for the PIXI view.
- * FOV ≤1: pixelated (auto upscale mush; phone 1× also stays nearest-crisp).
- * Phone zoom-out: auto so soft CSS shrink doesn't salt pixel glyphs.
+ * FOV ≤1: pixelated (auto upscale mush).
+ * Phone mild zoom-out (≤1.5): stay pixelated so Pixel nameplates stay crisp
+ * under cover CSS. Wider phone zoom-out uses auto to avoid salt on soft glyphs.
  * Desktop zoom-out: pixelated for nearest sprites.
  */
 export function worldViewImageRendering(
@@ -228,8 +229,197 @@ export function worldViewImageRendering(
   const f =
     typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
   if (f <= 1) return "pixelated";
-  if (p === "phone") return "auto";
+  if (p === "phone") return f <= 1.5 ? "pixelated" : "auto";
   return "pixelated";
+}
+
+/**
+ * Phone: CSS-cover the PIXI view so dungeon tiles fill the tall frame
+ * instead of a letterboxed “world header” over empty slate.
+ */
+/**
+ * Tall phone buffers often end map tiles ~60% down; cover must fill height
+ * (≈ cssH/contentH) with origin on the tile block, not the void under it.
+ * ≥~2.14 @ origin 27% keeps the crop inside the tile block on tall phones.
+ */
+/**
+ * Phone cover crop — integer CSS scale only (fractional softens Pixel).
+ * Cover 3 crops party at FOV 1×; stay on 2 with plate×2 + stagger for readability.
+ */
+export const PHONE_WORLD_COVER = 2;
+export const PHONE_WORLD_COVER_ZOOMED_OUT = 2;
+
+/** Integer cover for the current applied FOV. */
+export function phoneWorldCoverForFov(_fov?: number): number {
+  return PHONE_WORLD_COVER;
+}
+/** Warm mid-stone — default FOV void blend for crypt/cave/sand. */
+export const PHONE_MAP_VOID_FILL = 0x554840;
+/** Cool ice — winter_instance top void should not read as letterbox. */
+export const PHONE_MAP_VOID_FILL_WINTER = 0x3a5a78;
+
+function rendererHost(): {
+  view?: HTMLElement | null;
+  backgroundColor?: number;
+} | null {
+  const renderer = (
+    window as Window & {
+      renderer?: {
+        view?: HTMLElement | null;
+        backgroundColor?: number;
+      };
+    }
+  ).renderer;
+  return renderer || null;
+}
+
+function rendererViewEl(): HTMLElement | null {
+  const renderer = rendererHost();
+  const view = renderer && renderer.view;
+  return view && view.style ? view : null;
+}
+
+const PHONE_COVER_ATTR = "data-ecu-phone-cover";
+let savedBgColor: number | undefined;
+let savedBgColorKnown = false;
+
+/** Map-aware PIXI clear color so cover crop void doesn’t look like letterbox. */
+export function phoneMapVoidFill(mapId?: string): number {
+  const id = String(mapId || "").toLowerCase();
+  if (id.indexOf("winter") >= 0) return PHONE_MAP_VOID_FILL_WINTER;
+  return PHONE_MAP_VOID_FILL;
+}
+
+function applyPhoneVoidFill(dockOn: boolean): void {
+  const renderer = rendererHost();
+  if (!renderer) return;
+  if (dockOn) {
+    if (!savedBgColorKnown) {
+      savedBgColor =
+        typeof renderer.backgroundColor === "number"
+          ? renderer.backgroundColor
+          : undefined;
+      savedBgColorKnown = true;
+    }
+    const map = (window as Window & { map?: { id?: string; name?: string } })
+      .map;
+    const mapId =
+      map && (typeof map.id === "string" ? map.id : map.name);
+    renderer.backgroundColor = phoneMapVoidFill(
+      mapId != null ? String(mapId) : undefined,
+    );
+    return;
+  }
+  if (!savedBgColorKnown) return;
+  if (typeof savedBgColor === "number") {
+    renderer.backgroundColor = savedBgColor;
+  }
+  savedBgColorKnown = false;
+  savedBgColor = undefined;
+}
+
+/**
+ * Strip cover CSS. `force` clears even if the attr was lost (leaked
+ * position:fixed + scale blacks the world and steals bag/mail clicks).
+ */
+function clearPhoneCoverStyles(view: HTMLElement, force = false): void {
+  const marked =
+    typeof view.getAttribute === "function" &&
+    view.getAttribute(PHONE_COVER_ATTR) === "1";
+  const leakedFixed =
+    !!view.style &&
+    (view.style.position === "fixed" ||
+      (typeof view.style.transform === "string" &&
+        view.style.transform.indexOf("scale(") !== -1));
+  if (!force && !marked && !leakedFixed) return;
+  view.style.marginLeft = "";
+  view.style.marginTop = "";
+  view.style.position = "";
+  view.style.left = "";
+  view.style.top = "";
+  view.style.transform = "";
+  view.style.transformOrigin = "";
+  // Cover sets maxWidth/Height to none; FOV fit uses 100%. Never clear
+  // width/height here — fitRendererView just wrote them and desktop FOV
+  // must keep them (force-clear was wiping zoom-out size).
+  if (view.style.maxWidth === "none") view.style.maxWidth = "";
+  if (view.style.maxHeight === "none") view.style.maxHeight = "";
+  if (typeof view.removeAttribute === "function") {
+    view.removeAttribute(PHONE_COVER_ATTR);
+  }
+  applyPhoneVoidFill(false);
+}
+
+/**
+ * Drop leaked phone-dock markers without importing phoneChrome (cycle).
+ * `ecu-phone-dock-on` alone hides `.ecu-actions` / chrome-stack on desktop.
+ */
+function scrubLeakedPhoneDockDom(): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const body = document.body;
+  if (root) {
+    root.classList.remove("ecu-phone-dock-on");
+    root.style.setProperty("--ecu-phone-dock-h", "0px");
+    root.style.setProperty("--ecu-phone-hud-bottom", "0px");
+  }
+  if (body) body.classList.remove("ecu-phone-dock-on");
+}
+
+/**
+ * Cover-crop on phone dock only. Desktop must never keep fixed+scale on the
+ * PIXI view — that blacks out the world, scales a full desktop buffer (follow
+ * lag), and with a leaked dock class hides bag/chat chrome entirely.
+ */
+export function applyPhoneWorldCover(cssW: number, cssH: number): void {
+  const view = rendererViewEl();
+  if (!view) return;
+  const dockOn =
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("ecu-phone-dock-on");
+  // If Comm UI is mounted as desktop/tablet, never keep cover even if the
+  // dock class leaked (hides bag/mail chrome + blacks the world).
+  const commRoot =
+    typeof document !== "undefined"
+      ? document.getElementById("comm-ui")
+      : null;
+  const vp = commRoot && commRoot.getAttribute("data-viewport");
+  // Explicit desktop/tablet only — null attr during first paint must not
+  // block phone cover (PhoneNavDock may mount before data-viewport is set).
+  const desktopComm = vp === "desktop" || vp === "tablet";
+  if (desktopComm) {
+    // Dock class can outlive PhoneNavDock — scrub it every FOV/cover pass.
+    scrubLeakedPhoneDockDom();
+    clearPhoneCoverStyles(view, true);
+    return;
+  }
+  if (!dockOn) {
+    // Force — attr can be missing while fixed+scale still blocks chrome.
+    clearPhoneCoverStyles(view, true);
+    return;
+  }
+  const fovNow = readAppliedWorldFov() || 1;
+  const cover = phoneWorldCoverForFov(fovNow);
+  view.setAttribute(PHONE_COVER_ATTR, "1");
+  view.style.display = "block";
+  view.style.position = "fixed";
+  view.style.left = "0";
+  view.style.top = "0";
+  view.style.width = cssW + "px";
+  view.style.height = cssH + "px";
+  view.style.maxWidth = "none";
+  view.style.maxHeight = "none";
+  view.style.marginLeft = "0";
+  view.style.marginTop = "0";
+  // Bias crop into the tile block (not map-exterior void above walls).
+  view.style.transformOrigin = "50% 36%";
+  view.style.transform = "scale(" + cover + ")";
+  // Cover must not re-stamp pixelated — phone Consolas salts under nearest CSS.
+  const mode = worldViewImageRendering(fovNow);
+  view.style.imageRendering = mode;
+  (view.style as CSSStyleDeclaration & { webkitImageRendering?: string })
+    .webkitImageRendering = mode;
+  applyPhoneVoidFill(true);
 }
 
 /**
@@ -241,13 +431,8 @@ export function fitRendererView(
   cssH: number,
   fov?: number,
 ): void {
-  const renderer = (
-    window as Window & {
-      renderer?: { view?: HTMLElement | null };
-    }
-  ).renderer;
-  const view = renderer && renderer.view;
-  if (!view || !view.style) return;
+  const view = rendererViewEl();
+  if (!view) return;
   view.style.width = cssW + "px";
   view.style.height = cssH + "px";
   view.style.maxWidth = "100%";
@@ -259,21 +444,19 @@ export function fitRendererView(
   view.style.imageRendering = mode;
   (view.style as CSSStyleDeclaration & { webkitImageRendering?: string })
     .webkitImageRendering = mode;
+  applyPhoneWorldCover(cssW, cssH);
 }
 
 /** Clear FOV CSS size overrides (keep pixelated snap). */
 export function clearRendererViewFit(): void {
-  const renderer = (
-    window as Window & {
-      renderer?: { view?: HTMLElement | null };
-    }
-  ).renderer;
-  const view = renderer && renderer.view;
-  if (!view || !view.style) return;
+  const view = rendererViewEl();
+  if (!view) return;
   view.style.width = "";
   view.style.height = "";
   view.style.maxWidth = "";
   view.style.maxHeight = "";
+  // Force — desktop FOV=1 must scrub leaked fixed+scale even if attr was lost.
+  clearPhoneCoverStyles(view, true);
 }
 
 export function applyRendererPixelSnap(): void {
@@ -352,6 +535,7 @@ export function applyWorldFov(next: number): number {
   if (fov === WORLD_FOV_DEFAULT) {
     clearRendererViewFit();
     applyRendererPixelSnap();
+    applyPhoneWorldCover(cssW, cssH);
   } else {
     fitRendererView(cssW, cssH, fov);
     // Zoom-in uses auto CSS sampling — do not re-stamp pixelated after fit.

@@ -5,7 +5,8 @@
 
 export const CAMERA_PAN_SPEED = 340;
 /** Joystick stick travel (px) at full deflection. */
-export const JOYSTICK_RADIUS_PX = 48;
+/** Compact thumb pad — less lower-left burial of SW monsters on phone Home. */
+export const JOYSTICK_RADIUS_PX = 20;
 /**
  * Radial inner deadzone (fraction of radius). Keep small so a tiny nudge
  * registers; the expo curve (not a large deadzone) carries fine control.

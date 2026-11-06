@@ -9,9 +9,12 @@
  * sampling after a few black reads and keep the static ghost floor.
  */
 
+import { detectViewportProfile } from "../lib/viewport";
 import {
   ghostAlphaForLuminanceBand,
   luminanceToNameplateBand,
+  NAMEPLATE_GHOST_ALPHA_BASE,
+  NAMEPLATE_PHONE_GHOST_ALPHA,
   setNameBandFillAlpha,
   srgbLuminance,
   type GraphicsLike,
@@ -93,7 +96,11 @@ function looksLikeGraphics(node: TextNodeLike | null | undefined): boolean {
 
 function applyBandToPlate(root: PlateRoot, band: NameplateLuminanceBand): void {
   if (root.__ecuNameplateLumBand === band) return;
-  const alpha = ghostAlphaForLuminanceBand(band);
+  const base =
+    detectViewportProfile() === "phone"
+      ? NAMEPLATE_PHONE_GHOST_ALPHA
+      : NAMEPLATE_GHOST_ALPHA_BASE;
+  const alpha = ghostAlphaForLuminanceBand(band, base);
   let touched = 0;
   const visit = (node: TextNodeLike | null | undefined) => {
     if (!node) return;
@@ -208,6 +215,8 @@ export function tickNameplateContrast(opts?: {
   ctx?: CanvasRenderingContext2D | null;
 }): void {
   if (sampleDisabled) return;
+  // Phone: stroke-first plates (ghost alpha 0). Contrast bumps reintroduce slabs.
+  if (detectViewportProfile() === "phone") return;
   const view = opts && opts.view !== undefined ? opts.view : rendererView();
   if (!view) return;
   const ctx = opts && opts.ctx ? opts.ctx : ensureTiny();

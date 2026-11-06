@@ -165,7 +165,7 @@ describe("worldFov", () => {
     assert.equal(renderer.roundPixels, true);
   });
 
-  it("phone FOV zoom-out uses auto CSS; FOV≤1 uses pixelated", () => {
+  it("phone FOV≤1.5 stays pixelated; wider zoom-out uses auto", () => {
     const view = { style: {} as Record<string, string> };
     (globalThis as { window?: Record<string, unknown> }).window = {
       innerWidth: 390,
@@ -178,7 +178,11 @@ describe("worldFov", () => {
         resize() {},
       },
     };
+    applyWorldFov(1.25);
+    assert.equal(view.style.imageRendering, "pixelated");
     applyWorldFov(1.5);
+    assert.equal(view.style.imageRendering, "pixelated");
+    applyWorldFov(2);
     assert.equal(view.style.imageRendering, "auto");
     applyWorldFov(1);
     assert.equal(view.style.imageRendering, "pixelated");

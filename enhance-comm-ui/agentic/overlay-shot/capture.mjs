@@ -92,6 +92,26 @@ async function hidePreviewHarness(page) {
   });
 }
 
+async function prepareHomeFraming(page) {
+  await page.evaluate(() => {
+    document.documentElement.classList.remove("ecu-phone-sheet-open");
+    for (const sel of [
+      ".ecu-phone-sheet",
+      ".ecu-apps-sheet",
+      "[data-ecu-phone-sheet]",
+    ]) {
+      for (const el of document.querySelectorAll(sel)) el.remove();
+    }
+    const dots = document.querySelectorAll(".ecu-phone-home-dots__dot");
+    if (dots[0] && !dots[0].classList.contains("is-on")) {
+      dots[0].dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    }
+  });
+  await page.waitForTimeout(200);
+}
+
 async function seedSettings(page, profileName, fov) {
   await page.addInitScript(
     ({ key, profileName, fov }) => {
@@ -105,6 +125,7 @@ async function seedSettings(page, profileName, fov) {
       parsed.tourSeen = true;
       parsed.whatsNewSeenVersion = "99.0.0";
       parsed.setupWizardDone = true;
+      parsed.cameraJoystickSide = "left";
       if (typeof fov === "number" && fov > 0) parsed.worldFov = fov;
       else parsed.worldFov = 1;
       localStorage.setItem(key, JSON.stringify(parsed));
@@ -225,6 +246,11 @@ export async function captureOverlayShot(opts) {
 
     const appliedFov = await setFovViaEcu(page, fov);
     await page.waitForTimeout(300);
+
+    if (opts.prepareHome) {
+      await prepareHomeFraming(page);
+    }
+
     await hidePreviewHarness(page);
     await page.waitForTimeout(100);
 

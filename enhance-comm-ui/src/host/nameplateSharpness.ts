@@ -32,13 +32,15 @@ import { installNameplateContrast } from "./nameplateContrast";
 /**
  * Profile size multiplier on top of FOV counter-scale.
  * Readability first: near-full cancel of CSS FOV shrink. Phone also has a
- * hard min scale (see {@link NAMEPLATE_PHONE_MIN_SCALE}) so 1× FOV on a
- * 390px handset is still legible Consolas.
+ * hard min scale (see {@link NAMEPLATE_PHONE_MIN_SCALE}) so FOV 1× / 1.25×
+ * on a 390px handset stay glance-readable under phone world-cover CSS.
  */
 export function nameplatePhoneBoost(profile?: ViewportProfile): number {
   const p =
     profile ||
     (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+  // Phone: no extra boost — cover CSS already enlarges the canvas; a boost
+  // stacked on MIN_SCALE made plates dominate sprites in party clusters.
   if (p === "phone") return 1;
   if (p === "tablet") return 1.1;
   return 0.95;
@@ -98,6 +100,8 @@ type SpriteLike = {
   __ecuNameplateStyled?: boolean;
   /** Class tint applied with the soft plate pass. */
   __ecuNameplateCtype?: string;
+  /** Owner entity id — phone stagger so party plates don't stack. */
+  __ecuNameplateOwnerId?: string;
 };
 
 /**
@@ -209,11 +213,11 @@ export const NAMEPLATE_DESKTOP_ZOOM_OUT_EXP = 1;
 export const NAMEPLATE_PHONE_ZOOM_OUT_EXP = 1;
 
 /**
- * Phone: always ≥2× at FOV≥1. Stock 8px Pixel on a 390 CSS-px view is a
- * white smudge; FOV 1.5× with 2× counter was the first step that read as
- * Brick / Preview / Ember in harness shots.
+ * Phone FOV≥1 floor — integer 2× under integer cover 2× (crisp Pixel pack).
  */
 export const NAMEPLATE_PHONE_MIN_SCALE = 2;
+/** Phone zoom-in (FOV&lt;1) — CSS enlarge softens stock 8px Pixel harder. */
+export const NAMEPLATE_PHONE_ZOOM_IN_MIN_SCALE = 2;
 export const NAMEPLATE_PHONE_MAX_SCALE = 5;
 /** Desktop mid zoom-out floor so FOV 1.5–2 stay legible. */
 export const NAMEPLATE_DESKTOP_MIN_ZOOM_OUT_SCALE = 2;
@@ -225,11 +229,22 @@ export const NAMEPLATE_STOCK_FONT_SIZE = 64;
 export const NAMEPLATE_STOCK_TEXT_SCALE = 0.125;
 
 /**
- * Snap a raw screen scale to an integer step.
- * Fractional container scales go soft under CSS FOV fit; 1×/2×/3× stay crisp.
+ * Snap a raw screen scale.
+ * Desktop: integers (fractional container scales go soft under CSS FOV fit).
+ * Phone: half-steps so 1.5× can sit between illegible 1× and oversized 2×.
  */
-export function snapNameplateScreenScale(raw: number): number {
+export function snapNameplateScreenScale(
+  raw: number,
+  profile?: ViewportProfile,
+): number {
   if (!(typeof raw === "number") || !Number.isFinite(raw)) return 1;
+  const p =
+    profile ||
+    (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+  if (p === "phone") {
+    // Integers only — fractional container scale softens Pixel under cover CSS.
+    return Math.max(1, Math.min(8, Math.round(raw)));
+  }
   return Math.max(1, Math.min(8, Math.round(raw)));
 }
 
@@ -251,18 +266,25 @@ export function nameplateScreenScale(
   const boost = nameplatePhoneBoost(p);
 
   if (f < 1) {
-    const grow = snapNameplateScreenScale(1 / f);
+    const grow = snapNameplateScreenScale(1 / f, p);
     if (p === "phone") {
-      return Math.min(3, Math.max(NAMEPLATE_PHONE_MIN_SCALE, grow));
+      // Cover CSS already enlarges on zoom-in — keep plate at 1× so labels
+      // don’t become full-width banners over the fight.
+      return 1;
     }
     return Math.min(3, Math.max(1, grow));
   }
 
   // Full cancel to 2×, then ease so extreme FOV doesn't become one mega-bar.
   const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
-  let s = snapNameplateScreenScale(Math.max(1 / 3, Math.min(8, eased * boost)));
+  let s = snapNameplateScreenScale(
+    Math.max(1 / 3, Math.min(8, eased * boost)),
+    p,
+  );
   if (p === "phone") {
     s = Math.max(NAMEPLATE_PHONE_MIN_SCALE, s);
+    // Through FOV 2× keep ≤2× under integer cover.
+    if (f <= 2) s = Math.min(NAMEPLATE_PHONE_MIN_SCALE, s);
     return Math.min(NAMEPLATE_PHONE_MAX_SCALE, s);
   }
   if (p === "tablet") {
@@ -327,6 +349,36 @@ export function nameplateAttachPoint(bounds: {
     x: bounds.x + bounds.width / 2,
     y: bounds.y + bounds.height,
   };
+}
+
+/** Stable party order so Preview / Brick / Ember always fan apart. */
+const PHONE_PLATE_ORDER = ["Preview", "Brick", "Ember"];
+
+function phonePlateIndex(ownerId?: string): number {
+  if (!ownerId) return 0;
+  const i = PHONE_PLATE_ORDER.indexOf(ownerId);
+  if (i >= 0) return i;
+  let h = 0;
+  for (let n = 0; n < ownerId.length; n++) {
+    h = (h + ownerId.charCodeAt(n) * (n + 1)) % 3;
+  }
+  return h;
+}
+
+/**
+ * Fan party plates on phone (Y only). Preview up, Ember mild down —
+ * X fan and large Ember +Y clipped edges or buried labels in the sprite.
+ */
+export function nameplatePhoneStaggerY(ownerId?: string): number {
+  const i = phonePlateIndex(ownerId);
+  if (i === 0) return -18; // Preview
+  if (i === 1) return 0; // Brick
+  return 6; // Ember
+}
+
+/** No X fan — any nonzero offset clipped Ember/Brick on directional pans. */
+export function nameplatePhoneStaggerX(_ownerId?: string): number {
+  return 0;
 }
 
 /**
@@ -437,7 +489,21 @@ function applyNameplateScreenScale(root: SpriteLike, screen: number): boolean {
   root.x = stockX;
   root.y = stockY;
 
-  if (screen === 1) return true;
+  const phone =
+    typeof window !== "undefined" && detectViewportProfile() === "phone";
+  // Parent-space offsets (not ÷screen) — position is not multiplied by scale.
+  const staggerY = phone
+    ? nameplatePhoneStaggerY(root.__ecuNameplateOwnerId)
+    : 0;
+  const staggerX = phone
+    ? nameplatePhoneStaggerX(root.__ecuNameplateOwnerId)
+    : 0;
+
+  if (screen === 1) {
+    root.x = stockX + staggerX;
+    root.y = stockY + staggerY;
+    return true;
+  }
 
   const bounds = readLocalBounds(root);
   if (!bounds) {
@@ -447,8 +513,8 @@ function applyNameplateScreenScale(root: SpriteLike, screen: number): boolean {
   const attach = nameplateAttachPoint(bounds);
   const pos = nameplatePivotPosition(stockX, stockY, attach.x, attach.y);
   setNodePivot(root, attach.x, attach.y);
-  root.x = pos.x;
-  root.y = pos.y;
+  root.x = pos.x + staggerX;
+  root.y = pos.y + staggerY;
   setNodeScale(root, screen, screen);
   return true;
 }
@@ -469,20 +535,19 @@ export function sharpenNameTagTextures(
     root.__ecuNameplateCtype = String(ctype);
   }
 
+  const profile = detectViewportProfile();
+  const phonePixel = profile === "phone";
   // Counter-scale + bottom-pivot (zoom-out up / zoom-in down). Re-apply when
   // FOV wants scale≠1 so a first pass that lacked bounds can recover.
-  if (root.__ecuNameplateFov !== appliedFov || screen !== 1) {
+  // Phone always re-applies so party Y-stagger sticks at plate×1 (screen===1).
+  if (phonePixel || root.__ecuNameplateFov !== appliedFov || screen !== 1) {
     const ok = applyNameplateScreenScale(root, screen);
     if (ok) root.__ecuNameplateFov = appliedFov;
   }
-
-  const profile = detectViewportProfile();
-  const phonePixel = profile === "phone";
   const visit = (node: SpriteLike | null | undefined) => {
     if (!node) return;
     const isText = looksLikePixiText(node);
-    // Phone pixel face → NEAREST + roundPixels. Desktop Consolas stroke stays
-    // LINEAR (NEAREST + soft stroke salts under CSS pixelated).
+    // Phone Pixel → NEAREST. Desktop Consolas stroke stays LINEAR.
     if (typeof node.roundPixels !== "undefined") {
       node.roundPixels = phonePixel ? true : !isText;
     }
@@ -505,7 +570,7 @@ export function sharpenNameTagTextures(
           /* older PIXI */
         }
       }
-      // Denseness is for Consolas under CSS fit — pixel face stays stock 64/0.125.
+      // Denseness garbs Pixel into mush — phone stays stock size × FOV scale.
       if (!phonePixel) applyNameplateGlyphDenseness(node, res);
       const bt2 = node.texture && node.texture.baseTexture;
       if (bt2) {
@@ -518,10 +583,8 @@ export function sharpenNameTagTextures(
     for (let i = 0; i < kids.length; i++) visit(kids[i]);
   };
   visit(root);
-  // Soft plate after FOV Text.resolution so stroke rasterizes at the final DPI.
   beautifyNameTag(root, { ctype: root.__ecuNameplateCtype || ctype });
-  // beautify → updateText() rebuilds the atlas with default LINEAR; phone pixel
-  // face must be NEAREST again or glyphs go soft mush at stock 8px.
+  // beautify resets atlas to LINEAR; phone Pixel must be NEAREST again.
   if (phonePixel && modes.nearest != null) {
     const forceNearest = (node: SpriteLike | null | undefined) => {
       if (!node) return;
@@ -593,6 +656,13 @@ export function resyncNameplateScales(fov?: number): void {
     typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov();
   const touch = (ent: SpriteLike | null | undefined) => {
     if (!ent || !ent.name_tag) return;
+    const oid =
+      ent.id != null && String(ent.id)
+        ? String(ent.id)
+        : ent.name != null && String(ent.name)
+          ? String(ent.name)
+          : undefined;
+    if (oid) ent.name_tag.__ecuNameplateOwnerId = oid;
     sharpenNameTagTextures(ent.name_tag, f, resolveNameplateCtype(ent));
   };
   const w = window as Window & {
@@ -631,6 +701,13 @@ function wrapAddNameTag(): boolean {
       if (sz) sz.font = prevFont;
     }
     if (element && element.name_tag) {
+      const oid =
+        element.id != null && String(element.id)
+          ? String(element.id)
+          : element.name != null && String(element.name)
+            ? String(element.name)
+            : undefined;
+      if (oid) element.name_tag.__ecuNameplateOwnerId = oid;
       sharpenNameTagTextures(
         element.name_tag,
         undefined,

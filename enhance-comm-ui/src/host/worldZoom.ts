@@ -93,10 +93,12 @@ function tryApplySaved(): boolean {
   if (!map || !gameLoaded()) return false;
 
   const savedRaw = getSettings().worldZoom;
-  const phoneDefault =
-    detectViewportProfile() === "phone" ? WORLD_ZOOM_MIN : WORLD_ZOOM_DEFAULT;
+  // Phone uses the same sprite density as desktop — WORLD_ZOOM_MIN (1) made
+  // combat entities read as freckles under tall FOV+cover framing.
   const preferred =
-    typeof savedRaw === "number" ? clampWorldZoom(savedRaw) : phoneDefault;
+    typeof savedRaw === "number"
+      ? clampWorldZoom(savedRaw)
+      : WORLD_ZOOM_DEFAULT;
 
   // Rewrite bad fractional cookies for the *next* refresh.
   healFractionalScaleCookie(

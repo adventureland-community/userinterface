@@ -5,6 +5,8 @@ import {
   applyNameplateGlyphDenseness,
   nameplateAttachPoint,
   nameplatePivotPosition,
+  nameplatePhoneStaggerY,
+  nameplatePhoneStaggerX,
   nameplateScreenScale,
   NAMEPLATE_STOCK_FONT_SIZE,
   NAMEPLATE_STOCK_TEXT_SCALE,
@@ -45,15 +47,21 @@ describe("nameplateTextResolution", () => {
 });
 
 describe("snapNameplateScreenScale", () => {
-  it("rounds to integers in 1…8", () => {
-    assert.equal(snapNameplateScreenScale(0.44), 1);
-    assert.equal(snapNameplateScreenScale(0.88), 1);
-    assert.equal(snapNameplateScreenScale(1.41), 1);
-    assert.equal(snapNameplateScreenScale(1.85), 2);
-    assert.equal(snapNameplateScreenScale(2.47), 2);
-    assert.equal(snapNameplateScreenScale(3.7), 4);
-    assert.equal(snapNameplateScreenScale(7.4), 7);
-    assert.equal(snapNameplateScreenScale(8.2), 8);
+  it("rounds to integers in 1…8 on desktop", () => {
+    assert.equal(snapNameplateScreenScale(0.44, "desktop"), 1);
+    assert.equal(snapNameplateScreenScale(0.88, "desktop"), 1);
+    assert.equal(snapNameplateScreenScale(1.41, "desktop"), 1);
+    assert.equal(snapNameplateScreenScale(1.85, "desktop"), 2);
+    assert.equal(snapNameplateScreenScale(2.47, "desktop"), 2);
+    assert.equal(snapNameplateScreenScale(3.7, "desktop"), 4);
+    assert.equal(snapNameplateScreenScale(7.4, "desktop"), 7);
+    assert.equal(snapNameplateScreenScale(8.2, "desktop"), 8);
+  });
+
+  it("snaps phone scales to integers", () => {
+    assert.equal(snapNameplateScreenScale(1.3, "phone"), 1);
+    assert.equal(snapNameplateScreenScale(1.4, "phone"), 1);
+    assert.equal(snapNameplateScreenScale(1.8, "phone"), 2);
   });
 });
 
@@ -80,19 +88,32 @@ describe("nameplateScreenScale", () => {
   });
 
   it("keeps phone plates readable at every FOV step", () => {
-    // 2× floor — stock 8px Pixel smudges on a 390px handset at 1×.
+    // FOV≤2 floors+caps at 2×; wider FOV eases up. Zoom-in still ≥2× at cover.
     assert.equal(nameplateScreenScale(1, "phone"), 2);
+    assert.equal(nameplateScreenScale(1.25, "phone"), 2);
     assert.equal(nameplateScreenScale(1.5, "phone"), 2);
     assert.equal(nameplateScreenScale(2, "phone"), 2);
     assert.equal(nameplateScreenScale(3, "phone"), 3);
     assert.equal(nameplateScreenScale(5, "phone"), 4);
-    assert.equal(nameplateScreenScale(0.5, "phone"), 2);
-    assert.equal(nameplateScreenScale(0.75, "phone"), 2);
+    assert.equal(nameplateScreenScale(0.5, "phone"), 1);
+    assert.equal(nameplateScreenScale(0.75, "phone"), 1);
   });
 
   it("boosts tablet plates on mild zoom-out", () => {
     assert.equal(nameplateScreenScale(1, "tablet"), 1);
     assert.ok(nameplateScreenScale(1.5, "tablet") >= 2);
+  });
+});
+
+describe("nameplatePhoneStaggerY", () => {
+  it("fans Preview / Brick / Ember onto distinct steps", () => {
+    assert.equal(nameplatePhoneStaggerY(undefined), -18);
+    assert.equal(nameplatePhoneStaggerY("Preview"), -18);
+    assert.equal(nameplatePhoneStaggerY("Brick"), 0);
+    assert.equal(nameplatePhoneStaggerY("Ember"), 6);
+    assert.equal(nameplatePhoneStaggerX("Preview"), 0);
+    assert.equal(nameplatePhoneStaggerX("Brick"), 0);
+    assert.equal(nameplatePhoneStaggerX("Ember"), 0);
   });
 });
 

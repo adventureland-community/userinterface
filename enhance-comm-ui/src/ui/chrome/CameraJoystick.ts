@@ -60,28 +60,52 @@ function ensureCss(): void {
   }
   style.textContent = `
 .ecu-cam-chrome {
-  /* Clear the home pager strip (Players › / dots) so FOV never stacks on it. */
+  /* Thumb stack: modes → FOV → stick. */
   position: fixed;
-  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 48px);
+  bottom: calc(var(--ecu-phone-dock-h, 48px) + 14px);
   z-index: 236;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   pointer-events: none;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 .ecu-cam-chrome.is-left {
-  left: max(10px, env(safe-area-inset-left, 0px));
+  left: max(12px, env(safe-area-inset-left, 0px));
   right: auto;
 }
 .ecu-cam-chrome.is-right {
-  right: max(10px, env(safe-area-inset-right, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px));
   left: auto;
 }
 .ecu-cam-chrome > * {
+  pointer-events: auto;
+}
+.ecu-cam-chrome-rail {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  z-index: 236;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ecu-cam-chrome-rail.is-left {
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: auto;
+}
+.ecu-cam-chrome-rail.is-right {
+  right: max(10px, env(safe-area-inset-right, 0px));
+  left: auto;
+}
+.ecu-cam-chrome-rail > * {
   pointer-events: auto;
 }
 .ecu-cam-stick {
@@ -108,8 +132,12 @@ function ensureCss(): void {
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 0 0 0 1px rgba(0, 0, 0, 0.28),
     0 2px 10px rgba(0, 0, 0, 0.28);
-  opacity: 0.9;
+  opacity: 0.48;
   transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+.ecu-cam-stick.is-active .ecu-cam-stick__base,
+.ecu-cam-stick:active .ecu-cam-stick__base {
+  opacity: 0.92;
 }
 .ecu-cam-stick__knob {
   position: absolute;
@@ -132,11 +160,11 @@ function ensureCss(): void {
     0 2px 8px rgba(0, 0, 0, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
   pointer-events: none;
-  opacity: 0.95;
+  opacity: 0.65;
   transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 .ecu-cam-stick.is-active .ecu-cam-stick__base {
-  opacity: 1;
+  opacity: 0.95;
   border-color: rgba(157, 212, 236, 0.45);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
@@ -154,26 +182,26 @@ function ensureCss(): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0;
+  gap: 2px;
   width: ${JOYSTICK_RADIUS_PX * 2 + 8}px;
-  min-height: 26px;
-  padding: 0 2px;
-  border-radius: 13px;
-  border: 1px solid rgba(230, 225, 229, 0.2);
-  background: rgba(28, 27, 31, 0.78);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
-  opacity: 0.94;
+  min-height: 34px;
+  padding: 2px;
+  border-radius: 12px;
+  border: 1px solid rgba(157, 212, 236, 0.45);
+  background: rgba(18, 17, 22, 0.8);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  opacity: 1;
 }
 .ecu-cam-chrome__fov-btn {
-  min-width: 30px;
-  min-height: 26px;
+  min-width: 34px;
+  min-height: 34px;
   margin: 0;
-  padding: 0 6px;
+  padding: 0;
   border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: rgba(230, 225, 229, 0.9);
-  font: 600 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.1);
+  color: #e8f6fc;
+  font: 700 20px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -188,14 +216,14 @@ function ensureCss(): void {
 .ecu-cam-chrome__fov-label {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 26px;
+  min-height: 30px;
   margin: 0;
   padding: 0 2px;
   border: none;
   border-radius: 10px;
   background: transparent;
-  color: rgba(157, 212, 236, 0.95);
-  font: 600 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  color: #9dd4ec;
+  font: 700 12px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -206,27 +234,28 @@ function ensureCss(): void {
 }
 .ecu-cam-chrome__track {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: 3px;
-  width: ${JOYSTICK_RADIUS_PX * 2 + 8}px;
+  gap: 8px;
 }
 .ecu-cam-chrome__icon-btn {
   flex: 0 0 auto;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  min-height: 30px;
+  gap: 0;
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
   margin: 0;
-  padding: 0;
-  border-radius: 9px;
-  border: 1px solid rgba(230, 225, 229, 0.2);
-  background: rgba(28, 27, 31, 0.72);
-  color: rgba(230, 225, 229, 0.92);
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(230, 225, 229, 0.34);
+  background: rgba(18, 17, 22, 0.82);
+  color: rgba(245, 242, 248, 0.98);
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   -webkit-tap-highlight-color: transparent;
 }
 .ecu-cam-chrome__icon-btn:active {
@@ -234,36 +263,44 @@ function ensureCss(): void {
   color: #9dd4ec;
 }
 .ecu-cam-chrome__icon-btn.is-on {
-  border-color: rgba(157, 212, 236, 0.7);
-  background: rgba(28, 27, 31, 0.88);
+  border-color: rgba(157, 212, 236, 0.75);
+  background: rgba(28, 27, 31, 0.9);
   color: #9dd4ec;
-  box-shadow: 0 0 0 1px rgba(157, 212, 236, 0.28);
+  box-shadow: 0 0 0 1px rgba(157, 212, 236, 0.32);
+}
+.ecu-cam-chrome__icon-lbl {
+  /* Icon-only cam modes — labels stay for a11y via aria-label. */
+  display: none;
 }
 .ecu-cam-chrome__ico {
   display: block;
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   pointer-events: none;
 }
 .ecu-cam-chrome__side {
   flex: 0 0 auto;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  min-height: 30px;
+  gap: 0;
+  width: 48px;
+  min-width: 48px;
+  min-height: 48px;
   margin: 0;
-  padding: 0;
-  border-radius: 9px;
-  border: 1px solid rgba(230, 225, 229, 0.18);
-  background: rgba(28, 27, 31, 0.55);
-  color: rgba(230, 225, 229, 0.78);
-  font: 600 12px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(230, 225, 229, 0.34);
+  background: rgba(18, 17, 22, 0.82);
+  color: rgba(245, 242, 248, 0.98);
+  font: 600 14px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
   -webkit-tap-highlight-color: transparent;
 }
 .ecu-cam-chrome__side:active {
+  background: rgba(157, 212, 236, 0.16);
   color: #9dd4ec;
   border-color: rgba(157, 212, 236, 0.45);
 }
@@ -382,151 +419,164 @@ export function CameraJoystick(): any {
     patchSettings({ cameraJoystickSide: next });
   };
 
-  // Track → FOV → stick: thumb stays on the stick; FOV clears the home pager.
+  // Top rail: FOV + modes. Bottom: stick alone (clear thumb zone).
   return e(
-    "div",
-    {
-      className: "ecu-cam-chrome is-" + side,
-      "aria-label": "Camera controls",
-    },
+    React.Fragment,
+    null,
     e(
       "div",
       {
-        className: "ecu-cam-chrome__track",
-        role: "group",
-        "aria-label": "Camera track",
+        className: "ecu-cam-chrome-rail is-" + side,
+        "aria-label": "Camera modes",
       },
       e(
-        "button",
+        "div",
         {
-          type: "button",
-          className: "ecu-cam-chrome__icon-btn",
-          title: "Center on observed character",
-          "aria-label": "Center",
-          onClick: (ev: {
-            stopPropagation?: () => void;
-            preventDefault?: () => void;
-          }) => {
-            stopBtn(ev);
-            centerOnObservedCamera();
-          },
-        },
-        wrapIconHtml(ICON_CENTER),
-      ),
-      e(
-        "button",
-        {
-          type: "button",
-          className:
-            "ecu-cam-chrome__icon-btn" + (following ? " is-on" : ""),
-          title: following
-            ? "Following observed — tap to free camera"
-            : "Follow observed character",
-          "aria-label": "Follow",
-          "aria-pressed": following ? "true" : "false",
-          onClick: (ev: {
-            stopPropagation?: () => void;
-            preventDefault?: () => void;
-          }) => {
-            stopBtn(ev);
-            setFollowCamera(!isFollowCamera());
-          },
-        },
-        wrapIconHtml(ICON_FOLLOW),
-      ),
-      e(
-        "button",
-        {
-          type: "button",
-          className: "ecu-cam-chrome__side",
+          className: "ecu-cam-chrome__fov",
           title:
-            side === "right"
-              ? "Joystick on right — tap to move left"
-              : "Joystick on left — tap to move right",
-          "aria-label":
-            side === "right" ? "Move joystick left" : "Move joystick right",
-          onClick: (ev: {
-            stopPropagation?: () => void;
-            preventDefault?: () => void;
-          }) => {
-            stopBtn(ev);
-            flipSide();
-          },
+            "Camera FOV — out sees more, in sees less. Pinch the map also works.",
         },
-        side === "right" ? "←" : "→",
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__fov-btn",
+            disabled: fov >= WORLD_FOV_MAX,
+            title: "Widen FOV (see more)",
+            "aria-label": "Widen FOV",
+            onClick: (ev: {
+              stopPropagation?: () => void;
+              preventDefault?: () => void;
+            }) => {
+              stopBtn(ev);
+              setFov(zoomFovOut());
+            },
+          },
+          "−",
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__fov-label",
+            disabled: fov === WORLD_FOV_DEFAULT,
+            title: "Reset FOV to 1×",
+            "aria-label": "FOV " + formatWorldFov(fov) + "×",
+            onClick: (ev: {
+              stopPropagation?: () => void;
+              preventDefault?: () => void;
+            }) => {
+              stopBtn(ev);
+              setFov(setWorldFov(WORLD_FOV_DEFAULT));
+            },
+          },
+          formatWorldFov(fov) + "×",
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__fov-btn",
+            disabled: fov <= WORLD_FOV_MIN,
+            title: "Tighten FOV (see less)",
+            "aria-label": "Tighten FOV",
+            onClick: (ev: {
+              stopPropagation?: () => void;
+              preventDefault?: () => void;
+            }) => {
+              stopBtn(ev);
+              setFov(zoomFovIn());
+            },
+          },
+          "+",
+        ),
+      ),
+      e(
+        "div",
+        {
+          className: "ecu-cam-chrome__track",
+          role: "group",
+          "aria-label": "Camera track",
+        },
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__icon-btn",
+            title: "Center on observed character",
+            "aria-label": "Center",
+            onClick: (ev: {
+              stopPropagation?: () => void;
+              preventDefault?: () => void;
+            }) => {
+              stopBtn(ev);
+              centerOnObservedCamera();
+            },
+          },
+          wrapIconHtml(ICON_CENTER),
+          e("span", { className: "ecu-cam-chrome__icon-lbl" }, "Ctr"),
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__icon-btn" + (following ? " is-on" : ""),
+            title: following
+              ? "Following observed — tap to free camera"
+              : "Follow observed character",
+            "aria-label": "Follow",
+            "aria-pressed": following ? "true" : "false",
+            onClick: (ev: {
+              stopPropagation?: () => void;
+              preventDefault?: () => void;
+            }) => {
+              stopBtn(ev);
+              setFollowCamera(!isFollowCamera());
+            },
+          },
+          wrapIconHtml(ICON_FOLLOW),
+          e("span", { className: "ecu-cam-chrome__icon-lbl" }, "Fol"),
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__side",
+            title:
+              side === "right"
+                ? "Joystick on right — tap to move left"
+                : "Joystick on left — tap to move right",
+            "aria-label":
+              side === "right" ? "Move joystick left" : "Move joystick right",
+            onClick: (ev: {
+              stopPropagation?: () => void;
+              preventDefault?: () => void;
+            }) => {
+              stopBtn(ev);
+              flipSide();
+            },
+          },
+          side === "right" ? "←" : "→",
+          e("span", { className: "ecu-cam-chrome__icon-lbl" }, "Hand"),
+        ),
       ),
     ),
     e(
       "div",
       {
-        className: "ecu-cam-chrome__fov",
-        title:
-          "Camera FOV — out sees more, in sees less. Pinch the map also works.",
+        className: "ecu-cam-chrome is-" + side,
+        "aria-label": "Camera pan",
       },
       e(
-        "button",
+        "div",
         {
-          type: "button",
-          className: "ecu-cam-chrome__fov-btn",
-          disabled: fov >= WORLD_FOV_MAX,
-          title: "Widen FOV (see more)",
-          "aria-label": "Widen FOV",
-          onClick: (ev: {
-            stopPropagation?: () => void;
-            preventDefault?: () => void;
-          }) => {
-            stopBtn(ev);
-            setFov(zoomFovOut());
-          },
+          className: "ecu-cam-stick",
+          ref: rootRef,
+          "aria-label": "Camera pan joystick",
         },
-        "out",
+        e("div", { className: "ecu-cam-stick__base" }),
+        e("div", { className: "ecu-cam-stick__knob", ref: knobRef }),
       ),
-      e(
-        "button",
-        {
-          type: "button",
-          className: "ecu-cam-chrome__fov-label",
-          disabled: fov === WORLD_FOV_DEFAULT,
-          title: "Reset FOV to 1×",
-          "aria-label": "FOV " + formatWorldFov(fov) + "×",
-          onClick: (ev: {
-            stopPropagation?: () => void;
-            preventDefault?: () => void;
-          }) => {
-            stopBtn(ev);
-            setFov(setWorldFov(WORLD_FOV_DEFAULT));
-          },
-        },
-        formatWorldFov(fov) + "×",
-      ),
-      e(
-        "button",
-        {
-          type: "button",
-          className: "ecu-cam-chrome__fov-btn",
-          disabled: fov <= WORLD_FOV_MIN,
-          title: "Tighten FOV (see less)",
-          "aria-label": "Tighten FOV",
-          onClick: (ev: {
-            stopPropagation?: () => void;
-            preventDefault?: () => void;
-          }) => {
-            stopBtn(ev);
-            setFov(zoomFovIn());
-          },
-        },
-        "in",
-      ),
-    ),
-    e(
-      "div",
-      {
-        className: "ecu-cam-stick",
-        ref: rootRef,
-        "aria-label": "Camera pan joystick",
-      },
-      e("div", { className: "ecu-cam-stick__base" }),
-      e("div", { className: "ecu-cam-stick__knob", ref: knobRef }),
     ),
   );
 }

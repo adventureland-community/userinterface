@@ -280,7 +280,9 @@ export type CommUiSettings = {
 export function normalizeCameraJoystickSide(
   raw: unknown,
 ): "left" | "right" {
-  return raw === "left" ? "left" : "right";
+  if (raw === "right") return "right";
+  if (raw === "left") return "left";
+  return "left";
 }
 
 const DEFAULT_COMMAND_SNIPPETS: CommandSnippet[] = [
@@ -327,7 +329,7 @@ const DEFAULTS: CommUiSettings = {
   hudDensity: "auto",
   worldOverlayEnabled: true,
   worldWheelZoomEnabled: true,
-  cameraJoystickSide: "right",
+  cameraJoystickSide: "left",
   phoneHudVisible: {},
   phoneHomeScreens: defaultPhoneHomeScreens(),
   changelogSeenId: null,
@@ -789,7 +791,7 @@ function freshDefaults(): CommUiSettings {
     hudDensity: "auto",
     worldOverlayEnabled: true,
     worldWheelZoomEnabled: true,
-    cameraJoystickSide: "right",
+    cameraJoystickSide: "left",
     phoneHudVisible: {},
     phoneHomeScreens: defaultPhoneHomeScreens(),
   };

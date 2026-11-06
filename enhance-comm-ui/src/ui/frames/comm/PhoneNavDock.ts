@@ -141,20 +141,22 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
   const [status, setStatus] = React.useState(
     () => readPhoneDockStatus() as PhoneDockStatus,
   );
-  const barRef = React.useRef(null as HTMLElement | null);
+  const dockRef = React.useRef(null as HTMLElement | null);
 
   React.useEffect(() => {
     const measure = () => {
-      const el = barRef.current;
+      const el = dockRef.current;
       const h = el ? el.offsetHeight : 0;
       applyPhoneDockChrome(h > 0 ? h : 48);
       window.requestAnimationFrame(() => refreshPhoneHudBottomInset());
     };
     measure();
     const id = window.requestAnimationFrame(measure);
+    const t = window.setTimeout(measure, 80);
     window.addEventListener("resize", measure);
     return () => {
       window.cancelAnimationFrame(id);
+      window.clearTimeout(t);
       window.removeEventListener("resize", measure);
       clearPhoneDockChrome();
     };
@@ -550,79 +552,17 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
 
   return e(
     "div",
-    { className: "ecu-phone-dock", "data-ecu-phone-dock": "1" },
-    pages.length > 1
-      ? e(
-          "div",
-          {
-            className: "ecu-phone-home-dots",
-            role: "navigation",
-            "aria-label": "Home screens",
-            "data-ecu-home-dots": "1",
-          },
-          e(
-            "button",
-            {
-              type: "button",
-              className:
-                "ecu-phone-home-dots__side is-prev" +
-                (homePrevIdx < 0 ? " is-empty" : ""),
-              disabled: homePrevIdx < 0,
-              "aria-label": homePrevLabel
-                ? "Previous home: " + homePrevLabel
-                : "No previous home page",
-              onClick: () => {
-                if (homePrevIdx < 0) return;
-                props.setPhoneHomePage(homePrevIdx);
-                storePhoneHomePage(homePrevIdx);
-              },
-            },
-            e("span", { "aria-hidden": true }, "‹"),
-            e("span", { className: "ecu-phone-home-dots__side-label" }, homePrevLabel),
-          ),
-          e(
-            "div",
-            { className: "ecu-phone-home-dots__center" },
-            e(
-              "div",
-              {
-                className: "ecu-phone-home-dots__current",
-                "aria-live": "polite",
-              },
-              homeLabel,
-            ),
-            e(
-              "div",
-              { className: "ecu-phone-home-dots__track", role: "tablist" },
-              ...dotKids,
-            ),
-          ),
-          e(
-            "button",
-            {
-              type: "button",
-              className:
-                "ecu-phone-home-dots__side is-next" +
-                (homeNextIdx < 0 ? " is-empty" : ""),
-              disabled: homeNextIdx < 0,
-              "aria-label": homeNextLabel
-                ? "Next home: " + homeNextLabel
-                : "No next home page",
-              onClick: () => {
-                if (homeNextIdx < 0) return;
-                props.setPhoneHomePage(homeNextIdx);
-                storePhoneHomePage(homeNextIdx);
-              },
-            },
-            e("span", { className: "ecu-phone-home-dots__side-label" }, homeNextLabel),
-            e("span", { "aria-hidden": true }, "›"),
-          ),
-        )
-      : null,
+    {
+      className: "ecu-phone-dock",
+      "data-ecu-phone-dock": "1",
+      ref: dockRef,
+    },
+    // Pager chrome removed from Home — swipe still changes pages; Apps owns
+    // screen editing. Keeps the dock as the only bottom-center CTA.
+    null,
     e(
       "nav",
       {
-        ref: barRef,
         className: "ecu-phone-dock__bar",
         role: "navigation",
         "aria-label": "ECU phone",

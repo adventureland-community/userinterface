@@ -22,6 +22,39 @@ function startSimLoop(
   syncSimToHost(player, party);
   subscribeInstanceSim(() => syncSimToHost(player, party));
   window.setInterval(() => syncSimToHost(player, party), SIM_TICK_MS);
+
+  // Capture / console: update Preview+party so the 250ms sync tick does not
+  // stomp window.entities back to 0,0.
+  (
+    window as Window & {
+      __ecuPreviewPlace?: (x: number, y: number) => void;
+    }
+  ).__ecuPreviewPlace = (x, y) => {
+    const slots: Array<{
+      ent: typeof player | (typeof party)[number];
+      dx: number;
+      dy: number;
+    }> = [
+      { ent: player, dx: 0, dy: 0 },
+      { ent: party[0], dx: -40, dy: 24 },
+      { ent: party[1], dx: 40, dy: -24 },
+    ];
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      if (!s.ent) continue;
+      const nx = x + s.dx;
+      const ny = y + s.dy;
+      s.ent.x = nx;
+      s.ent.y = ny;
+      s.ent.real_x = nx;
+      s.ent.real_y = ny;
+    }
+    syncSimToHost(player, party);
+    const bust = (
+      window as Window & { __ecuBustNameTags?: () => void }
+    ).__ecuBustNameTags;
+    if (typeof bust === "function") bust();
+  };
 }
 
 async function watchRebuild(): Promise<void> {
