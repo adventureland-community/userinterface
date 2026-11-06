@@ -5498,10 +5498,18 @@ var EnhanceCommUI = (() => {
     const fov = clampWorldFovForDisplay(next, cssW, cssH, maxTex);
     const logical = logicalSizeForFov(cssW, cssH, fov, maxTex);
     const host2 = window;
-    const changed = appliedFov !== fov || host2.width !== logical.w || host2.height !== logical.h;
+    const prevW = typeof host2.width === "number" ? host2.width : 0;
+    const prevH = typeof host2.height === "number" ? host2.height : 0;
+    const fovChanged = appliedFov !== fov;
+    const changed = fovChanged || host2.width !== logical.w || host2.height !== logical.h;
     appliedFov = fov;
     host2.width = logical.w;
     host2.height = logical.h;
+    let scrubbedTiling = false;
+    if (host2.mdraw_tiling_sprites) {
+      host2.mdraw_tiling_sprites = false;
+      scrubbedTiling = true;
+    }
     if (host2.renderer && typeof host2.renderer.resize === "function") {
       host2.renderer.resize(logical.w, logical.h);
     }
@@ -5513,7 +5521,8 @@ var EnhanceCommUI = (() => {
         host2.height = ah;
       }
     }
-    if (changed && host2.map) {
+    const sizeDelta = Math.abs((host2.width || 0) - prevW) + Math.abs((host2.height || 0) - prevH);
+    if (host2.map && (scrubbedTiling || changed && (fovChanged || sizeDelta >= 8))) {
       host2.map.last_max_y = void 0;
     }
     if (fov === WORLD_FOV_DEFAULT) {
@@ -16366,6 +16375,12 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var mousePanLastY = 0;
   var mousePanActive = false;
   var mousePanArmed = false;
+  var mapFlushRafId = null;
+  var STOCK_MDRAW_BORDER = 40;
+  var PHONE_ECU_MDRAW_BORDER = 100;
+  var DESKTOP_ECU_MDRAW_BORDER = 140;
+  var LARGE_VIEW_AREA = 900 * 700;
+  var origRetileTheMap = null;
   var freeListeners = [];
   var followListeners = [];
   function notifyFree() {
@@ -16403,6 +16418,41 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   function hostMap() {
     const m = window.map;
     return m || null;
+  }
+  function readHostSize() {
+    const w = window.width;
+    const h = window.height;
+    return {
+      w: typeof w === "number" && w > 0 ? w : window.innerWidth || 1280,
+      h: typeof h === "number" && h > 0 ? h : window.innerHeight || 720
+    };
+  }
+  function lockDrivesCamera() {
+    return freeCamera || followCamera;
+  }
+  function schedulePositionMapFlush() {
+    if (mapFlushRafId != null) return;
+    mapFlushRafId = window.requestAnimationFrame(() => {
+      mapFlushRafId = null;
+      const map = hostMap();
+      if (lockDrivesCamera() && map) {
+        map.real_x = lockX;
+        map.real_y = lockY;
+      }
+      const pos = window.position_map;
+      if (typeof pos === "function") {
+        try {
+          pos();
+        } catch (e2) {
+        }
+      }
+    });
+  }
+  function panLockToObserved() {
+    const at = readObservedWorldXY();
+    if (!at) return;
+    lockX = at.x;
+    lockY = at.y;
   }
   function syncLockFromMap() {
     const map = hostMap();
@@ -16531,11 +16581,10 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     const map = hostMap();
     const at = readObservedWorldXY();
     if (map && at) {
-      const y = at.y + phoneFollowYBias();
       lockX = at.x;
-      lockY = y;
+      lockY = at.y;
       map.real_x = at.x;
-      map.real_y = y;
+      map.real_y = at.y;
       const pos = window.position_map;
       if (typeof pos === "function") {
         try {
@@ -16579,13 +16628,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     lockY += dy;
     map.real_x = lockX;
     map.real_y = lockY;
-    const pos = window.position_map;
-    if (typeof pos === "function") {
-      try {
-        pos();
-      } catch (e2) {
-      }
-    }
+    schedulePositionMapFlush();
   }
   function typingTarget(el) {
     if (!(el instanceof Element)) return false;
@@ -16606,14 +16649,6 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       return false;
     }
     return true;
-  }
-  var PHONE_FOLLOW_Y_BIAS = 40;
-  function phoneFollowYBias() {
-    if (typeof document === "undefined") return 0;
-    if (!document.documentElement.classList.contains("ecu-phone-dock-on")) {
-      return 0;
-    }
-    return PHONE_FOLLOW_Y_BIAS;
   }
   function endMousePan() {
     mousePanPointerId = null;
@@ -16777,24 +16812,16 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     }
     lastTs = 0;
   }
-  function applyFollowMapLock(map) {
-    const at = readObservedWorldXY();
-    if (!at) return;
-    const y = at.y + phoneFollowYBias();
-    lockX = at.x;
-    lockY = y;
-    map.real_x = at.x;
-    map.real_y = y;
-  }
   function patchedPositionMap() {
     syncFreeCameraAfterRealmChange();
     const map = hostMap();
     const w = window;
-    if (freeCamera && map) {
+    if (followCamera && !freeCamera) {
+      panLockToObserved();
+    }
+    if (lockDrivesCamera() && map) {
       map.real_x = lockX;
       map.real_y = lockY;
-    } else if (followCamera && map) {
-      applyFollowMapLock(map);
     }
     const savedChar = freeCamera && w.character ? w.character : null;
     if (savedChar) w.character = void 0;
@@ -16803,16 +16830,14 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     } finally {
       if (savedChar) w.character = savedChar;
     }
-    if (freeCamera && map) {
-      map.real_x = lockX;
-      map.real_y = lockY;
-    } else if (followCamera && map) {
+    if (lockDrivesCamera() && map) {
       map.real_x = lockX;
       map.real_y = lockY;
     }
   }
   function installPositionMapHook() {
     const w = window;
+    installRetileBorderHook();
     if (typeof w.__ecuPositionMap === "function") return;
     if (typeof w.position_map !== "function") return;
     origPositionMap = w.position_map;
@@ -16904,6 +16929,39 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     w.__ecuFollowObserved = followObservedCamera;
     w.__ecuCenterObserved = centerOnObservedCamera;
     w.__ecuSetFollowCamera = setFollowCamera;
+    w.__ecuPanCameraByWorldDelta = panCameraByWorldDelta;
+  }
+  function ecuRetileBorderForView(opts) {
+    const driving = opts.follow || opts.free;
+    if (!driving) return STOCK_MDRAW_BORDER;
+    if (opts.viewArea >= LARGE_VIEW_AREA) return DESKTOP_ECU_MDRAW_BORDER;
+    return PHONE_ECU_MDRAW_BORDER;
+  }
+  function readEcuRetileBorder() {
+    const size = readHostSize();
+    return ecuRetileBorderForView({
+      follow: followCamera && !freeCamera,
+      free: freeCamera,
+      viewArea: size.w * size.h
+    });
+  }
+  function installRetileBorderHook() {
+    const w = window;
+    if (typeof w.__ecuRetileTheMap === "function") return;
+    if (typeof w.retile_the_map !== "function") return;
+    origRetileTheMap = w.retile_the_map;
+    const patched = function() {
+      const prev = typeof w.mdraw_border === "number" && Number.isFinite(w.mdraw_border) ? w.mdraw_border : STOCK_MDRAW_BORDER;
+      const want = readEcuRetileBorder();
+      if (want > prev) w.mdraw_border = want;
+      try {
+        if (origRetileTheMap) origRetileTheMap.call(this);
+      } finally {
+        w.mdraw_border = prev;
+      }
+    };
+    w.__ecuRetileTheMap = patched;
+    w.retile_the_map = patched;
   }
 
   // src/lib/itemInstanceData.ts
@@ -32213,7 +32271,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-06T09:28:56.282Z" : "unknown";
+    const builtAt = true ? "2026-11-06T11:24:17.566Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,

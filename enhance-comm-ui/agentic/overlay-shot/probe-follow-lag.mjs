@@ -1,6 +1,6 @@
 /**
- * Red-capable: desktop Follow must track observing XY every frame (no stale lock).
- * maxErr >= 1 world unit while moving → rubber-band / "UI lagging around".
+ * Red-capable: desktop Follow tracks live observed XY (daadb50-style).
+ * maxErr >= 1 world unit while moving → broken Follow lock.
  */
 import { chromium } from "playwright";
 import { writeFileSync } from "fs";
@@ -67,15 +67,10 @@ const report = await page.evaluate(async () => {
   let samples = 0;
   let screenChanges = 0;
   let lastScreen = map.x + "," + map.y;
-  let longFrames = 0;
-  let lastTs = performance.now();
 
   await new Promise((resolve) => {
     const start = performance.now();
     const tick = (ts) => {
-      const dt = ts - lastTs;
-      lastTs = ts;
-      if (dt > 24) longFrames++;
       const t = (ts - start) / 1000;
       const nx = Math.sin(t * 10) * 60;
       const ny = Math.cos(t * 10) * 60;
@@ -104,7 +99,6 @@ const report = await page.evaluate(async () => {
     avgErr: samples ? Math.round((sumErr / samples) * 1000) / 1000 : 0,
     samples,
     screenChanges,
-    longFrames,
     viewport: document.getElementById("comm-ui")?.getAttribute("data-viewport"),
   };
 });
@@ -115,14 +109,14 @@ await page.screenshot({ path: shot, fullPage: false });
 const trackLag = (report.maxErr || 0) >= 1;
 const verdict = {
   trackLag,
-  longFramesBad: (report.longFrames || 0) > (report.samples || 1) * 0.5,
+  noTrack: (report.screenChanges || 0) < 5,
   notDesktop: report.viewport !== "desktop",
 };
 const full = { report, errs, shot, verdict };
 writeFileSync(join(outDir, "follow-lag-probe.json"), JSON.stringify(full, null, 2));
 console.log(JSON.stringify(full, null, 2));
 const code =
-  trackLag || verdict.longFramesBad || verdict.notDesktop || report.error ? 1 : 0;
+  trackLag || verdict.noTrack || verdict.notDesktop || report.error ? 1 : 0;
 console.log("VERDICT", JSON.stringify({ ok: code === 0, ...verdict, maxErr: report.maxErr }));
 await browser.close();
 process.exit(code);

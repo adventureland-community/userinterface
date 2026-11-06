@@ -12,6 +12,7 @@ import {
 } from "../src/lib/cameraPan";
 import {
   centerOnObservedCamera,
+  ecuRetileBorderForView,
   isFollowCamera,
   isFreeCamera,
   lockCamera,
@@ -212,6 +213,27 @@ describe("cameraPan stock position_map change gate", () => {
       stockMapScreenWouldChange(preApplied, width, height, scale),
       false,
       "pre-applied screen coords hide the change from stock",
+    );
+  });
+
+  it("widens retile border for Follow/pan on phone and desktop", () => {
+    assert.equal(
+      ecuRetileBorderForView({ follow: false, free: false, viewArea: 390 * 844 }),
+      40,
+    );
+    assert.equal(
+      ecuRetileBorderForView({ follow: true, free: false, viewArea: 390 * 844 }),
+      100,
+      "phone Follow must widen (battery)",
+    );
+    assert.equal(
+      ecuRetileBorderForView({ follow: false, free: true, viewArea: 390 * 844 }),
+      100,
+      "phone stick pan must widen too",
+    );
+    assert.equal(
+      ecuRetileBorderForView({ follow: true, free: false, viewArea: 1440 * 900 }),
+      140,
     );
   });
 });

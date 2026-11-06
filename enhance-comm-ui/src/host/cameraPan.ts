@@ -52,6 +52,23 @@ let mousePanLastX = 0;
 let mousePanLastY = 0;
 let mousePanActive = false;
 let mousePanArmed = false;
+/**
+ * Coalesce mouse-drag `position_map` to one call per frame (pointermove can
+ * fire hundreds of times/sec on desktop; stick/WASD already RAF-gate).
+ */
+let mapFlushRafId: number | null = null;
+/** Stock default — restored when ECU is not driving the camera. */
+const STOCK_MDRAW_BORDER = 40;
+/**
+ * Widen stock's retile early-out while ECU drives the camera (Follow or
+ * free-cam pan). Camera still moves every pixel; rebuilds fire less often.
+ * Phone/tablet use a milder bump (battery); large desktop buffers go wider.
+ */
+const PHONE_ECU_MDRAW_BORDER = 100;
+const DESKTOP_ECU_MDRAW_BORDER = 140;
+/** Logical px² at/above which we treat the buffer as desktop-sized. */
+const LARGE_VIEW_AREA = 900 * 700;
+let origRetileTheMap: (() => void) | null = null;
 
 type FreeListener = (free: boolean) => void;
 const freeListeners: FreeListener[] = [];
@@ -115,6 +132,49 @@ type HostMap = {
 function hostMap(): HostMap | null {
   const m = (window as Window & { map?: HostMap }).map;
   return m || null;
+}
+
+function readHostSize(): { w: number; h: number } {
+  const w = (window as Window & { width?: number; height?: number }).width;
+  const h = (window as Window & { height?: number }).height;
+  return {
+    w: typeof w === "number" && w > 0 ? w : window.innerWidth || 1280,
+    h: typeof h === "number" && h > 0 ? h : window.innerHeight || 720,
+  };
+}
+
+/** True when ECU owns map.real_* via the lock (free-cam pan or Follow track). */
+function lockDrivesCamera(): boolean {
+  return freeCamera || followCamera;
+}
+
+/** Run stock position_map at most once per animation frame. */
+function schedulePositionMapFlush(): void {
+  if (mapFlushRafId != null) return;
+  mapFlushRafId = window.requestAnimationFrame(() => {
+    mapFlushRafId = null;
+    const map = hostMap();
+    if (lockDrivesCamera() && map) {
+      map.real_x = lockX;
+      map.real_y = lockY;
+    }
+    const pos = (window as Window & { position_map?: () => void }).position_map;
+    if (typeof pos === "function") {
+      try {
+        pos();
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+}
+
+/** Pan the lock onto the live observed entity (Follow = free-cam lock update). */
+function panLockToObserved(): void {
+  const at = readObservedWorldXY();
+  if (!at) return;
+  lockX = at.x;
+  lockY = at.y;
 }
 
 function syncLockFromMap(): void {
@@ -318,11 +378,10 @@ function snapMapToObserved(): boolean {
   const map = hostMap();
   const at = readObservedWorldXY();
   if (map && at) {
-    const y = at.y + phoneFollowYBias();
     lockX = at.x;
-    lockY = y;
+    lockY = at.y;
     map.real_x = at.x;
-    map.real_y = y;
+    map.real_y = at.y;
     const pos = (window as Window & { position_map?: () => void }).position_map;
     if (typeof pos === "function") {
       try {
@@ -368,8 +427,9 @@ export function setJoystickPan(pan: CameraPanVec): void {
 }
 
 /**
- * Apply a one-shot world-space nudge (mouse drag). Calls stock position_map
- * so tiles catch up the same frame.
+ * Apply a one-shot world-space nudge (mouse drag). Writes `map.real_*` now;
+ * stock `position_map` is RAF-coalesced so high-rate pointermove does not
+ * outrun draw / retile the way the phone stick never does.
  */
 export function panCameraByWorldDelta(dx: number, dy: number): void {
   if (!(Number.isFinite(dx + dy)) || (dx === 0 && dy === 0)) return;
@@ -380,14 +440,7 @@ export function panCameraByWorldDelta(dx: number, dy: number): void {
   lockY += dy;
   map.real_x = lockX;
   map.real_y = lockY;
-  const pos = (window as Window & { position_map?: () => void }).position_map;
-  if (typeof pos === "function") {
-    try {
-      pos();
-    } catch {
-      /* ignore */
-    }
-  }
+  schedulePositionMapFlush();
 }
 
 function typingTarget(el: EventTarget | null): boolean {
@@ -412,23 +465,6 @@ function mousePanAllowed(): boolean {
     return false;
   }
   return true;
-}
-
-/**
- * Phone dock: bias follow so the party sits upper-mid, leaving floor for the
- * thumb stick instead of parking chrome on sprites.
- */
-/** Party upper-mid; leave floor for stick without parking mid-frame too low. */
-/** Pull follow framing south so phone cover shows floor tiles, not ceiling void. */
-/** Mild lift — heavy bias parked top crabs under the FOV cluster. */
-const PHONE_FOLLOW_Y_BIAS = 40;
-
-function phoneFollowYBias(): number {
-  if (typeof document === "undefined") return 0;
-  if (!document.documentElement.classList.contains("ecu-phone-dock-on")) {
-    return 0;
-  }
-  return PHONE_FOLLOW_Y_BIAS;
 }
 
 function endMousePan(): void {
@@ -620,36 +656,20 @@ function stopRafIfIdle(): void {
 }
 
 /**
- * Follow must track the observed sprite every draw. A time throttle held a
- * stale lock while the entity kept moving — desktop reads that as the UI
- * "lagging around." Stock position_map is cheap; map.x/y only change when
- * real_* moves enough to cross a pixel after c_round.
- */
-function applyFollowMapLock(map: HostMap): void {
-  const at = readObservedWorldXY();
-  if (!at) return;
-  const y = at.y + phoneFollowYBias();
-  lockX = at.x;
-  lockY = y;
-  map.real_x = at.x;
-  map.real_y = y;
-}
-
-/**
- * Keep free-cam lock across stock `position_map` / `draw`.
- * Temporarily clear `character` so stock does not yank `map.real_*` back
- * while still running the map.x/y + dtile path on our lock.
- * When Follow is on (hub observe has no character), write live observed XY.
+ * Keep the ECU lock across stock `position_map` / `draw`.
+ * Follow pans the lock onto the observed entity once, then uses the same
+ * write path as free-cam (f87cdab). Never re-read live XY after stock.
  */
 function patchedPositionMap(this: unknown): void {
   syncFreeCameraAfterRealmChange();
   const map = hostMap();
   const w = window as Window & { character?: unknown };
-  if (freeCamera && map) {
+  if (followCamera && !freeCamera) {
+    panLockToObserved();
+  }
+  if (lockDrivesCamera() && map) {
     map.real_x = lockX;
     map.real_y = lockY;
-  } else if (followCamera && map) {
-    applyFollowMapLock(map);
   }
   const savedChar = freeCamera && w.character ? w.character : null;
   if (savedChar) w.character = undefined;
@@ -658,13 +678,9 @@ function patchedPositionMap(this: unknown): void {
   } finally {
     if (savedChar) w.character = savedChar;
   }
-  if (freeCamera && map) {
+  if (lockDrivesCamera() && map) {
     // Stock observe path already used our real_*; playing path may have been
     // skipped via character null — ensure lock sticks for the next retile.
-    map.real_x = lockX;
-    map.real_y = lockY;
-  } else if (followCamera && map) {
-    // Re-assert after stock — avoid a second XY read/throttle pass.
     map.real_x = lockX;
     map.real_y = lockY;
   }
@@ -675,6 +691,8 @@ function installPositionMapHook(): void {
     position_map?: () => void;
     __ecuPositionMap?: () => void;
   };
+  // Retile hook is independent — keep trying even if position_map was wrapped.
+  installRetileBorderHook();
   if (typeof w.__ecuPositionMap === "function") return;
   if (typeof w.position_map !== "function") return;
   origPositionMap = w.position_map;
@@ -785,14 +803,28 @@ export function installCameraPan(): void {
     __ecuFollowObserved?: () => void;
     __ecuCenterObserved?: () => void;
     __ecuSetFollowCamera?: (on: boolean) => void;
+    __ecuPanCameraByWorldDelta?: (dx: number, dy: number) => void;
   };
   w.__ecuFollowObserved = followObservedCamera;
   w.__ecuCenterObserved = centerOnObservedCamera;
   w.__ecuSetFollowCamera = setFollowCamera;
+  w.__ecuPanCameraByWorldDelta = panCameraByWorldDelta;
 }
 
 export function isCameraPanInstalled(): boolean {
   return installed;
+}
+
+/** Match stock `c_round` (game.js) so Follow's pixel gate agrees with draw. */
+export function stockCRound(n: number): number {
+  const w =
+    typeof window !== "undefined"
+      ? (window as Window & { floor_xy?: boolean; round_xy?: boolean })
+      : undefined;
+  if (w && w.floor_xy) return Math.floor(n);
+  // Stock defaults `round_xy = true`; node tests have no window.
+  if (w && !w.round_xy) return n;
+  return Math.round(n);
 }
 
 /** Test seam — stock-like change detection for map.x/y. */
@@ -802,7 +834,64 @@ export function stockMapScreenWouldChange(
   height: number,
   scale: number,
 ): boolean {
-  const x = Math.round(width / 2.0 - map.real_x * scale);
-  const y = Math.round(height / 2.0 - map.real_y * scale);
+  const x = stockCRound(width / 2.0 - map.real_x * scale);
+  const y = stockCRound(height / 2.0 - map.real_y * scale);
   return map.x !== x || map.y !== y;
+}
+
+/**
+ * True when ECU owns map.real_* (Follow track or free-cam pan/stick).
+ * Pure-ish for tests — pass the live flags + buffer area.
+ */
+export function ecuRetileBorderForView(opts: {
+  follow: boolean;
+  free: boolean;
+  viewArea: number;
+}): number {
+  const driving = opts.follow || opts.free;
+  if (!driving) return STOCK_MDRAW_BORDER;
+  if (opts.viewArea >= LARGE_VIEW_AREA) return DESKTOP_ECU_MDRAW_BORDER;
+  return PHONE_ECU_MDRAW_BORDER;
+}
+
+function readEcuRetileBorder(): number {
+  const size = readHostSize();
+  // Do not multiply border by FOV — zoom-out already multiplies tile count
+  // with the logical buffer; a wider border makes Follow lag worse.
+  return ecuRetileBorderForView({
+    follow: followCamera && !freeCamera,
+    free: freeCamera,
+    viewArea: size.w * size.h,
+  });
+}
+
+/**
+ * Stock calls `retile_the_map` every draw. The expensive uncached rebuild only
+ * runs when `last_max_*` moves by `mdraw_border * scale`. ECU Follow / pan
+ * trips that on phone and desktop; widen the border while we drive the camera.
+ */
+function installRetileBorderHook(): void {
+  const w = window as Window & {
+    retile_the_map?: () => void;
+    __ecuRetileTheMap?: () => void;
+    mdraw_border?: number;
+  };
+  if (typeof w.__ecuRetileTheMap === "function") return;
+  if (typeof w.retile_the_map !== "function") return;
+  origRetileTheMap = w.retile_the_map;
+  const patched = function (this: unknown): void {
+    const prev =
+      typeof w.mdraw_border === "number" && Number.isFinite(w.mdraw_border)
+        ? w.mdraw_border
+        : STOCK_MDRAW_BORDER;
+    const want = readEcuRetileBorder();
+    if (want > prev) w.mdraw_border = want;
+    try {
+      if (origRetileTheMap) origRetileTheMap.call(this);
+    } finally {
+      w.mdraw_border = prev;
+    }
+  };
+  w.__ecuRetileTheMap = patched;
+  w.retile_the_map = patched;
 }

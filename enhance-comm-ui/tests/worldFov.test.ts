@@ -196,6 +196,35 @@ describe("worldFov", () => {
     assert.equal(WORLD_FOV_STEP, 0.25);
   });
 
+  it("does not clear last_max on sub-8px buffer jitter", () => {
+    const map = { last_max_y: 99 as number | undefined };
+    (globalThis as { window?: Record<string, unknown> }).window = {
+      innerWidth: 1280,
+      innerHeight: 800,
+      width: 1280,
+      height: 800,
+      map,
+      renderer: { view: { style: {} }, resize() {} },
+    };
+    applyWorldFov(1);
+    map.last_max_y = 99;
+    (
+      globalThis as { window: { width: number } }
+    ).window.width = 1284; // 4px drift
+    applyWorldFov(1);
+    assert.equal(map.last_max_y, 99, "tiny jitter must not force a retile");
+    map.last_max_y = 99;
+    (
+      globalThis as { window: { width: number } }
+    ).window.width = 1292; // 12px drift
+    applyWorldFov(1);
+    assert.equal(
+      map.last_max_y,
+      undefined,
+      "real buffer moves still bust last_max",
+    );
+  });
+
   it("nameplateTextResolution tracks FOV denseness both ways", () => {
     (globalThis as { window?: Record<string, unknown> }).window = {
       devicePixelRatio: 1,

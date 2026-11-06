@@ -499,16 +499,26 @@ export function applyWorldFov(next: number): number {
       height?: number;
     };
     position_map?: () => void;
+    mdraw_tiling_sprites?: boolean;
   };
 
+  const prevW = typeof host.width === "number" ? host.width : 0;
+  const prevH = typeof host.height === "number" ? host.height : 0;
+  const fovChanged = appliedFov !== fov;
   const changed =
-    appliedFov !== fov ||
-    host.width !== logical.w ||
-    host.height !== logical.h;
+    fovChanged || host.width !== logical.w || host.height !== logical.h;
 
   appliedFov = fov;
   host.width = logical.w;
   host.height = logical.h;
+
+  // Scrub a prior bad experiment that forced stock tiling sprites on zoom-out
+  // (tile seams / broken zoom). Stock default is false.
+  let scrubbedTiling = false;
+  if (host.mdraw_tiling_sprites) {
+    host.mdraw_tiling_sprites = false;
+    scrubbedTiling = true;
+  }
 
   if (host.renderer && typeof host.renderer.resize === "function") {
     host.renderer.resize(logical.w, logical.h);
@@ -528,7 +538,14 @@ export function applyWorldFov(next: number): number {
       host.height = ah;
     }
   }
-  if (changed && host.map) {
+  // 1px CSS/visualViewport jitter must not clear last_max every frame (that
+  // forced full uncached retile while Follow/pan). Bust only on real moves.
+  const sizeDelta =
+    Math.abs((host.width || 0) - prevW) + Math.abs((host.height || 0) - prevH);
+  if (
+    host.map &&
+    (scrubbedTiling || (changed && (fovChanged || sizeDelta >= 8)))
+  ) {
     host.map.last_max_y = undefined;
   }
 
