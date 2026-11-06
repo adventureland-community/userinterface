@@ -438,8 +438,49 @@ var EnhanceCommUI = (() => {
     }
     return out;
   }
+  function mixStr(h, s) {
+    let out = h;
+    for (let i = 0; i < s.length; i++) {
+      out = out * 33 + s.charCodeAt(i) | 0;
+    }
+    return out;
+  }
+  function mixNum(h, n) {
+    return h * 33 + (n | 0) | 0;
+  }
+  function snapshotUiCoarseHash(snap) {
+    const xt = typeof window !== "undefined" ? window.xtarget : void 0;
+    const xtId = xt && xt.id != null ? String(xt.id) : "";
+    const targetId = snap.target && snap.target.id != null ? String(snap.target.id) : "";
+    const obsId = snap.observingId != null ? String(snap.observingId) : "";
+    let h = 0;
+    h = mixStr(h, obsId);
+    h = mixStr(h, targetId);
+    h = mixStr(h, xtId);
+    h = mixStr(h, snap.serverRegion || "");
+    h = mixStr(h, snap.serverIdentifier || "");
+    h = mixNum(h, snap.entities.length);
+    const ents = snap.entities;
+    for (let i = 0; i < ents.length; i++) {
+      const ent = ents[i];
+      const id = ent.id != null ? String(ent.id) : "";
+      const hud = !!ent.player || id === obsId || id === targetId || !!ent.cooperative;
+      const hp = ent.hp != null ? Math.round(ent.hp) : 0;
+      const mp = hud && ent.mp != null ? Math.round(ent.mp) : 0;
+      h = mixStr(h, id);
+      h = mixNum(h, hp);
+      h = mixNum(h, mp);
+      h = mixNum(h, ent.dead ? 1 : 0);
+      h = mixNum(h, ent.rip ? 1 : 0);
+      h = mixNum(h, hud ? Number(ent.fear) || 0 : 0);
+      h = mixStr(h, ent.in != null ? String(ent.in) : "");
+      h = mixStr(h, ent.target != null ? String(ent.target) : "");
+      if (hud) h = mixStr(h, statusFingerprint(ent, true));
+    }
+    return h;
+  }
   function snapshotUiKey(snap) {
-    const xt = window.xtarget;
+    const xt = typeof window !== "undefined" ? window.xtarget : void 0;
     const xtId = xt && xt.id != null ? String(xt.id) : "";
     const targetId = snap.target && snap.target.id != null ? String(snap.target.id) : "";
     const obsId = snap.observingId != null ? String(snap.observingId) : "";
@@ -16371,6 +16412,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var FOLLOW_EDGE_MARGIN = 0.22;
   var FOLLOW_RECENTER_SPEED = 5.5;
   var FOLLOW_RECENTER_SNAP = 3;
+  var FOLLOW_RETILE_STEP_FRAC = 0.35;
   function followViewHalfExtents(width, height, scale) {
     const s = scale > 0 && Number.isFinite(scale) ? scale : 1;
     const w = width > 0 && Number.isFinite(width) ? width : 1;
@@ -16390,6 +16432,19 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function followSubjectOffScreen(lockX2, lockY2, subjectX, subjectY, halfW, halfH) {
     return Math.abs(subjectX - lockX2) > halfW || Math.abs(subjectY - lockY2) > halfH;
+  }
+  function followRetileStepWorld(halfW, halfH, frac = FOLLOW_RETILE_STEP_FRAC) {
+    const short = Math.min(
+      halfW > 0 && Number.isFinite(halfW) ? halfW : 1,
+      halfH > 0 && Number.isFinite(halfH) ? halfH : 1
+    );
+    const f = frac > 0 && Number.isFinite(frac) ? frac : FOLLOW_RETILE_STEP_FRAC;
+    return Math.max(FOLLOW_RECENTER_SNAP * 2, short * f);
+  }
+  function followShouldForceRetileAhead(lockX2, lockY2, lastRetileX, lastRetileY, stepWorld) {
+    if (!(stepWorld > 0) || !Number.isFinite(stepWorld)) return false;
+    const dist = Math.hypot(lockX2 - lastRetileX, lockY2 - lastRetileY);
+    return dist >= stepWorld;
   }
   function followCameraLockSmoothToward(lockX2, lockY2, subjectX, subjectY, dtSec, speed = FOLLOW_RECENTER_SPEED) {
     const dx = subjectX - lockX2;
@@ -16439,7 +16494,14 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var PHONE_ECU_MDRAW_BORDER = 100;
   var DESKTOP_ECU_MDRAW_BORDER = 140;
   var LARGE_VIEW_AREA = 900 * 700;
+  var LOCK_MOVED_HOLD_MS = 250;
+  var REALM_FALLBACK_MS = 2e3;
   var origRetileTheMap = null;
+  var lockMovedUntil = 0;
+  var realmFallbackId = null;
+  var lastFollowRetileX = 0;
+  var lastFollowRetileY = 0;
+  var hasFollowRetileMark = false;
   var freeListeners = [];
   var followListeners = [];
   function notifyFree() {
@@ -16510,6 +16572,87 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   function clearFollowRecenter() {
     followRecenter = false;
     followRecenterLastTs = 0;
+    hasFollowRetileMark = false;
+  }
+  function nowMs() {
+    return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+  }
+  function forceUncachedRetile() {
+    const map = hostMap();
+    if (!map) return;
+    map.last_max_x = void 0;
+    map.last_max_y = void 0;
+    const w = window;
+    if (typeof w.retile_the_map !== "function") return;
+    try {
+      w.retile_the_map();
+    } catch (e2) {
+    }
+  }
+  function forceFollowRetileAtLock() {
+    const map = hostMap();
+    if (map) {
+      map.real_x = lockX;
+      map.real_y = lockY;
+    }
+    forceUncachedRetile();
+    lastFollowRetileX = lockX;
+    lastFollowRetileY = lockY;
+    hasFollowRetileMark = true;
+  }
+  function maybeForceFollowRetileAlongPath(halfW, halfH) {
+    const step = followRetileStepWorld(halfW, halfH);
+    if (!hasFollowRetileMark) {
+      forceFollowRetileAtLock();
+      return;
+    }
+    if (followShouldForceRetileAhead(
+      lockX,
+      lockY,
+      lastFollowRetileX,
+      lastFollowRetileY,
+      step
+    )) {
+      forceFollowRetileAtLock();
+    }
+  }
+  function noteFreeCamLockMoved() {
+    if (!freeCamera) return;
+    lockMovedUntil = nowMs() + LOCK_MOVED_HOLD_MS;
+  }
+  function ecuFreeCamPanMoving(opts) {
+    return opts.mousePanActive || opts.mapFlushPending || opts.keyPan || opts.stickPan || opts.lockMovedHold;
+  }
+  function readFreeCamPanMoving() {
+    if (!freeCamera) return false;
+    const keys = keysToPan({
+      up: keyUp,
+      down: keyDown,
+      left: keyLeft,
+      right: keyRight
+    });
+    return ecuFreeCamPanMoving({
+      mousePanActive,
+      mapFlushPending: mapFlushRafId != null,
+      keyPan: keys.x !== 0 || keys.y !== 0,
+      stickPan: stickPan.x !== 0 || stickPan.y !== 0,
+      lockMovedHold: nowMs() < lockMovedUntil
+    });
+  }
+  function syncRealmFallbackTimer() {
+    if (typeof window === "undefined" || typeof window.setInterval !== "function") {
+      return;
+    }
+    if (freeCamera) {
+      if (realmFallbackId != null) return;
+      realmFallbackId = window.setInterval(() => {
+        syncFreeCameraAfterRealmChange();
+      }, REALM_FALLBACK_MS);
+      return;
+    }
+    if (realmFallbackId == null) return;
+    window.clearInterval(realmFallbackId);
+    realmFallbackId = null;
   }
   function panLockToObserved() {
     const at = readObservedWorldXY();
@@ -16520,18 +16663,22 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       lockX = at.x;
       lockY = at.y;
       clearFollowRecenter();
+      forceFollowRetileAtLock();
       return;
     }
     if (followLockNeedsRecenter(lockX, lockY, at.x, at.y, half.halfW, half.halfH)) {
+      const starting = !followRecenter;
       followRecenter = true;
+      if (starting) maybeForceFollowRetileAlongPath(half.halfW, half.halfH);
     }
     if (!followRecenter) return;
-    const now = typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+    const now = nowMs();
     const dt = followRecenterLastTs > 0 ? Math.min(0.05, Math.max(0, (now - followRecenterLastTs) / 1e3)) : 1 / 60;
     followRecenterLastTs = now;
     const next = followCameraLockSmoothToward(lockX, lockY, at.x, at.y, dt);
     lockX = next.x;
     lockY = next.y;
+    maybeForceFollowRetileAlongPath(half.halfW, half.halfH);
     if (next.arrived) clearFollowRecenter();
   }
   function syncLockFromMap() {
@@ -16554,6 +16701,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (!map) return;
     lockX = x;
     lockY = y;
+    noteFreeCamLockMoved();
     map.real_x = x;
     map.real_y = y;
     const pos = window.position_map;
@@ -16636,6 +16784,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       notifyFree();
       if (wasFollow) notifyFollow();
     }
+    syncRealmFallbackTimer();
     ensureRaf();
   }
   function clearObserverCameraAnchor() {
@@ -16653,6 +16802,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     stopRafIfIdle();
     notifyFree();
     hasObserverAnchor = false;
+    syncRealmFallbackTimer();
   }
   function emitObserveHome() {
     const sock = window.socket;
@@ -16664,6 +16814,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (map && at) {
       lockX = at.x;
       lockY = at.y;
+      noteFreeCamLockMoved();
       map.real_x = at.x;
       map.real_y = at.y;
       const pos = window.position_map;
@@ -16688,6 +16839,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     });
     lockX = next.x;
     lockY = next.y;
+    noteFreeCamLockMoved();
     map.real_x = lockX;
     map.real_y = lockY;
   }
@@ -16707,6 +16859,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (!map) return;
     lockX += dx;
     lockY += dy;
+    noteFreeCamLockMoved();
     map.real_x = lockX;
     map.real_y = lockY;
     schedulePositionMapFlush();
@@ -16855,9 +17008,9 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (s < -1) return -1;
     return s;
   }
-  function panFrameDtSec(nowMs2, prevMs) {
+  function panFrameDtSec(nowMs3, prevMs) {
     if (!(prevMs > 0)) return 1 / 60;
-    return Math.min(0.05, Math.max(0, (nowMs2 - prevMs) / 1e3));
+    return Math.min(0.05, Math.max(0, (nowMs3 - prevMs) / 1e3));
   }
   function tick(ts) {
     rafId = null;
@@ -17004,10 +17157,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       endMousePan();
       stopRafIfIdle();
     });
-    const realmPoll = window.setInterval(() => {
-      syncFreeCameraAfterRealmChange();
-    }, 250);
-    void realmPoll;
+    syncRealmFallbackTimer();
     const w = window;
     w.__ecuFollowObserved = followObservedCamera;
     w.__ecuCenterObserved = centerOnObservedCamera;
@@ -17015,16 +17165,14 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     w.__ecuPanCameraByWorldDelta = panCameraByWorldDelta;
   }
   function ecuRetileBorderForView(opts) {
-    const driving = opts.follow || opts.free;
-    if (!driving) return STOCK_MDRAW_BORDER;
+    if (!opts.widenMoving) return STOCK_MDRAW_BORDER;
     if (opts.viewArea >= LARGE_VIEW_AREA) return DESKTOP_ECU_MDRAW_BORDER;
     return PHONE_ECU_MDRAW_BORDER;
   }
   function readEcuRetileBorder() {
     const size = readHostSize();
     return ecuRetileBorderForView({
-      follow: followCamera && !freeCamera,
-      free: freeCamera,
+      widenMoving: followRecenter || readFreeCamPanMoving(),
       viewArea: size.w * size.h
     });
   }
@@ -18272,6 +18420,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     loading: false,
     loadingMore: false,
     prefetchArmed: false,
+    warmThrash: false,
     panelOpen: false,
     view: { kind: "list" },
     lastScript: "",
@@ -18337,6 +18486,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       loading: state.loading,
       loadingMore: state.loadingMore,
       prefetchArmed: state.prefetchArmed,
+      warmThrash: state.warmThrash,
       panelOpen: state.panelOpen,
       view: state.view,
       lastScript: state.lastScript,
@@ -20734,17 +20884,23 @@ html.ecu-phone-dock-on #${HOST_ID4} {
   // src/host/mail/mailCache.ts
   var pullInFlight = false;
   var prefetchTimer = 0;
+  var prefetchDeadline = 0;
   var prefetchPages = 0;
   var prefetchFailStreak = 0;
+  var lastHeadStrategy = "";
   var activePull = null;
   var refreshSeq = 0;
   var searchBurst = false;
   var MAIL_SEARCH_BURST_GAP_MS = 120;
+  var WARM_THRASH_WINDOW_MS = 8e3;
+  var WARM_THRASH_HEAD_COUNT = 3;
+  var recentUnreadHeadAt = [];
   function stopPrefetch() {
     if (prefetchTimer) {
       window.clearTimeout(prefetchTimer);
       prefetchTimer = 0;
     }
+    prefetchDeadline = 0;
     commit({ prefetchArmed: false });
   }
   function resetPrefetchPages() {
@@ -20766,28 +20922,58 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       MAIL_PREFETCH_GAP_MAX_MS + 8e3
     );
   }
+  function noteUnreadHeadReason(reason) {
+    if (reason.indexOf("X.unread") !== 0) return;
+    const now = Date.now();
+    recentUnreadHeadAt.push(now);
+    while (recentUnreadHeadAt.length > 0 && now - recentUnreadHeadAt[0] > WARM_THRASH_WINDOW_MS) {
+      recentUnreadHeadAt.shift();
+    }
+    let n = 0;
+    for (let i = 0; i < recentUnreadHeadAt.length; i++) {
+      if (now - recentUnreadHeadAt[i] <= WARM_THRASH_WINDOW_MS) n += 1;
+    }
+    const thrash = n >= WARM_THRASH_HEAD_COUNT && getHasMore() && getPanelOpen();
+    commit({ warmThrash: thrash });
+  }
+  function clearWarmThrash() {
+    if (recentUnreadHeadAt.length) recentUnreadHeadAt.length = 0;
+    commit({ warmThrash: false });
+  }
   function setMailSearchBurst(on) {
     const next = !!on;
     if (searchBurst === next) {
-      if (next && getPanelOpen() && getHasMore()) schedulePrefetch();
+      if (next && getPanelOpen() && getHasMore()) {
+        schedulePrefetch({ forceRestart: true });
+      }
       return;
     }
     searchBurst = next;
     if (next && getPanelOpen() && getHasMore()) {
-      schedulePrefetch();
+      schedulePrefetch({ forceRestart: true });
     }
   }
-  function schedulePrefetch() {
-    stopPrefetch();
+  function schedulePrefetch(opts) {
+    const forceRestart = !!(opts && opts.forceRestart);
     if (!getPanelOpen() || !getHasMore() || getLoadingMore() || pullInFlight || getRefreshProgress()) {
+      stopPrefetch();
       return;
     }
+    const now = Date.now();
+    if (!forceRestart && prefetchTimer && prefetchDeadline > now) {
+      commit({ prefetchArmed: true });
+      return;
+    }
+    stopPrefetch();
+    const delay2 = prefetchDelayMs();
+    prefetchDeadline = now + delay2;
     commit({ prefetchArmed: true });
     prefetchTimer = window.setTimeout(() => {
       prefetchTimer = 0;
+      prefetchDeadline = 0;
       commit({ prefetchArmed: false });
       void loadOlderMail({ background: true });
-    }, prefetchDelayMs());
+    }, delay2);
   }
   async function runPull(mode, reason, cursor2) {
     if (activePull) {
@@ -20848,22 +21034,24 @@ html.ecu-phone-dock-on #${HOST_ID4} {
           if (reason.indexOf("X.unread\u2191") === 0 && assigned.newIds.length) {
             patch.newMailCount = assigned.newIds.length;
           }
+          lastHeadStrategy = reconciled.strategy;
           if (!getCommandBusy() && !getRefreshProgress()) {
-            let strat = "";
-            if (reconciled.strategy === "unchanged") strat = " \xB7 cache ok";
+            let stratLabel = "";
+            if (reconciled.strategy === "unchanged") stratLabel = "cache ok";
             else if (reconciled.strategy === "prepend") {
-              strat = " \xB7 pushed new";
+              stratLabel = "pushed new";
             } else if (reconciled.strategy === "stitch") {
-              strat = " \xB7 kept older";
+              stratLabel = "kept older";
             } else if (reconciled.strategy === "truncate") {
-              strat = " \xB7 refreshed head";
+              stratLabel = "refreshed head";
             } else if (reconciled.strategy === "replace") {
-              strat = " \xB7 replaced";
+              stratLabel = "replaced";
             }
-            patch.status = "Loaded " + assigned.rows.length + (reconciled.hasMore ? "+" : "") + strat + " \xB7 " + reason;
+            patch.status = stratLabel ? stratLabel + " \xB7 " + reason : reason;
             patch.statusKind = "";
           }
           commit(patch);
+          noteUnreadHeadReason(reason);
         } else if (mode === "patch") {
           const assigned = assignLocalReadFlags(
             patchMailsById(mails, page.mail),
@@ -20888,7 +21076,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
             hasMore: meta2.hasMore
           };
           if (!reason.startsWith("prefetch")) {
-            patch.status = "Loaded \xB7 " + assigned.rows.length + (meta2.hasMore ? "+" : "");
+            patch.status = "cursor \xB7 " + reason;
             patch.statusKind = "";
           }
           commit(patch);
@@ -20913,7 +21101,10 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     const should = reason === "Refresh" || force || reason.indexOf("X.unread") === 0 || reason.indexOf("command") === 0 || getMails().length === 0 || lastHeadAt === 0 || Date.now() - lastHeadAt >= MAIL_HEAD_TTL_MS;
     if (!should && reason !== "Refresh" && !force) return;
     await runPull("head", reason);
-    if (getPanelOpen()) schedulePrefetch();
+    if (getPanelOpen()) {
+      const restart = reason === "Refresh" || reason === "open" || lastHeadStrategy !== "unchanged";
+      schedulePrefetch({ forceRestart: restart });
+    }
   }
   function sleepMs(ms) {
     if (!(ms > 0)) return Promise.resolve();
@@ -20969,7 +21160,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     if (seq2 !== refreshSeq) return;
     if (!headPage) {
       commitRefreshProgress(null);
-      if (getPanelOpen()) schedulePrefetch();
+      if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
       return;
     }
     addMailPageIdsToSeen([headPage], seenIds2);
@@ -21020,7 +21211,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
             if (!retryPages[i]) {
               commitRefreshProgress(null);
               setStatus("Cache refresh stopped \u2014 pull failed", "err");
-              if (getPanelOpen()) schedulePrefetch();
+              if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
               return;
             }
             recovered.push(retryPages[i]);
@@ -21035,7 +21226,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       } else if (failed) {
         commitRefreshProgress(null);
         setStatus("Cache refresh stopped \u2014 pull failed", "err");
-        if (getPanelOpen()) schedulePrefetch();
+        if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
         return;
       } else {
         const okPages = [];
@@ -21074,7 +21265,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       lastHeadReason: "Refresh"
     });
     schedulePersistMailCache();
-    if (getPanelOpen()) schedulePrefetch();
+    clearWarmThrash();
+    if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
   }
   async function refreshMailIds(ids) {
     if (!ids.length) return;
@@ -21099,10 +21291,11 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       if (ok) {
         prefetchPages += 1;
         prefetchFailStreak = 0;
+        clearWarmThrash();
       } else {
         prefetchFailStreak += 1;
       }
-      if (getPanelOpen()) schedulePrefetch();
+      if (getPanelOpen()) schedulePrefetch({ forceRestart: true });
     }
   }
   function clearNewMailBanner() {
@@ -21742,6 +21935,20 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       bits.push("\xD7" + m.item.q);
     }
     return bits.join(" \xB7 ");
+  }
+  function mailRowTitle(m) {
+    if (m.item && m.item.name) {
+      const bits = [String(m.item.name)];
+      if (typeof m.item.level === "number") bits.push("+" + m.item.level);
+      return bits.join(" ");
+    }
+    return m.subject || "(no subject)";
+  }
+  function mailRowTitleTip(m) {
+    if (!m.item || !m.item.name) return void 0;
+    const sub = m.subject != null ? String(m.subject).trim() : "";
+    if (!sub) return void 0;
+    return sub;
   }
   function stackMeta(g) {
     return g.head.fro + " \u2192 " + g.head.to;
@@ -22709,6 +22916,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       commit({ panelOpen: false });
       setMailSearchBurst(false);
       stopPrefetch();
+      clearWarmThrash();
       void flushPendingMailDeletes().then(() => {
         schedulePersistMailCache();
       });
@@ -22723,7 +22931,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       if (!isCurrentOpenGen(gen) || !getMailSnapshot().panelOpen) return;
       await requestMailHead("open");
       if (!isCurrentOpenGen(gen) || !getMailSnapshot().panelOpen) return;
-      schedulePrefetch();
+      schedulePrefetch({ forceRestart: true });
     })();
   }
   var openListeners = [];
@@ -29707,6 +29915,23 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     };
   }
 
+  // src/host/mail/mailStatusFormat.ts
+  function formatLiveMailLoadedStatus(status, mailCount, hasMore) {
+    if (!status) return "";
+    if (status.indexOf("Cache refreshed") === 0 || status.indexOf("Deleting") === 0 || status.indexOf("Refresh") === 0) {
+      return status;
+    }
+    const countBit = String(mailCount) + (hasMore ? "+" : "");
+    if (status.indexOf("Loaded ") === 0) {
+      const rest = status.replace(/^Loaded \d+\+?/, "").replace(/^ · /, "");
+      return "Loaded " + countBit + (rest ? " \xB7 " + rest : "");
+    }
+    if (status.indexOf("Loaded \xB7 ") === 0) {
+      return "Loaded " + countBit;
+    }
+    return "Loaded " + countBit + " \xB7 " + status;
+  }
+
   // src/host/mail/mailSearchCoverage.ts
   function mailSearchWantsBurst(opts) {
     return String(opts.query || "").trim().length > 0 && !!opts.hasMore;
@@ -32377,7 +32602,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-06T13:48:51.201Z" : "unknown";
+    const builtAt = true ? "2026-11-06T18:55:59.712Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -38748,11 +38973,11 @@ button.comm-mail__stack-u {
   var JUST_FIRED_MS = 350;
   var lastMsByKey = /* @__PURE__ */ new Map();
   var flashUntilByKey = /* @__PURE__ */ new Map();
-  function nowMs() {
+  function nowMs2() {
     return typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
   }
   function noteAbilityMsForFlash(watchKey, ms, cooldown) {
-    const now = nowMs();
+    const now = nowMs2();
     const prev = lastMsByKey.get(watchKey);
     lastMsByKey.set(watchKey, ms);
     if (prev != null && prev < Math.min(800, cooldown * 0.08) && ms > cooldown * 0.4) {
@@ -40175,6 +40400,9 @@ button.comm-mail__stack-u {
       { fill: 4473924, fontSize: 9, anchorX: 1, anchorY: 1 }
     );
   }
+  function worldOverlayNeedsPaint(settings) {
+    return !!settings["world.observerVision"] || !!settings["world.anniversaryKiss"] || !!settings["world.quirkHitboxes"] || !!settings["world.attackRange"] || !!settings["world.abilityImminent"] || !!settings["world.abilityGhost"] || !!settings["world.auraRing"] || !!settings["world.highlightAtRisk"] || !!settings["world.leashBoundary"] || !!settings["world.spawnPoints"] || !!settings["world.targetLine"] || !!settings["entity.cdLabel"] || !!settings["entity.abilityName"] || !!settings["debug.entityIds"] || !!settings["debug.gridCoords"] || !!settings["lines.moveDest"] || !!settings["lines.aggroTarget"] || !!settings["lines.attackTarget"];
+  }
   function paintWorldOverlay(handle2, opts) {
     const gfx = handle2.gfx;
     const labels = handle2.labels;
@@ -40182,7 +40410,7 @@ button.comm-mail__stack-u {
     clearOverlayLabels(labels);
     syncWorldQuirkHotspots(handle2.hotspots);
     refreshHoveredWorldQuirk();
-    const settings = getVizSettings();
+    const settings = opts.settings || getVizSettings();
     paintObserverVision(gfx, settings);
     paintWorldQuirkDebug(gfx, settings);
     const focus = opts.focus;
@@ -40198,12 +40426,16 @@ button.comm-mail__stack-u {
 
   // src/viz/startWorldOverlay.ts
   var TICK_MS_DESKTOP = 100;
-  var timerId = null;
+  var rafId2 = null;
+  var loopActive = false;
+  var lastPaintAt = 0;
   var handle = null;
   var unsubSettings = null;
   var unsubZoom = null;
   var unsubFov = null;
+  var visBound2 = false;
   var selectedId;
+  var clearedWhileIdle = false;
   function setWorldOverlaySelectedId(id) {
     selectedId = id;
   }
@@ -40213,36 +40445,86 @@ button.comm-mail__stack-u {
   function overlayTickMs() {
     return scalePollMs(TICK_MS_DESKTOP, "ui");
   }
+  function clearHandleOnce() {
+    if (!handle || clearedWhileIdle) return;
+    handle.gfx.clear();
+    clearOverlayLabels(handle.labels);
+    clearedWhileIdle = true;
+  }
   function tick2() {
+    if (typeof document !== "undefined" && document.hidden) return;
     if (getSettings().worldOverlayEnabled === false) return;
     if (mapOverlayBlocked()) {
       if (handle) {
         destroyOverlayHandle(handle);
         handle = null;
       }
+      clearedWhileIdle = false;
       return;
     }
+    const settings = getVizSettings();
+    if (!worldOverlayNeedsPaint(settings)) {
+      handle = ensureOverlayHandle(handle);
+      clearHandleOnce();
+      return;
+    }
+    clearedWhileIdle = false;
     handle = ensureOverlayHandle(handle);
     if (!handle) return;
     const entities = getEntitiesList();
     paintWorldOverlay(handle, {
       entities,
-      focus: resolveFocus(entities)
+      focus: resolveFocus(entities),
+      settings
     });
   }
-  function startWorldOverlay() {
-    if (timerId != null) return;
-    if (getSettings().worldOverlayEnabled === false) return;
-    unsubSettings = subscribeVizSettings(() => tick2());
-    unsubZoom = subscribeWorldZoom(() => tick2());
-    unsubFov = subscribeWorldFov(() => tick2());
+  function scheduleLoop() {
+    if (!loopActive || rafId2 != null) return;
+    if (typeof document !== "undefined" && document.hidden) return;
+    if (!worldOverlayNeedsPaint(getVizSettings())) return;
+    rafId2 = window.requestAnimationFrame((now) => {
+      rafId2 = null;
+      if (!loopActive) return;
+      const gap = overlayTickMs();
+      if (now - lastPaintAt >= gap) {
+        lastPaintAt = now;
+        tick2();
+      }
+      scheduleLoop();
+    });
+  }
+  function wakeLoop() {
+    if (!loopActive) return;
     tick2();
-    timerId = window.setInterval(tick2, overlayTickMs());
+    scheduleLoop();
+  }
+  function onOverlayVisibility() {
+    if (typeof document === "undefined") return;
+    if (document.hidden) return;
+    wakeLoop();
+  }
+  function startWorldOverlay() {
+    if (loopActive) return;
+    if (getSettings().worldOverlayEnabled === false) return;
+    loopActive = true;
+    unsubSettings = subscribeVizSettings(() => {
+      clearedWhileIdle = false;
+      wakeLoop();
+    });
+    unsubZoom = subscribeWorldZoom(() => wakeLoop());
+    unsubFov = subscribeWorldFov(() => wakeLoop());
+    if (!visBound2 && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onOverlayVisibility);
+      visBound2 = true;
+    }
+    lastPaintAt = typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+    wakeLoop();
   }
   function stopWorldOverlay() {
-    if (timerId != null) {
-      window.clearInterval(timerId);
-      timerId = null;
+    loopActive = false;
+    if (rafId2 != null) {
+      window.cancelAnimationFrame(rafId2);
+      rafId2 = null;
     }
     if (unsubSettings) {
       unsubSettings();
@@ -40258,6 +40540,7 @@ button.comm-mail__stack-u {
     }
     destroyOverlayHandle(handle);
     handle = null;
+    clearedWhileIdle = false;
     resetAnniversaryKissFx();
   }
 
@@ -51067,7 +51350,7 @@ ${parts.map(cssSlice).join("\n")}
       ensure(id, a.name);
     }
   }
-  function laneDataSig(casts, conditions, gearSwaps, filter, start, rosterSig, deathCount, nowMs2 = 0) {
+  function laneDataSig(casts, conditions, gearSwaps, filter, start, rosterSig, deathCount, nowMs3 = 0) {
     const c0 = casts.length ? casts[0].at : 0;
     const c1 = casts.length ? casts[casts.length - 1].at : 0;
     const g1 = gearSwaps.length ? gearSwaps[gearSwaps.length - 1].at : 0;
@@ -51083,7 +51366,7 @@ ${parts.map(cssSlice).join("\n")}
       } else openUnknown++;
       if (c.startedAt > lastCond) lastCond = c.startedAt;
     }
-    const openTick = openUnknown > 0 && nowMs2 > 0 ? `|o${Math.floor(nowMs2 / 250)}` : "";
+    const openTick = openUnknown > 0 && nowMs3 > 0 ? `|o${Math.floor(nowMs3 / 250)}` : "";
     const expTick = maxExpected > 0 ? `|e${Math.floor(maxExpected / 250)}` : "";
     return `${filter}|${start}|${rosterSig}|${deathCount}|${casts.length}:${c0}:${c1}|${conditions.length}:${ended}:${lastCond}|${gearSwaps.length}:${g1}${openTick}${expTick}`;
   }
@@ -51139,8 +51422,8 @@ ${parts.map(cssSlice).join("\n")}
     }
     return start;
   }
-  function timelineHorizonSec(start, nowMs2, casts, conditions) {
-    let end = Math.max(0, (nowMs2 - start) / 1e3);
+  function timelineHorizonSec(start, nowMs3, casts, conditions) {
+    let end = Math.max(0, (nowMs3 - start) / 1e3);
     for (let i = 0; i < casts.length; i++) {
       const c = casts[i];
       const t0 = Math.max(0, (c.at - start) / 1e3);
@@ -51149,12 +51432,12 @@ ${parts.map(cssSlice).join("\n")}
     }
     for (let i = 0; i < conditions.length; i++) {
       const c = conditions[i];
-      const endAt = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs2;
+      const endAt = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs3;
       end = Math.max(end, Math.max(0, (endAt - start) / 1e3));
     }
     return end;
   }
-  function buildLanes(casts, conditions, deaths, gearSwaps, start, filter, names, ctypes, seg, partyFocus, nowMs2 = Date.now()) {
+  function buildLanes(casts, conditions, deaths, gearSwaps, start, filter, names, ctypes, seg, partyFocus, nowMs3 = Date.now()) {
     var _a;
     const byId = {};
     const ensure = (id, fallbackName) => {
@@ -51183,7 +51466,7 @@ ${parts.map(cssSlice).join("\n")}
         if (ck === "debuff" && !wantDebuffs) continue;
         const lane = ensure(c.actorId);
         const t0 = Math.max(0, (c.startedAt - start) / 1e3);
-        const endMs = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs2;
+        const endMs = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs3;
         const t1 = Math.max(t0, (endMs - start) / 1e3);
         lane.blocks.push({
           kind: "condition",
@@ -96492,6 +96775,12 @@ ${ESTIMATE_HINT}`,
     if (snap.loading) {
       return { mode: "pull", label: "Refreshing inbox" };
     }
+    if (snap.warmThrash && (snap.prefetchArmed || snap.loadingMore)) {
+      return {
+        mode: "warm",
+        label: "Inbox busy \xB7 still warming"
+      };
+    }
     if (snap.loadingMore) {
       return {
         mode: "warm",
@@ -96796,7 +97085,11 @@ ${ESTIMATE_HINT}`,
     const unread2 = getXUnread();
     const headAge = snap.lastHeadAt === 0 ? "never" : formatRelativeAge(snap.lastHeadAt, now);
     const undoSec = undoSecondsLeft(snap.undoEndsAt, now);
-    const statusTitle = snap.deleteProgress ? formatDeleteProgressLabel(snap.deleteProgress) : snap.refreshProgress ? formatRefreshProgressLabel(snap.refreshProgress) : undoActive ? snap.undoCount === 1 ? "Deleted" : "Deleted " + snap.undoCount : snap.status;
+    const statusTitle = snap.deleteProgress ? formatDeleteProgressLabel(snap.deleteProgress) : snap.refreshProgress ? formatRefreshProgressLabel(snap.refreshProgress) : undoActive ? snap.undoCount === 1 ? "Deleted" : "Deleted " + snap.undoCount : formatLiveMailLoadedStatus(
+      snap.status,
+      snap.mails.length,
+      snap.hasMore
+    );
     const observeLine = caps.observeName ? "Observing " + caps.observeName : caps.reason || "Not observing \xB7 inbox only";
     const observeOn = !!caps.observeName;
     const showStatus = !!snap.deleteProgress || !!snap.refreshProgress || !!snap.status || undoActive;
@@ -97660,8 +97953,11 @@ ${ESTIMATE_HINT}`,
                 { className: "comm-mail__sub" },
                 e(
                   "span",
-                  { className: "comm-mail__title" },
-                  m.subject || "(no subject)"
+                  {
+                    className: "comm-mail__title",
+                    title: mailRowTitleTip(m)
+                  },
+                  mailRowTitle(m)
                 )
               ),
               e("div", { className: "comm-mail__meta" }, rowMeta(m))
@@ -97902,12 +98198,6 @@ ${ESTIMATE_HINT}`,
     }
     return g.head;
   }
-  function itemLabel2(m) {
-    if (!m.item || !m.item.name) return m.subject || "(no subject)";
-    const bits = [String(m.item.name)];
-    if (typeof m.item.level === "number") bits.push("+" + m.item.level);
-    return bits.join(" ");
-  }
   function MailStackRow(props) {
     const {
       g,
@@ -97920,7 +98210,7 @@ ${ESTIMATE_HINT}`,
     const allOn = groupChecked(g, selectedIds);
     const someOn = groupSomeChecked(g, selectedIds);
     const headSel = !!selected && g.mails.some((m) => m.id === selected.id);
-    const title = g.head.item ? itemLabel2(g.head) : g.head.subject || "(no subject)";
+    const title = mailRowTitle(g.head);
     const qtyTotal = mailStackItemQuantity(g);
     const showQtyPill = qtyTotal != null && qtyTotal !== g.untaken;
     const allTaken = !!g.head.item && g.untaken === 0 && g.mails.length > 0;
@@ -98084,8 +98374,11 @@ ${ESTIMATE_HINT}`,
           { className: "comm-mail__sub" },
           e(
             "span",
-            { className: "comm-mail__title" },
-            m.subject || "(no subject)"
+            {
+              className: "comm-mail__title",
+              title: mailRowTitleTip(m)
+            },
+            mailRowTitle(m)
           ),
           chips.length ? e("span", { className: "comm-mail__chips" }, ...chips) : null
         ),
@@ -101322,7 +101615,7 @@ ${ESTIMATE_HINT}`,
   var BLACK_FAILS_BEFORE_DISABLE = 4;
   var MAX_PLATES_PER_TICK = 12;
   var installed10 = false;
-  var timerId2 = null;
+  var timerId = null;
   var tiny = null;
   var tinyCtx = null;
   var sampleDisabled = false;
@@ -101481,7 +101774,7 @@ ${ESTIMATE_HINT}`,
     if (installed10) return;
     installed10 = true;
     if (typeof window === "undefined") return;
-    timerId2 = window.setInterval(() => {
+    timerId = window.setInterval(() => {
       try {
         tickNameplateContrast();
       } catch (err) {
@@ -101899,9 +102192,18 @@ ${ESTIMATE_HINT}`,
     if (installed11) return;
     installed11 = true;
     window.__ecuBustNameTags = bustNameTagCaches;
+    let fovResyncRaf = null;
+    let pendingFov;
     onWorldFovApplied((fov) => {
-      bustNameTagCaches();
-      resyncNameplateScales(fov);
+      pendingFov = fov;
+      if (fovResyncRaf != null) return;
+      fovResyncRaf = window.requestAnimationFrame(() => {
+        fovResyncRaf = null;
+        const f = pendingFov;
+        pendingFov = void 0;
+        bustNameTagCaches();
+        resyncNameplateScales(f);
+      });
     });
     installNameplateContrast();
     const kick = () => {
@@ -102421,11 +102723,16 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     const React = getReact();
     const [snap, setSnap] = React.useState(null);
     React.useEffect(() => {
+      let lastCoarse = NaN;
       let lastKey = "";
       const stopTick = startTick((s) => {
         updateMeterContext(s.entities);
         updateKillContext(s.entities);
-        const key = `${snapshotUiKey(s)}|${isMeterInCombat() ? 1 : 0}`;
+        const combat = isMeterInCombat() ? 1 : 0;
+        const coarse = snapshotUiCoarseHash(s) * 2 + combat;
+        if (coarse === lastCoarse) return;
+        const key = `${snapshotUiKey(s)}|${combat}`;
+        lastCoarse = coarse;
         if (key === lastKey) return;
         lastKey = key;
         setSnap(s);
