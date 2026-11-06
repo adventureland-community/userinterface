@@ -80,13 +80,71 @@ function statusFingerprint(ent: EntityLike, includeMs: boolean): string {
   return out;
 }
 
+function mixStr(h: number, s: string): number {
+  let out = h;
+  for (let i = 0; i < s.length; i++) {
+    out = (out * 33 + s.charCodeAt(i)) | 0;
+  }
+  return out;
+}
+
+function mixNum(h: number, n: number): number {
+  return (h * 33 + (n | 0)) | 0;
+}
+
+/**
+ * Numeric pre-gate for `snapshotUiKey`. Mixes the same HUD inputs (ids,
+ * realm, HP/MP/dead/fear/in/target, status fingerprint) without building the
+ * joined string. Hash collisions (false positives) are fine — callers still
+ * confirm with `snapshotUiKey`. Must not false-negative those fields.
+ */
+export function snapshotUiCoarseHash(snap: GameSnapshot): number {
+  const xt =
+    typeof window !== "undefined"
+      ? (window as Window & { xtarget?: { id?: string } }).xtarget
+      : undefined;
+  const xtId = xt && xt.id != null ? String(xt.id) : "";
+  const targetId =
+    snap.target && snap.target.id != null ? String(snap.target.id) : "";
+  const obsId = snap.observingId != null ? String(snap.observingId) : "";
+  let h = 0;
+  h = mixStr(h, obsId);
+  h = mixStr(h, targetId);
+  h = mixStr(h, xtId);
+  h = mixStr(h, snap.serverRegion || "");
+  h = mixStr(h, snap.serverIdentifier || "");
+  h = mixNum(h, snap.entities.length);
+  const ents = snap.entities;
+  for (let i = 0; i < ents.length; i++) {
+    const ent = ents[i];
+    const id = ent.id != null ? String(ent.id) : "";
+    const hud =
+      !!ent.player || id === obsId || id === targetId || !!ent.cooperative;
+    const hp = ent.hp != null ? Math.round(ent.hp) : 0;
+    const mp = hud && ent.mp != null ? Math.round(ent.mp) : 0;
+    h = mixStr(h, id);
+    h = mixNum(h, hp);
+    h = mixNum(h, mp);
+    h = mixNum(h, ent.dead ? 1 : 0);
+    h = mixNum(h, ent.rip ? 1 : 0);
+    h = mixNum(h, hud ? Number(ent.fear) || 0 : 0);
+    h = mixStr(h, ent.in != null ? String(ent.in) : "");
+    h = mixStr(h, ent.target != null ? String(ent.target) : "");
+    if (hud) h = mixStr(h, statusFingerprint(ent, true));
+  }
+  return h;
+}
+
 /**
  * Cheap visible-HUD signature. Used to skip React setSnap when party HP,
  * observing/target, xtarget, and effect identity have not changed.
  * Buff countdown uses 2s buckets — EffectIcon clocks remaining locally.
  */
 export function snapshotUiKey(snap: GameSnapshot): string {
-  const xt = (window as any).xtarget;
+  const xt =
+    typeof window !== "undefined"
+      ? (window as Window & { xtarget?: { id?: string } }).xtarget
+      : undefined;
   const xtId = xt && xt.id != null ? String(xt.id) : "";
   const targetId =
     snap.target && snap.target.id != null ? String(snap.target.id) : "";

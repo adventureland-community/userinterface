@@ -754,9 +754,19 @@ export function installNameplateSharpness(): void {
   installed = true;
   (window as Window & { __ecuBustNameTags?: () => void }).__ecuBustNameTags =
     bustNameTagCaches;
+  // FOV drag can fire many applies per gesture — coalesce to one bust/resync.
+  let fovResyncRaf: number | null = null;
+  let pendingFov: number | undefined;
   onWorldFovApplied((fov) => {
-    bustNameTagCaches();
-    resyncNameplateScales(fov);
+    pendingFov = fov;
+    if (fovResyncRaf != null) return;
+    fovResyncRaf = window.requestAnimationFrame(() => {
+      fovResyncRaf = null;
+      const f = pendingFov;
+      pendingFov = undefined;
+      bustNameTagCaches();
+      resyncNameplateScales(f);
+    });
   });
   installNameplateContrast();
   const kick = () => {

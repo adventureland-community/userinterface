@@ -18,6 +18,7 @@ import {
 } from "../src/lib/cameraPan";
 import {
   centerOnObservedCamera,
+  ecuCameraLockMoving,
   ecuRetileBorderForView,
   isFollowCamera,
   isFreeCamera,
@@ -280,24 +281,46 @@ describe("cameraPan stock position_map change gate", () => {
     );
   });
 
-  it("widens retile border for Follow/pan on phone and desktop", () => {
+  it("widens retile border only while the camera lock is moving", () => {
     assert.equal(
-      ecuRetileBorderForView({ follow: false, free: false, viewArea: 390 * 844 }),
+      ecuRetileBorderForView({ lockMoving: false, viewArea: 390 * 844 }),
       40,
+      "idle Follow keeps stock border",
     );
     assert.equal(
-      ecuRetileBorderForView({ follow: true, free: false, viewArea: 390 * 844 }),
+      ecuRetileBorderForView({ lockMoving: true, viewArea: 390 * 844 }),
       100,
-      "phone Follow must widen (battery)",
+      "phone lock move must widen (battery)",
     );
     assert.equal(
-      ecuRetileBorderForView({ follow: false, free: true, viewArea: 390 * 844 }),
-      100,
-      "phone stick pan must widen too",
-    );
-    assert.equal(
-      ecuRetileBorderForView({ follow: true, free: false, viewArea: 1440 * 900 }),
+      ecuRetileBorderForView({ lockMoving: true, viewArea: 1440 * 900 }),
       140,
+      "desktop lock move widens further",
+    );
+  });
+
+  it("treats idle Follow as not lock-moving", () => {
+    assert.equal(
+      ecuCameraLockMoving({
+        followRecenter: false,
+        mousePanActive: false,
+        mapFlushPending: false,
+        keyPan: false,
+        stickPan: false,
+        lockMovedHold: false,
+      }),
+      false,
+    );
+    assert.equal(
+      ecuCameraLockMoving({
+        followRecenter: true,
+        mousePanActive: false,
+        mapFlushPending: false,
+        keyPan: false,
+        stickPan: false,
+        lockMovedHold: false,
+      }),
+      true,
     );
   });
 });

@@ -328,11 +328,39 @@ function paintGridCoords(labels: ContainerLike, settings: VizSettings): void {
   );
 }
 
+/**
+ * True when any map-paint feature is on. Used to skip the overlay loop when
+ * the user has disabled rings/fog/lines (still clears once via the starter).
+ */
+export function worldOverlayNeedsPaint(settings: VizSettings): boolean {
+  return (
+    !!settings["world.observerVision"] ||
+    !!settings["world.anniversaryKiss"] ||
+    !!settings["world.quirkHitboxes"] ||
+    !!settings["world.attackRange"] ||
+    !!settings["world.abilityImminent"] ||
+    !!settings["world.abilityGhost"] ||
+    !!settings["world.auraRing"] ||
+    !!settings["world.highlightAtRisk"] ||
+    !!settings["world.leashBoundary"] ||
+    !!settings["world.spawnPoints"] ||
+    !!settings["world.targetLine"] ||
+    !!settings["entity.cdLabel"] ||
+    !!settings["entity.abilityName"] ||
+    !!settings["debug.entityIds"] ||
+    !!settings["debug.gridCoords"] ||
+    !!settings["lines.moveDest"] ||
+    !!settings["lines.aggroTarget"] ||
+    !!settings["lines.attackTarget"]
+  );
+}
+
 export function paintWorldOverlay(
   handle: OverlayHandle,
   opts: {
     entities: EntityLike[];
     focus: EntityLike | null;
+    settings?: VizSettings;
   },
 ): void {
   const gfx = handle.gfx;
@@ -342,7 +370,7 @@ export function paintWorldOverlay(
   syncWorldQuirkHotspots(handle.hotspots);
   refreshHoveredWorldQuirk();
 
-  const settings = getVizSettings();
+  const settings = opts.settings || getVizSettings();
   paintObserverVision(gfx, settings);
   paintWorldQuirkDebug(gfx, settings);
 

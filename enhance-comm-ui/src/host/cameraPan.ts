@@ -67,15 +67,21 @@ let mapFlushRafId: number | null = null;
 /** Stock default — restored when ECU is not driving the camera. */
 const STOCK_MDRAW_BORDER = 40;
 /**
- * Widen stock's retile early-out while ECU drives the camera (Follow or
- * free-cam pan). Camera still moves every pixel; rebuilds fire less often.
+ * Widen stock's retile early-out while the ECU camera lock is actively
+ * moving (Follow recenter / free-cam pan). Idle Follow keeps stock border.
  * Phone/tablet use a milder bump (battery); large desktop buffers go wider.
  */
 const PHONE_ECU_MDRAW_BORDER = 100;
 const DESKTOP_ECU_MDRAW_BORDER = 140;
 /** Logical px² at/above which we treat the buffer as desktop-sized. */
 const LARGE_VIEW_AREA = 900 * 700;
+/** Hold wide border briefly after a lock snap so the next retile sees it. */
+const LOCK_MOVED_HOLD_MS = 250;
+/** Slow fallback while free-cam — position_map already syncs on draw. */
+const REALM_FALLBACK_MS = 2000;
 let origRetileTheMap: (() => void) | null = null;
+let lockMovedUntil = 0;
+let realmFallbackId: number | null = null;
 
 type FreeListener = (free: boolean) => void;
 const freeListeners: FreeListener[] = [];
@@ -183,6 +189,76 @@ function clearFollowRecenter(): void {
   followRecenterLastTs = 0;
 }
 
+function nowMs(): number {
+  return typeof performance !== "undefined" &&
+    typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+/** Mark that lockX/Y moved — widen retile border for a short hold. */
+function noteCameraLockMoved(): void {
+  lockMovedUntil = nowMs() + LOCK_MOVED_HOLD_MS;
+}
+
+/**
+ * True while ECU is actively driving the camera lock (not idle Follow).
+ * Pure-ish for tests — pass live flags + whether the lock recently moved.
+ */
+export function ecuCameraLockMoving(opts: {
+  followRecenter: boolean;
+  mousePanActive: boolean;
+  mapFlushPending: boolean;
+  keyPan: boolean;
+  stickPan: boolean;
+  lockMovedHold: boolean;
+}): boolean {
+  return (
+    opts.followRecenter ||
+    opts.mousePanActive ||
+    opts.mapFlushPending ||
+    opts.keyPan ||
+    opts.stickPan ||
+    opts.lockMovedHold
+  );
+}
+
+function readCameraLockMoving(): boolean {
+  const keys = keysToPan({
+    up: keyUp,
+    down: keyDown,
+    left: keyLeft,
+    right: keyRight,
+  });
+  return ecuCameraLockMoving({
+    followRecenter,
+    mousePanActive,
+    mapFlushPending: mapFlushRafId != null,
+    keyPan: keys.x !== 0 || keys.y !== 0,
+    stickPan: stickPan.x !== 0 || stickPan.y !== 0,
+    lockMovedHold: nowMs() < lockMovedUntil,
+  });
+}
+
+function syncRealmFallbackTimer(): void {
+  if (
+    typeof window === "undefined" ||
+    typeof window.setInterval !== "function"
+  ) {
+    return;
+  }
+  if (freeCamera) {
+    if (realmFallbackId != null) return;
+    realmFallbackId = window.setInterval(() => {
+      syncFreeCameraAfterRealmChange();
+    }, REALM_FALLBACK_MS);
+    return;
+  }
+  if (realmFallbackId == null) return;
+  window.clearInterval(realmFallbackId);
+  realmFallbackId = null;
+}
+
 /**
  * Follow: idle while the subject stays in the viewport dead zone; once they
  * near the edge, ease the lock onto them (true center) instead of edge-nudging.
@@ -197,6 +273,7 @@ function panLockToObserved(): void {
   ) {
     lockX = at.x;
     lockY = at.y;
+    noteCameraLockMoved();
     clearFollowRecenter();
     return;
   }
@@ -207,10 +284,7 @@ function panLockToObserved(): void {
   }
   if (!followRecenter) return;
 
-  const now =
-    typeof performance !== "undefined" && typeof performance.now === "function"
-      ? performance.now()
-      : Date.now();
+  const now = nowMs();
   const dt =
     followRecenterLastTs > 0
       ? Math.min(0.05, Math.max(0, (now - followRecenterLastTs) / 1000))
@@ -219,6 +293,7 @@ function panLockToObserved(): void {
   const next = followCameraLockSmoothToward(lockX, lockY, at.x, at.y, dt);
   lockX = next.x;
   lockY = next.y;
+  noteCameraLockMoved();
   if (next.arrived) clearFollowRecenter();
 }
 
@@ -248,6 +323,7 @@ export function setCameraWorldXY(x: number, y: number): void {
   if (!map) return;
   lockX = x;
   lockY = y;
+  noteCameraLockMoved();
   map.real_x = x;
   map.real_y = y;
   const pos = (window as Window & { position_map?: () => void }).position_map;
@@ -387,6 +463,7 @@ export function unlockCamera(): void {
     notifyFree();
     if (wasFollow) notifyFollow();
   }
+  syncRealmFallbackTimer();
   ensureRaf();
 }
 
@@ -412,6 +489,7 @@ export function lockCamera(): void {
   notifyFree();
   // Next unlock will re-capture; while locked, vision follows live entity/map.
   hasObserverAnchor = false;
+  syncRealmFallbackTimer();
 }
 
 function emitObserveHome(): void {
@@ -426,6 +504,7 @@ function snapMapToObserved(): boolean {
   if (map && at) {
     lockX = at.x;
     lockY = at.y;
+    noteCameraLockMoved();
     map.real_x = at.x;
     map.real_y = at.y;
     const pos = (window as Window & { position_map?: () => void }).position_map;
@@ -458,6 +537,7 @@ export function panCamera(pan: CameraPanVec, dtSec: number): void {
   });
   lockX = next.x;
   lockY = next.y;
+  noteCameraLockMoved();
   map.real_x = lockX;
   map.real_y = lockY;
 }
@@ -484,6 +564,7 @@ export function panCameraByWorldDelta(dx: number, dy: number): void {
   if (!map) return;
   lockX += dx;
   lockY += dy;
+  noteCameraLockMoved();
   map.real_x = lockX;
   map.real_y = lockY;
   schedulePositionMapFlush();
@@ -842,11 +923,8 @@ export function installCameraPan(): void {
     endMousePan();
     stopRafIfIdle();
   });
-  // Map/server hops while free-cam would keep writing old lock coords.
-  const realmPoll = window.setInterval(() => {
-    syncFreeCameraAfterRealmChange();
-  }, 250);
-  void realmPoll;
+  // Realm hops while free-cam: position_map syncs; slow fallback while unlocked.
+  syncRealmFallbackTimer();
   const w = window as Window & {
     __ecuFollowObserved?: () => void;
     __ecuCenterObserved?: () => void;
@@ -888,16 +966,14 @@ export function stockMapScreenWouldChange(
 }
 
 /**
- * True when ECU owns map.real_* (Follow track or free-cam pan/stick).
- * Pure-ish for tests — pass the live flags + buffer area.
+ * Retile border while the ECU lock is moving. Idle Follow / idle free-cam
+ * keep stock 40 so standing still does not keep the expensive rebuild path.
  */
 export function ecuRetileBorderForView(opts: {
-  follow: boolean;
-  free: boolean;
+  lockMoving: boolean;
   viewArea: number;
 }): number {
-  const driving = opts.follow || opts.free;
-  if (!driving) return STOCK_MDRAW_BORDER;
+  if (!opts.lockMoving) return STOCK_MDRAW_BORDER;
   if (opts.viewArea >= LARGE_VIEW_AREA) return DESKTOP_ECU_MDRAW_BORDER;
   return PHONE_ECU_MDRAW_BORDER;
 }
@@ -907,8 +983,7 @@ function readEcuRetileBorder(): number {
   // Do not multiply border by FOV — zoom-out already multiplies tile count
   // with the logical buffer; a wider border makes Follow lag worse.
   return ecuRetileBorderForView({
-    follow: followCamera && !freeCamera,
-    free: freeCamera,
+    lockMoving: readCameraLockMoving(),
     viewArea: size.w * size.h,
   });
 }

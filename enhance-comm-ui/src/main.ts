@@ -1,6 +1,11 @@
 import { getReact, getReactDOM, e } from "./host/react";
 import { ensureReact } from "./host/ensureReact";
-import { snapshotUiKey, startTick, type GameSnapshot } from "./tick";
+import {
+  snapshotUiCoarseHash,
+  snapshotUiKey,
+  startTick,
+  type GameSnapshot,
+} from "./tick";
 import { startSocketHub } from "./sockets/hub";
 import { startInstanceTracker } from "./instance/tracker";
 import { startMeterEngine, updateMeterContext } from "./meters/meterEngine";
@@ -159,11 +164,17 @@ function Root(): any {
   const [snap, setSnap] = React.useState(null as GameSnapshot | null);
 
   React.useEffect(() => {
+    let lastCoarse = NaN;
     let lastKey = "";
     const stopTick = startTick((s) => {
       updateMeterContext(s.entities);
       updateKillContext(s.entities);
-      const key = `${snapshotUiKey(s)}|${isMeterInCombat() ? 1 : 0}`;
+      const combat = isMeterInCombat() ? 1 : 0;
+      // Cheap numeric gate — skip full HUD string when roster HP/ids idle.
+      const coarse = snapshotUiCoarseHash(s) * 2 + combat;
+      if (coarse === lastCoarse) return;
+      const key = `${snapshotUiKey(s)}|${combat}`;
+      lastCoarse = coarse;
       if (key === lastKey) return;
       lastKey = key;
       setSnap(s);
