@@ -5213,6 +5213,346 @@ var EnhanceCommUI = (() => {
     return next.map(refreshSnapFlags);
   }
 
+  // src/lib/viewport.ts
+  var PHONE_MAX_WIDTH = 700;
+  var TABLET_MAX_WIDTH = 1100;
+  function detectViewportProfile(width, height) {
+    const w = typeof width === "number" && width > 0 ? width : typeof window !== "undefined" ? window.innerWidth : 1280;
+    const h = typeof height === "number" && height > 0 ? height : typeof window !== "undefined" ? window.innerHeight : 800;
+    const short = Math.min(w, h);
+    if (w <= PHONE_MAX_WIDTH || short <= 480 && w < 980) return "phone";
+    if (w <= TABLET_MAX_WIDTH || short <= 820 && w < 1280) return "tablet";
+    return "desktop";
+  }
+  function isTouchishProfile(profile) {
+    return profile === "tablet" || profile === "phone";
+  }
+  var VIEWPORT_PROFILES = [
+    "desktop",
+    "tablet",
+    "phone"
+  ];
+  function profileLabel(profile) {
+    switch (profile) {
+      case "desktop":
+        return "Desktop";
+      case "tablet":
+        return "Tablet";
+      case "phone":
+        return "Phone";
+      default: {
+        const _exhaustive = profile;
+        return _exhaustive;
+      }
+    }
+  }
+
+  // src/lib/worldFov.ts
+  var WORLD_FOV_MIN = 0.5;
+  var WORLD_FOV_MAX = 6;
+  var WORLD_FOV_DEFAULT = 1;
+  var WORLD_FOV_STEP = 0.25;
+  var appliedFov = WORLD_FOV_DEFAULT;
+  var fovApplyListeners = [];
+  function onWorldFovApplied(listener) {
+    fovApplyListeners.push(listener);
+    return () => {
+      const idx = fovApplyListeners.indexOf(listener);
+      if (idx >= 0) fovApplyListeners.splice(idx, 1);
+    };
+  }
+  function clampWorldFov(n) {
+    if (!Number.isFinite(n)) return WORLD_FOV_DEFAULT;
+    const stepped = Math.round(n / WORLD_FOV_STEP) * WORLD_FOV_STEP;
+    return Math.max(
+      WORLD_FOV_MIN,
+      Math.min(WORLD_FOV_MAX, Math.round(stepped * 100) / 100)
+    );
+  }
+  var WORLD_FOV_DEFAULT_MAX_TEXTURE = 4096;
+  function readMaxTextureSize() {
+    try {
+      const host2 = window;
+      const gl = host2.renderer && host2.renderer.gl || host2.renderer && host2.renderer.context && host2.renderer.context.gl || null;
+      if (gl && typeof gl.getParameter === "function") {
+        const n = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+        if (typeof n === "number" && Number.isFinite(n) && n >= 256) {
+          return Math.floor(n);
+        }
+      }
+    } catch (e2) {
+    }
+    return WORLD_FOV_DEFAULT_MAX_TEXTURE;
+  }
+  function maxWorldFovForWindow(cssW, cssH, maxTex = WORLD_FOV_DEFAULT_MAX_TEXTURE) {
+    const w = Math.max(1, cssW);
+    const h = Math.max(1, cssH);
+    const cap = Math.max(256, Math.floor(maxTex) - 1);
+    const raw = Math.min(cap / w, cap / h, WORLD_FOV_MAX);
+    if (!(raw > 0) || !Number.isFinite(raw)) return WORLD_FOV_DEFAULT;
+    const stepped = Math.floor(raw / WORLD_FOV_STEP + 1e-9) * WORLD_FOV_STEP;
+    return Math.max(
+      WORLD_FOV_MIN,
+      Math.min(WORLD_FOV_MAX, Math.round(stepped * 100) / 100)
+    );
+  }
+  function clampWorldFovForDisplay(n, cssW, cssH, maxTex) {
+    const css = cssW != null && cssH != null ? { w: cssW, h: cssH } : typeof window !== "undefined" ? readWindowCssSize() : { w: 1280, h: 720 };
+    const tex = maxTex != null && maxTex > 0 ? maxTex : readMaxTextureSize();
+    const maxFov = maxWorldFovForWindow(css.w, css.h, tex);
+    return Math.min(clampWorldFov(n), maxFov);
+  }
+  function readAppliedWorldFov() {
+    return appliedFov;
+  }
+  function readWindowCssSize() {
+    let w = typeof window !== "undefined" && typeof window.innerWidth === "number" && window.innerWidth > 0 ? Math.round(window.innerWidth) : 1280;
+    let h = typeof window !== "undefined" && typeof window.innerHeight === "number" && window.innerHeight > 0 ? Math.round(window.innerHeight) : 720;
+    if (typeof window !== "undefined") {
+      const vv = window.visualViewport;
+      if (vv && vv.width > 0 && vv.height > 0) {
+        w = Math.max(w, Math.round(vv.width));
+        h = Math.max(h, Math.round(vv.height));
+      }
+    }
+    return { w: Math.max(1, w), h: Math.max(1, h) };
+  }
+  function logicalSizeForFov(cssW, cssH, fov, maxTex = WORLD_FOV_DEFAULT_MAX_TEXTURE) {
+    const f = clampWorldFov(fov);
+    let w = Math.max(1, Math.round(cssW * f));
+    let h = Math.max(1, Math.round(cssH * f));
+    const cap = Math.max(256, Math.floor(maxTex) - 1);
+    if (w > cap || h > cap) {
+      const s = Math.min(cap / w, cap / h);
+      w = Math.max(1, Math.floor(w * s));
+      h = Math.max(1, Math.floor(h * s));
+    }
+    return { w, h };
+  }
+  function cameraRealAfterFovTowardCursor(opts) {
+    const s = typeof opts.scale === "number" && opts.scale > 0 ? opts.scale : 1;
+    const fx2 = typeof opts.fracX === "number" && Number.isFinite(opts.fracX) ? opts.fracX : 0.5;
+    const fy = typeof opts.fracY === "number" && Number.isFinite(opts.fracY) ? opts.fracY : 0.5;
+    const w0 = Math.max(1, opts.widthBefore);
+    const h0 = Math.max(1, opts.heightBefore);
+    const w1 = Math.max(1, opts.widthAfter);
+    const h1 = Math.max(1, opts.heightAfter);
+    return {
+      x: opts.realX + (fx2 - 0.5) * (w0 - w1) / s,
+      y: opts.realY + (fy - 0.5) * (h0 - h1) / s
+    };
+  }
+  function worldViewImageRendering(fov, profile) {
+    const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+    if (f <= 1) return "pixelated";
+    if (p === "phone") return f <= 1.5 ? "pixelated" : "auto";
+    return "pixelated";
+  }
+  var PHONE_WORLD_COVER = 2;
+  function phoneWorldCoverForFov(_fov) {
+    return PHONE_WORLD_COVER;
+  }
+  var PHONE_MAP_VOID_FILL = 5589056;
+  var PHONE_MAP_VOID_FILL_WINTER = 3824248;
+  function rendererHost() {
+    const renderer = window.renderer;
+    return renderer || null;
+  }
+  function rendererViewEl() {
+    const renderer = rendererHost();
+    const view = renderer && renderer.view;
+    return view && view.style ? view : null;
+  }
+  var PHONE_COVER_ATTR = "data-ecu-phone-cover";
+  var savedBgColor;
+  var savedBgColorKnown = false;
+  function phoneMapVoidFill(mapId) {
+    const id = String(mapId || "").toLowerCase();
+    if (id.indexOf("winter") >= 0) return PHONE_MAP_VOID_FILL_WINTER;
+    return PHONE_MAP_VOID_FILL;
+  }
+  function applyPhoneVoidFill(dockOn) {
+    const renderer = rendererHost();
+    if (!renderer) return;
+    if (dockOn) {
+      if (!savedBgColorKnown) {
+        savedBgColor = typeof renderer.backgroundColor === "number" ? renderer.backgroundColor : void 0;
+        savedBgColorKnown = true;
+      }
+      const map = window.map;
+      const mapId = map && (typeof map.id === "string" ? map.id : map.name);
+      renderer.backgroundColor = phoneMapVoidFill(
+        mapId != null ? String(mapId) : void 0
+      );
+      return;
+    }
+    if (!savedBgColorKnown) return;
+    if (typeof savedBgColor === "number") {
+      renderer.backgroundColor = savedBgColor;
+    }
+    savedBgColorKnown = false;
+    savedBgColor = void 0;
+  }
+  function clearPhoneCoverStyles(view, force = false) {
+    const marked = typeof view.getAttribute === "function" && view.getAttribute(PHONE_COVER_ATTR) === "1";
+    const leakedFixed = !!view.style && (view.style.position === "fixed" || typeof view.style.transform === "string" && view.style.transform.indexOf("scale(") !== -1);
+    if (!force && !marked && !leakedFixed) return;
+    view.style.marginLeft = "";
+    view.style.marginTop = "";
+    view.style.position = "";
+    view.style.left = "";
+    view.style.top = "";
+    view.style.transform = "";
+    view.style.transformOrigin = "";
+    if (view.style.maxWidth === "none") view.style.maxWidth = "";
+    if (view.style.maxHeight === "none") view.style.maxHeight = "";
+    if (typeof view.removeAttribute === "function") {
+      view.removeAttribute(PHONE_COVER_ATTR);
+    }
+    applyPhoneVoidFill(false);
+  }
+  function scrubLeakedPhoneDockDom() {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const body = document.body;
+    if (root) {
+      root.classList.remove("ecu-phone-dock-on");
+      root.style.setProperty("--ecu-phone-dock-h", "0px");
+      root.style.setProperty("--ecu-phone-hud-bottom", "0px");
+    }
+    if (body) body.classList.remove("ecu-phone-dock-on");
+  }
+  function applyPhoneWorldCover(cssW, cssH) {
+    const view = rendererViewEl();
+    if (!view) return;
+    const dockOn = typeof document !== "undefined" && document.documentElement.classList.contains("ecu-phone-dock-on");
+    const commRoot = typeof document !== "undefined" ? document.getElementById("comm-ui") : null;
+    const vp = commRoot && commRoot.getAttribute("data-viewport");
+    const desktopComm = vp === "desktop" || vp === "tablet";
+    if (desktopComm) {
+      scrubLeakedPhoneDockDom();
+      clearPhoneCoverStyles(view, true);
+      return;
+    }
+    if (!dockOn) {
+      clearPhoneCoverStyles(view, true);
+      return;
+    }
+    const fovNow = readAppliedWorldFov() || 1;
+    const cover = phoneWorldCoverForFov(fovNow);
+    view.setAttribute(PHONE_COVER_ATTR, "1");
+    view.style.display = "block";
+    view.style.position = "fixed";
+    view.style.left = "0";
+    view.style.top = "0";
+    view.style.width = cssW + "px";
+    view.style.height = cssH + "px";
+    view.style.maxWidth = "none";
+    view.style.maxHeight = "none";
+    view.style.marginLeft = "0";
+    view.style.marginTop = "0";
+    view.style.transformOrigin = "50% 36%";
+    view.style.transform = "scale(" + cover + ")";
+    const mode = worldViewImageRendering(fovNow);
+    view.style.imageRendering = mode;
+    view.style.webkitImageRendering = mode;
+    applyPhoneVoidFill(true);
+  }
+  function fitRendererView(cssW, cssH, fov) {
+    const view = rendererViewEl();
+    if (!view) return;
+    view.style.width = cssW + "px";
+    view.style.height = cssH + "px";
+    view.style.maxWidth = "100%";
+    view.style.maxHeight = "100%";
+    view.style.display = "block";
+    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+    const mode = worldViewImageRendering(f);
+    view.style.imageRendering = mode;
+    view.style.webkitImageRendering = mode;
+    applyPhoneWorldCover(cssW, cssH);
+  }
+  function clearRendererViewFit() {
+    const view = rendererViewEl();
+    if (!view) return;
+    view.style.width = "";
+    view.style.height = "";
+    view.style.maxWidth = "";
+    view.style.maxHeight = "";
+    clearPhoneCoverStyles(view, true);
+  }
+  function applyRendererPixelSnap() {
+    const renderer = window.renderer;
+    if (!renderer) return;
+    renderer.roundPixels = true;
+    const view = renderer.view;
+    if (!view || !view.style) return;
+    const mode = worldViewImageRendering(readAppliedWorldFov() || 1);
+    view.style.imageRendering = mode;
+    view.style.webkitImageRendering = mode;
+  }
+  function applyWorldFov(next) {
+    const { w: cssW, h: cssH } = readWindowCssSize();
+    const maxTex = readMaxTextureSize();
+    const fov = clampWorldFovForDisplay(next, cssW, cssH, maxTex);
+    const logical = logicalSizeForFov(cssW, cssH, fov, maxTex);
+    const host2 = window;
+    const changed = appliedFov !== fov || host2.width !== logical.w || host2.height !== logical.h;
+    appliedFov = fov;
+    host2.width = logical.w;
+    host2.height = logical.h;
+    if (host2.renderer && typeof host2.renderer.resize === "function") {
+      host2.renderer.resize(logical.w, logical.h);
+    }
+    if (host2.renderer) {
+      const aw = typeof host2.renderer.width === "number" && host2.renderer.width > 0 ? Math.round(host2.renderer.width) : 0;
+      const ah = typeof host2.renderer.height === "number" && host2.renderer.height > 0 ? Math.round(host2.renderer.height) : 0;
+      if (aw > 0 && ah > 0) {
+        host2.width = aw;
+        host2.height = ah;
+      }
+    }
+    if (changed && host2.map) {
+      host2.map.last_max_y = void 0;
+    }
+    if (fov === WORLD_FOV_DEFAULT) {
+      clearRendererViewFit();
+      applyRendererPixelSnap();
+      applyPhoneWorldCover(cssW, cssH);
+    } else {
+      fitRendererView(cssW, cssH, fov);
+      if (!(fov < 1)) applyRendererPixelSnap();
+    }
+    if (typeof host2.position_map === "function") {
+      try {
+        host2.position_map();
+      } catch (e2) {
+      }
+    }
+    if (changed) {
+      for (let i = 0; i < fovApplyListeners.length; i++) {
+        try {
+          fovApplyListeners[i](fov);
+        } catch (e2) {
+        }
+      }
+    }
+    return fov;
+  }
+  function formatWorldFov(fov) {
+    const v = clampWorldFov(fov);
+    if (Number.isInteger(v)) return String(v);
+    return String(Math.round(v * 100) / 100);
+  }
+  function nameplateTextResolution(fov) {
+    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+    const dpr = typeof window !== "undefined" && typeof window.devicePixelRatio === "number" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+    const denseness = f >= 1 ? f : 1 / f;
+    const dprBit = Math.min(dpr, 2);
+    return Math.max(1, Math.min(4, Math.ceil(denseness * dprBit)));
+  }
+
   // src/lib/phoneChrome.ts
   var PHONE_DOCK_FALLBACK_PX = 48;
   var PHONE_DOCK_CSS_VAR = "--ecu-phone-dock-h";
@@ -5222,6 +5562,12 @@ var EnhanceCommUI = (() => {
   var appliedHudBottomPx = 0;
   function applyPhoneDockChrome(dockHeightPx) {
     if (typeof document === "undefined") return;
+    const comm = document.getElementById("comm-ui");
+    const vp = comm && comm.getAttribute("data-viewport");
+    if (vp === "desktop" || vp === "tablet") {
+      clearPhoneDockChrome();
+      return;
+    }
     const px = Math.max(
       0,
       Math.round(Number.isFinite(dockHeightPx) ? dockHeightPx : 0)
@@ -5234,6 +5580,16 @@ var EnhanceCommUI = (() => {
     document.documentElement.classList.add(PHONE_DOCK_BODY_CLASS);
     document.body.classList.add(PHONE_DOCK_BODY_CLASS);
     refreshPhoneHudBottomInset();
+    try {
+      const { w, h } = readWindowCssSize();
+      applyPhoneWorldCover(w, h);
+    } catch (e2) {
+    }
+    try {
+      const bust = window.__ecuBustNameTags;
+      if (typeof bust === "function") bust();
+    } catch (e2) {
+    }
   }
   function clearPhoneDockChrome() {
     if (typeof document === "undefined") return;
@@ -5243,6 +5599,11 @@ var EnhanceCommUI = (() => {
     document.documentElement.style.setProperty(PHONE_HUD_BOTTOM_CSS_VAR, "0px");
     document.documentElement.classList.remove(PHONE_DOCK_BODY_CLASS);
     document.body.classList.remove(PHONE_DOCK_BODY_CLASS);
+    try {
+      const { w, h } = readWindowCssSize();
+      applyPhoneWorldCover(w, h);
+    } catch (e2) {
+    }
   }
   function phoneDockHeightPx() {
     return appliedPx;
@@ -5288,40 +5649,6 @@ var EnhanceCommUI = (() => {
   }
   function layoutClampBottomPad() {
     return phoneHudBottomInsetPx();
-  }
-
-  // src/lib/viewport.ts
-  var PHONE_MAX_WIDTH = 700;
-  var TABLET_MAX_WIDTH = 1100;
-  function detectViewportProfile(width, height) {
-    const w = typeof width === "number" && width > 0 ? width : typeof window !== "undefined" ? window.innerWidth : 1280;
-    const h = typeof height === "number" && height > 0 ? height : typeof window !== "undefined" ? window.innerHeight : 800;
-    const short = Math.min(w, h);
-    if (w <= PHONE_MAX_WIDTH || short <= 480 && w < 980) return "phone";
-    if (w <= TABLET_MAX_WIDTH || short <= 820 && w < 1280) return "tablet";
-    return "desktop";
-  }
-  function isTouchishProfile(profile) {
-    return profile === "tablet" || profile === "phone";
-  }
-  var VIEWPORT_PROFILES = [
-    "desktop",
-    "tablet",
-    "phone"
-  ];
-  function profileLabel(profile) {
-    switch (profile) {
-      case "desktop":
-        return "Desktop";
-      case "tablet":
-        return "Tablet";
-      case "phone":
-        return "Phone";
-      default: {
-        const _exhaustive = profile;
-        return _exhaustive;
-      }
-    }
   }
 
   // src/lib/settingsFocus.ts
@@ -11682,201 +12009,6 @@ ${fightHoverTip(src)}`
     return MODES[(i + 1) % MODES.length];
   }
 
-  // src/lib/worldFov.ts
-  var WORLD_FOV_MIN = 0.5;
-  var WORLD_FOV_MAX = 6;
-  var WORLD_FOV_DEFAULT = 1;
-  var WORLD_FOV_STEP = 0.25;
-  var appliedFov = WORLD_FOV_DEFAULT;
-  var fovApplyListeners = [];
-  function onWorldFovApplied(listener) {
-    fovApplyListeners.push(listener);
-    return () => {
-      const idx = fovApplyListeners.indexOf(listener);
-      if (idx >= 0) fovApplyListeners.splice(idx, 1);
-    };
-  }
-  function clampWorldFov(n) {
-    if (!Number.isFinite(n)) return WORLD_FOV_DEFAULT;
-    const stepped = Math.round(n / WORLD_FOV_STEP) * WORLD_FOV_STEP;
-    return Math.max(
-      WORLD_FOV_MIN,
-      Math.min(WORLD_FOV_MAX, Math.round(stepped * 100) / 100)
-    );
-  }
-  var WORLD_FOV_DEFAULT_MAX_TEXTURE = 4096;
-  function readMaxTextureSize() {
-    try {
-      const host2 = window;
-      const gl = host2.renderer && host2.renderer.gl || host2.renderer && host2.renderer.context && host2.renderer.context.gl || null;
-      if (gl && typeof gl.getParameter === "function") {
-        const n = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-        if (typeof n === "number" && Number.isFinite(n) && n >= 256) {
-          return Math.floor(n);
-        }
-      }
-    } catch (e2) {
-    }
-    return WORLD_FOV_DEFAULT_MAX_TEXTURE;
-  }
-  function maxWorldFovForWindow(cssW, cssH, maxTex = WORLD_FOV_DEFAULT_MAX_TEXTURE) {
-    const w = Math.max(1, cssW);
-    const h = Math.max(1, cssH);
-    const cap = Math.max(256, Math.floor(maxTex) - 1);
-    const raw = Math.min(cap / w, cap / h, WORLD_FOV_MAX);
-    if (!(raw > 0) || !Number.isFinite(raw)) return WORLD_FOV_DEFAULT;
-    const stepped = Math.floor(raw / WORLD_FOV_STEP + 1e-9) * WORLD_FOV_STEP;
-    return Math.max(
-      WORLD_FOV_MIN,
-      Math.min(WORLD_FOV_MAX, Math.round(stepped * 100) / 100)
-    );
-  }
-  function clampWorldFovForDisplay(n, cssW, cssH, maxTex) {
-    const css = cssW != null && cssH != null ? { w: cssW, h: cssH } : typeof window !== "undefined" ? readWindowCssSize() : { w: 1280, h: 720 };
-    const tex = maxTex != null && maxTex > 0 ? maxTex : readMaxTextureSize();
-    const maxFov = maxWorldFovForWindow(css.w, css.h, tex);
-    return Math.min(clampWorldFov(n), maxFov);
-  }
-  function readAppliedWorldFov() {
-    return appliedFov;
-  }
-  function readWindowCssSize() {
-    let w = typeof window !== "undefined" && typeof window.innerWidth === "number" && window.innerWidth > 0 ? Math.round(window.innerWidth) : 1280;
-    let h = typeof window !== "undefined" && typeof window.innerHeight === "number" && window.innerHeight > 0 ? Math.round(window.innerHeight) : 720;
-    if (typeof window !== "undefined") {
-      const vv = window.visualViewport;
-      if (vv && vv.width > 0 && vv.height > 0) {
-        w = Math.max(w, Math.round(vv.width));
-        h = Math.max(h, Math.round(vv.height));
-      }
-    }
-    return { w: Math.max(1, w), h: Math.max(1, h) };
-  }
-  function logicalSizeForFov(cssW, cssH, fov, maxTex = WORLD_FOV_DEFAULT_MAX_TEXTURE) {
-    const f = clampWorldFov(fov);
-    let w = Math.max(1, Math.round(cssW * f));
-    let h = Math.max(1, Math.round(cssH * f));
-    const cap = Math.max(256, Math.floor(maxTex) - 1);
-    if (w > cap || h > cap) {
-      const s = Math.min(cap / w, cap / h);
-      w = Math.max(1, Math.floor(w * s));
-      h = Math.max(1, Math.floor(h * s));
-    }
-    return { w, h };
-  }
-  function cameraRealAfterFovTowardCursor(opts) {
-    const s = typeof opts.scale === "number" && opts.scale > 0 ? opts.scale : 1;
-    const fx2 = typeof opts.fracX === "number" && Number.isFinite(opts.fracX) ? opts.fracX : 0.5;
-    const fy = typeof opts.fracY === "number" && Number.isFinite(opts.fracY) ? opts.fracY : 0.5;
-    const w0 = Math.max(1, opts.widthBefore);
-    const h0 = Math.max(1, opts.heightBefore);
-    const w1 = Math.max(1, opts.widthAfter);
-    const h1 = Math.max(1, opts.heightAfter);
-    return {
-      x: opts.realX + (fx2 - 0.5) * (w0 - w1) / s,
-      y: opts.realY + (fy - 0.5) * (h0 - h1) / s
-    };
-  }
-  function worldViewImageRendering(fov, profile) {
-    const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
-    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-    if (f <= 1) return "pixelated";
-    if (p === "phone") return "auto";
-    return "pixelated";
-  }
-  function fitRendererView(cssW, cssH, fov) {
-    const renderer = window.renderer;
-    const view = renderer && renderer.view;
-    if (!view || !view.style) return;
-    view.style.width = cssW + "px";
-    view.style.height = cssH + "px";
-    view.style.maxWidth = "100%";
-    view.style.maxHeight = "100%";
-    view.style.display = "block";
-    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-    const mode = worldViewImageRendering(f);
-    view.style.imageRendering = mode;
-    view.style.webkitImageRendering = mode;
-  }
-  function clearRendererViewFit() {
-    const renderer = window.renderer;
-    const view = renderer && renderer.view;
-    if (!view || !view.style) return;
-    view.style.width = "";
-    view.style.height = "";
-    view.style.maxWidth = "";
-    view.style.maxHeight = "";
-  }
-  function applyRendererPixelSnap() {
-    const renderer = window.renderer;
-    if (!renderer) return;
-    renderer.roundPixels = true;
-    const view = renderer.view;
-    if (!view || !view.style) return;
-    const mode = worldViewImageRendering(readAppliedWorldFov() || 1);
-    view.style.imageRendering = mode;
-    view.style.webkitImageRendering = mode;
-  }
-  function applyWorldFov(next) {
-    const { w: cssW, h: cssH } = readWindowCssSize();
-    const maxTex = readMaxTextureSize();
-    const fov = clampWorldFovForDisplay(next, cssW, cssH, maxTex);
-    const logical = logicalSizeForFov(cssW, cssH, fov, maxTex);
-    const host2 = window;
-    const changed = appliedFov !== fov || host2.width !== logical.w || host2.height !== logical.h;
-    appliedFov = fov;
-    host2.width = logical.w;
-    host2.height = logical.h;
-    if (host2.renderer && typeof host2.renderer.resize === "function") {
-      host2.renderer.resize(logical.w, logical.h);
-    }
-    if (host2.renderer) {
-      const aw = typeof host2.renderer.width === "number" && host2.renderer.width > 0 ? Math.round(host2.renderer.width) : 0;
-      const ah = typeof host2.renderer.height === "number" && host2.renderer.height > 0 ? Math.round(host2.renderer.height) : 0;
-      if (aw > 0 && ah > 0) {
-        host2.width = aw;
-        host2.height = ah;
-      }
-    }
-    if (changed && host2.map) {
-      host2.map.last_max_y = void 0;
-    }
-    if (fov === WORLD_FOV_DEFAULT) {
-      clearRendererViewFit();
-      applyRendererPixelSnap();
-    } else {
-      fitRendererView(cssW, cssH, fov);
-      if (!(fov < 1)) applyRendererPixelSnap();
-    }
-    if (typeof host2.position_map === "function") {
-      try {
-        host2.position_map();
-      } catch (e2) {
-      }
-    }
-    if (changed) {
-      for (let i = 0; i < fovApplyListeners.length; i++) {
-        try {
-          fovApplyListeners[i](fov);
-        } catch (e2) {
-        }
-      }
-    }
-    return fov;
-  }
-  function formatWorldFov(fov) {
-    const v = clampWorldFov(fov);
-    if (Number.isInteger(v)) return String(v);
-    return String(Math.round(v * 100) / 100);
-  }
-  function nameplateTextResolution(fov) {
-    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-    const dpr = typeof window !== "undefined" && typeof window.devicePixelRatio === "number" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
-    const denseness = f >= 1 ? f : 1 / f;
-    const dprBit = Math.min(dpr, 2);
-    return Math.max(1, Math.min(4, Math.ceil(denseness * dprBit)));
-  }
-
   // src/lib/worldZoom.ts
   var WORLD_ZOOM_MIN = 1;
   var WORLD_ZOOM_MAX = 3;
@@ -12456,7 +12588,9 @@ ${fightHoverTip(src)}`
   var KEY = "al-comm-ui-settings-v1";
   var PANEL_IDS_SET = new Set(PANEL_IDS);
   function normalizeCameraJoystickSide(raw) {
-    return raw === "left" ? "left" : "right";
+    if (raw === "right") return "right";
+    if (raw === "left") return "left";
+    return "left";
   }
   var DEFAULT_COMMAND_SNIPPETS = [
     { id: "loot", name: "Loot", code: "loot()" },
@@ -12501,7 +12635,7 @@ ${fightHoverTip(src)}`
     hudDensity: "auto",
     worldOverlayEnabled: true,
     worldWheelZoomEnabled: true,
-    cameraJoystickSide: "right",
+    cameraJoystickSide: "left",
     phoneHudVisible: {},
     phoneHomeScreens: defaultPhoneHomeScreens(),
     changelogSeenId: null,
@@ -12838,7 +12972,7 @@ ${fightHoverTip(src)}`
       hudDensity: "auto",
       worldOverlayEnabled: true,
       worldWheelZoomEnabled: true,
-      cameraJoystickSide: "right",
+      cameraJoystickSide: "left",
       phoneHudVisible: {},
       phoneHomeScreens: defaultPhoneHomeScreens()
     };
@@ -16140,7 +16274,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
 
   // src/lib/cameraPan.ts
   var CAMERA_PAN_SPEED = 340;
-  var JOYSTICK_RADIUS_PX = 48;
+  var JOYSTICK_RADIUS_PX = 20;
   var JOYSTICK_DEADZONE = 0.08;
   var JOYSTICK_OUTER = 0.96;
   var JOYSTICK_RESPONSE_POWER = 3.8;
@@ -16397,10 +16531,11 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     const map = hostMap();
     const at = readObservedWorldXY();
     if (map && at) {
+      const y = at.y + phoneFollowYBias();
       lockX = at.x;
-      lockY = at.y;
+      lockY = y;
       map.real_x = at.x;
-      map.real_y = at.y;
+      map.real_y = y;
       const pos = window.position_map;
       if (typeof pos === "function") {
         try {
@@ -16471,6 +16606,14 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       return false;
     }
     return true;
+  }
+  var PHONE_FOLLOW_Y_BIAS = 40;
+  function phoneFollowYBias() {
+    if (typeof document === "undefined") return 0;
+    if (!document.documentElement.classList.contains("ecu-phone-dock-on")) {
+      return 0;
+    }
+    return PHONE_FOLLOW_Y_BIAS;
   }
   function endMousePan() {
     mousePanPointerId = null;
@@ -16634,6 +16777,25 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     }
     lastTs = 0;
   }
+  var FOLLOW_MAP_MIN_INTERVAL_MS = 33;
+  var lastFollowMapApplyMs = 0;
+  function applyFollowMapLock(map) {
+    const at = readObservedWorldXY();
+    if (!at) return;
+    const y = at.y + phoneFollowYBias();
+    const now = typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+    const moved = lockX !== at.x || lockY !== y;
+    if (moved && now - lastFollowMapApplyMs < FOLLOW_MAP_MIN_INTERVAL_MS && Number.isFinite(lockX + lockY)) {
+      map.real_x = lockX;
+      map.real_y = lockY;
+      return;
+    }
+    if (moved) lastFollowMapApplyMs = now;
+    lockX = at.x;
+    lockY = y;
+    map.real_x = at.x;
+    map.real_y = y;
+  }
   function patchedPositionMap() {
     syncFreeCameraAfterRealmChange();
     const map = hostMap();
@@ -16642,13 +16804,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       map.real_x = lockX;
       map.real_y = lockY;
     } else if (followCamera && map) {
-      const at = readObservedWorldXY();
-      if (at) {
-        lockX = at.x;
-        lockY = at.y;
-        map.real_x = at.x;
-        map.real_y = at.y;
-      }
+      applyFollowMapLock(map);
     }
     const savedChar = freeCamera && w.character ? w.character : null;
     if (savedChar) w.character = void 0;
@@ -16661,13 +16817,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       map.real_x = lockX;
       map.real_y = lockY;
     } else if (followCamera && map) {
-      const at = readObservedWorldXY();
-      if (at) {
-        lockX = at.x;
-        lockY = at.y;
-        map.real_x = at.x;
-        map.real_y = at.y;
-      }
+      map.real_x = lockX;
+      map.real_y = lockY;
     }
   }
   function installPositionMapHook() {
@@ -16763,6 +16914,3047 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     w.__ecuFollowObserved = followObservedCamera;
     w.__ecuCenterObserved = centerOnObservedCamera;
     w.__ecuSetFollowCamera = setFollowCamera;
+  }
+
+  // src/lib/itemInstanceData.ts
+  function getItemData(item) {
+    if (!item || !("data" in item)) return void 0;
+    const raw = item.data;
+    if (typeof raw !== "string") return void 0;
+    const trimmed = raw.trim();
+    return trimmed || void 0;
+  }
+  function isCxJarName(name) {
+    return name === "cxjar";
+  }
+  function cxJarData(item) {
+    if (!item || !isCxJarName(item.name)) return void 0;
+    return getItemData(item);
+  }
+  function itemStackIdentityKey(item) {
+    const base = String(item.name) + "\0" + (item.level != null && item.level !== "" ? String(item.level) : "") + "\0" + (item.p != null && String(item.p) !== "" ? String(item.p) : "");
+    const data = getItemData(item);
+    return data ? base + "\0" + data : base;
+  }
+  function cxJarContentSkin(data) {
+    if (!data) return void 0;
+    const G = getG();
+    if (!G) return void 0;
+    const skill = G.skills && G.skills[data];
+    if (skill && skill.emote && typeof skill.skin === "string" && skill.skin) {
+      return skill.skin;
+    }
+    if (G.positions && G.positions[data] != null) return data;
+    return void 0;
+  }
+
+  // src/host/mail/itemFingerprint.ts
+  function titleKey(p) {
+    return p != null && String(p).trim() !== "" ? String(p) : "";
+  }
+  function dataKey(data) {
+    var _a;
+    return (_a = getItemData({ data })) != null ? _a : "";
+  }
+  function levelKey(level) {
+    if (level == null || level === "") return null;
+    const n = Number(level);
+    return Number.isFinite(n) ? n : null;
+  }
+  function itemMatchesQueueIdentity(item, expected) {
+    if (!item || !item.name || item.name === "placeholder") return false;
+    if (String(item.name) !== String(expected.name || "")) return false;
+    if (titleKey(item.p) !== titleKey(expected.p)) return false;
+    if (levelKey(item.level) !== levelKey(expected.level)) return false;
+    if (dataKey(item.data) !== dataKey(expected.data)) return false;
+    return true;
+  }
+  function itemMatchesFingerprint(item, expected) {
+    if (!item || !item.name) return false;
+    if (item.name !== expected.name) return false;
+    if (expected.level != null) {
+      if (item.level !== expected.level) return false;
+    }
+    if (expected.q != null) {
+      if (item.q !== expected.q) return false;
+    }
+    if (expected.p != null) {
+      if (item.p !== expected.p) return false;
+    }
+    if (expected.data != null) {
+      if (dataKey(item.data) !== dataKey(expected.data)) return false;
+    }
+    return true;
+  }
+  function listBagFingerprintsMatchingIdentity(items, template) {
+    if (!items || !items.length) return [];
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      if (!itemMatchesQueueIdentity(items[i], template)) continue;
+      const fp = fingerprintFromSlot(i, items[i]);
+      if (fp) out.push(fp);
+    }
+    return out;
+  }
+  function fingerprintFromSlot(slot, item) {
+    if (!item || !item.name || item.name === "placeholder") return null;
+    const fp = { slot, name: String(item.name) };
+    if (item.level != null) fp.level = Number(item.level);
+    if (item.q != null) fp.q = Number(item.q);
+    if (item.p != null) fp.p = String(item.p);
+    const data = getItemData(item);
+    if (data) fp.data = data;
+    return fp;
+  }
+  function findFingerprintSlot(items, expected, usedSlots) {
+    if (!items || !items.length) return -1;
+    const prefer = Number(expected.slot) | 0;
+    if (prefer >= 0 && prefer < items.length && !(usedSlots && usedSlots.has(prefer)) && itemMatchesFingerprint(items[prefer], expected)) {
+      return prefer;
+    }
+    for (let i = 0; i < items.length; i++) {
+      if (usedSlots && usedSlots.has(i)) continue;
+      if (itemMatchesFingerprint(items[i], expected)) return i;
+    }
+    return -1;
+  }
+
+  // src/lib/tradeHelpers.ts
+  var TRADE_RANGE_SQ = 200 * 200;
+  function formatTradeGold(n) {
+    if (n == null || !Number.isFinite(n)) return "?";
+    return formatCompactNumber(n);
+  }
+  function isInTradeRange(target, observer) {
+    var _a, _b, _c, _d;
+    if (!target || !observer) return false;
+    if (target.id != null && observer.id != null && target.id === observer.id) {
+      return true;
+    }
+    const tx = (_a = target.real_x) != null ? _a : target.x;
+    const ty = (_b = target.real_y) != null ? _b : target.y;
+    const ox = (_c = observer.real_x) != null ? _c : observer.x;
+    const oy = (_d = observer.real_y) != null ? _d : observer.y;
+    if (tx == null || ty == null || ox == null || oy == null) return false;
+    const dx = tx - ox;
+    const dy = ty - oy;
+    return dx * dx + dy * dy <= TRADE_RANGE_SQ;
+  }
+  function findBagMatchForBuyOrder(listing, items) {
+    if (!listing.name || !items) return null;
+    const wantLevel = listing.level != null ? listing.level : void 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !it.name || it.name !== listing.name) continue;
+      if (wantLevel != null && (it.level || 0) !== wantLevel) continue;
+      const q = it.q != null && it.q > 0 ? it.q : 1;
+      return { slot: i, q };
+    }
+    return null;
+  }
+  function canAffordListing(listing, quantity, gold) {
+    if (listing.price == null || gold == null) return false;
+    const q = quantity > 0 ? quantity : 1;
+    return gold >= listing.price * q;
+  }
+  function confirmTradePurchase(itemName, unitPrice, quantity) {
+    const total = unitPrice * quantity;
+    return window.confirm(
+      `Buy ${quantity}\xD7 ${itemName} for ${formatTradeGold(total)} gold (${formatTradeGold(unitPrice)} each)?`
+    );
+  }
+  function confirmTradeFulfill(itemName, unitPrice, quantity) {
+    const total = unitPrice * quantity;
+    return window.confirm(
+      `Sell ${quantity}\xD7 ${itemName} to fulfill buy order for ${formatTradeGold(total)} gold (${formatTradeGold(unitPrice)} each)?`
+    );
+  }
+  function isGiveawayListing(slot) {
+    return !!(slot && (slot.giveaway || slot.registry));
+  }
+  function isTradeOfferListing(slot) {
+    if (!slot || slot.b || isGiveawayListing(slot)) return false;
+    if (slot.want == null) return false;
+    if (typeof slot.want === "string") return !!slot.want.trim();
+    return !!(slot.want && slot.want.name);
+  }
+  function tradeWantMatches(want, item) {
+    if (!want || !item || item.name !== want.name) return false;
+    if (want.level != null && (item.level || 0) < want.level) return false;
+    if (want.p && item.p !== want.p) return false;
+    if ((item.q || 1) < (want.q || 1)) return false;
+    return true;
+  }
+  function findBagMatchForTradeWant(want, items) {
+    if (!items) return null;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !tradeWantMatches(want, it)) continue;
+      return { slot: i, q: it.q != null && it.q > 0 ? it.q | 0 : 1, item: it };
+    }
+    return null;
+  }
+  function formatTradeWantLabel(want) {
+    if (!want || !want.name) return "";
+    const G = typeof window !== "undefined" ? window.G : void 0;
+    const def = G && G.items && G.items[want.name];
+    let label = def && typeof def.name === "string" && def.name ? String(def.name) : want.name;
+    if (want.p && G && G.titles && G.titles[want.p] && G.titles[want.p].title) {
+      label = String(G.titles[want.p].title) + " " + label;
+    }
+    if (want.level != null) label += " +" + want.level;
+    if (want.q != null && want.q > 1) label = want.q + "\xD7 " + label;
+    return label;
+  }
+  function positiveGcd(a, b) {
+    let x = Math.abs(a | 0);
+    let y = Math.abs(b | 0);
+    if (!x || !y) return 1;
+    while (y) {
+      const t = y;
+      y = x % y;
+      x = t;
+    }
+    return x || 1;
+  }
+  function tradeOfferRatioParts(wantQ, offerQ) {
+    const give = wantQ != null && wantQ > 0 ? wantQ | 0 : 0;
+    const get = offerQ != null && offerQ > 0 ? offerQ | 0 : 0;
+    if (!(give > 0) || !(get > 0)) return null;
+    const g = positiveGcd(give, get);
+    return { give: give / g, get: get / g };
+  }
+  function formatTradeOfferRatio(wantQ, offerQ) {
+    const parts = tradeOfferRatioParts(wantQ, offerQ);
+    if (!parts) return "";
+    return parts.give + "\u2236" + parts.get;
+  }
+  function giveawayMinutesLeft(minutes, lastRefreshedAt, now = Date.now()) {
+    if (minutes == null || !Number.isFinite(minutes)) return null;
+    let left = Math.floor(minutes);
+    if (lastRefreshedAt != null && lastRefreshedAt > 0) {
+      const elapsed = Math.floor((now - lastRefreshedAt) / 6e4);
+      if (elapsed > 0) left = Math.max(0, left - elapsed);
+    }
+    return left < 0 ? 0 : left;
+  }
+  function formatGiveawayTimeLeft(minutes, lastRefreshedAt, now = Date.now()) {
+    const left = giveawayMinutesLeft(minutes, lastRefreshedAt, now);
+    if (left == null) return "";
+    if (left <= 0) return "<1m";
+    if (left < 60) return left + "m";
+    const h = Math.floor(left / 60);
+    const m = left % 60;
+    return m ? h + "h " + m + "m" : h + "h";
+  }
+  function buyOrderItemKey(name, level, p) {
+    return `${name}|${level != null ? level : ""}|${p != null ? p : ""}`;
+  }
+  function nearbyBuyOrdersRevision(entities, observer) {
+    if (!observer) return 0;
+    let n = 0;
+    for (let ei = 0; ei < entities.length; ei++) {
+      const ent = entities[ei];
+      if (!ent || !ent.slots) continue;
+      if (!isInTradeRange(ent, observer)) continue;
+      const slotKeys = Object.keys(ent.slots);
+      for (let si = 0; si < slotKeys.length; si++) {
+        const listing = ent.slots[slotKeys[si]];
+        if (listing && listing.b && listing.name && listing.price != null) n++;
+      }
+    }
+    return n;
+  }
+  function indexNearbyBuyOrders(entities, observer) {
+    const obsId = observer && observer.id != null ? String(observer.id) : "";
+    const byKey = /* @__PURE__ */ new Map();
+    for (let ei = 0; ei < entities.length; ei++) {
+      const ent = entities[ei];
+      if (!ent || !ent.slots) continue;
+      if (obsId && ent.id != null && String(ent.id) === obsId) continue;
+      if (!isInTradeRange(ent, observer)) continue;
+      const entId = ent.id != null ? String(ent.id) : "";
+      const entName = ent.name != null ? String(ent.name) : entId;
+      if (!entId) continue;
+      const slotKeys = Object.keys(ent.slots);
+      for (let si = 0; si < slotKeys.length; si++) {
+        const tradeSlot = slotKeys[si];
+        if (tradeSlot.indexOf("trade") !== 0) continue;
+        const listing = ent.slots[tradeSlot];
+        if (!listing || !listing.b || !listing.name || listing.price == null) {
+          continue;
+        }
+        if (!listing.rid) continue;
+        const key = buyOrderItemKey(
+          listing.name,
+          listing.level,
+          listing.p
+        );
+        const match = {
+          entityId: entId,
+          entityName: entName,
+          tradeSlot,
+          listing: {
+            name: listing.name,
+            price: listing.price,
+            rid: String(listing.rid),
+            q: listing.q,
+            level: listing.level,
+            p: listing.p
+          }
+        };
+        const bucket = byKey.get(key);
+        if (bucket) bucket.push(match);
+        else byKey.set(key, [match]);
+      }
+    }
+    for (const bucket of byKey.values()) {
+      bucket.sort((a, b) => {
+        if (b.listing.price !== a.listing.price) {
+          return b.listing.price - a.listing.price;
+        }
+        return a.entityName.localeCompare(b.entityName);
+      });
+    }
+    return byKey;
+  }
+  function scanBuyOrdersForBagItem(fp, entities, observer) {
+    if (!observer) return [];
+    const want = { slot: -1, name: fp.name };
+    if (fp.level != null) want.level = fp.level;
+    if (fp.p != null) want.p = fp.p;
+    const key = buyOrderItemKey(fp.name, fp.level, fp.p);
+    const indexed = indexNearbyBuyOrders(entities, observer).get(key);
+    if (!indexed) return [];
+    const matches = [];
+    for (let i = 0; i < indexed.length; i++) {
+      const m = indexed[i];
+      if (itemMatchesFingerprint(m.listing, want)) matches.push(m);
+    }
+    return matches;
+  }
+  function isJoinedGiveaway(slot, observer) {
+    if (!slot || !slot.registry || !observer) return false;
+    const id = observer.id != null ? String(observer.id) : "";
+    const name = observer.name != null ? String(observer.name) : "";
+    if (id && Object.prototype.hasOwnProperty.call(slot.registry, id)) {
+      return true;
+    }
+    if (name) {
+      const vals = Object.values(slot.registry);
+      for (let i = 0; i < vals.length; i++) {
+        if (vals[i] === name) return true;
+      }
+    }
+    return false;
+  }
+
+  // src/ui/bag/bagBuyOrderIndicator.ts
+  var HOST_ID = "bottomleftcorner";
+  var BADGE_CLASS = "ecu-bag-buy-badge";
+  var MARK_CLASS = "ecu-bag-buy-order";
+  var BAG_BUY_ORDER_CSS = `
+#${HOST_ID} [data-cnum].${MARK_CLASS} {
+  position: relative;
+}
+#${HOST_ID} .${BADGE_CLASS} {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 2;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  box-sizing: border-box;
+  background: #1a3a4a;
+  border: 1px solid #8fd4ff;
+  color: #fff;
+  font-size: 9px;
+  line-height: 11px;
+  font-family: "Press Start 2P", monospace;
+  text-align: center;
+  pointer-events: none;
+}
+`;
+  var cssInjected = false;
+  function ensureCss() {
+    if (cssInjected) return;
+    cssInjected = true;
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-bag-buy-css", "1");
+    el.textContent = BAG_BUY_ORDER_CSS;
+    document.head.appendChild(el);
+  }
+  function clearBuyOrderChrome(node) {
+    node.classList.remove(MARK_CLASS);
+    const badge = node.querySelector(`.${BADGE_CLASS}`);
+    if (badge) badge.remove();
+  }
+  function refreshBagBuyOrderIndicators() {
+    if (!window.inventory) return;
+    const host2 = document.getElementById(HOST_ID);
+    if (!host2) return;
+    const obs = window.observing;
+    const items = obs && Array.isArray(obs.items) ? obs.items : null;
+    if (!obs || !items) return;
+    ensureCss();
+    const index = indexNearbyBuyOrders(getEntitiesList(), obs);
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      clearBuyOrderChrome(node);
+      const raw = node.getAttribute("data-cnum");
+      if (raw == null || raw === "") continue;
+      const num = parseInt(raw, 10);
+      if (!Number.isFinite(num) || num < 0 || num >= items.length) continue;
+      const item = items[num];
+      const fp = fingerprintFromSlot(num, item);
+      if (!fp) continue;
+      const key = buyOrderItemKey(fp.name, fp.level, fp.p);
+      const matches = index.get(key);
+      if (!matches || !matches.length) continue;
+      const best = matches[0];
+      const priceLabel = formatTradeGold(best.listing.price);
+      const tip = `Nearby buy order \u2014 ${best.entityName} ${priceLabel}g \xB7 right-click \u2192 Sell to buy order\u2026`;
+      node.classList.add(MARK_CLASS);
+      const badge = document.createElement("span");
+      badge.className = BADGE_CLASS;
+      badge.textContent = "B";
+      badge.title = tip;
+      node.appendChild(badge);
+      const existing = node.getAttribute("title") || "";
+      if (existing.indexOf("Nearby buy order") < 0) {
+        node.setAttribute("title", existing ? `${existing} \xB7 ${tip}` : tip);
+      }
+      const inner = node.querySelector(".rclick");
+      if (inner) {
+        const innerTip = inner.getAttribute("title") || existing;
+        if (innerTip.indexOf("Nearby buy order") < 0) {
+          inner.setAttribute(
+            "title",
+            innerTip ? `${innerTip} \xB7 ${tip}` : tip
+          );
+        }
+      }
+    }
+  }
+
+  // src/host/mail/mailSubject.ts
+  var MAIL_SUBJECT_ITEM_TOKEN = "{item}";
+  var ITEM_TOKEN_RE = /\{item\}/gi;
+  function formatAttachSubject(fp) {
+    let s = fp.name;
+    if (fp.level != null) s += " +" + fp.level;
+    if (fp.q != null && fp.q > 1) s += " \xD7" + fp.q;
+    return s;
+  }
+  function applyItemToken(text, item) {
+    ITEM_TOKEN_RE.lastIndex = 0;
+    if (!ITEM_TOKEN_RE.test(text)) return text;
+    ITEM_TOKEN_RE.lastIndex = 0;
+    return text.replace(ITEM_TOKEN_RE, item);
+  }
+  function resolveMailSubject(base, fp, index, total) {
+    const trimmed = String(base || "").trim();
+    const item = fp ? formatAttachSubject(fp) : "";
+    ITEM_TOKEN_RE.lastIndex = 0;
+    if (ITEM_TOKEN_RE.test(trimmed)) {
+      return applyItemToken(trimmed, item);
+    }
+    if (!trimmed) {
+      if (item) return item;
+      return total > 1 ? "Mail (" + index + "/" + total + ")" : "";
+    }
+    if (total > 1 && item) return trimmed + " \xB7 " + item;
+    return trimmed;
+  }
+  function resolveMailBody(base, fp) {
+    const text = String(base || "");
+    const item = fp ? formatAttachSubject(fp) : "";
+    return applyItemToken(text, item);
+  }
+  function subjectPlaceholder(attaches) {
+    const list = attaches || [];
+    if (!list.length) return "Subject (optional)";
+    if (list.length === 1) {
+      return "e.g. Sending " + MAIL_SUBJECT_ITEM_TOKEN + " \u2192 " + formatAttachSubject(list[0]);
+    }
+    return "e.g. Loot: " + MAIL_SUBJECT_ITEM_TOKEN + " \u2192 " + formatAttachSubject(list[0]) + " \xB7 \u2026";
+  }
+
+  // src/host/mail/composeDraft.ts
+  function emptyDraft() {
+    return { to: [], subject: "", body: "", attaches: [] };
+  }
+  function normalizeComposeTos(raw) {
+    const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < list.length; i++) {
+      const name = String(list[i] || "").trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+    }
+    return out;
+  }
+  function fingerprintFields(raw) {
+    const fp = {
+      slot: Number(raw.slot) | 0,
+      name: String(raw.name || "")
+    };
+    if (raw.level != null) fp.level = Number(raw.level);
+    if (raw.q != null) fp.q = Number(raw.q);
+    if (raw.p != null) fp.p = String(raw.p);
+    return fp;
+  }
+  function makeComposeAttach(raw, to = "") {
+    return { ...fingerprintFields(raw), to: String(to || "").trim() };
+  }
+  function migrateComposeAttach(raw, fallbackTo) {
+    const to = String(raw.to || fallbackTo || "").trim();
+    return { ...fingerprintFields(raw), to };
+  }
+  function canonicalizeDraft(draft) {
+    const to = normalizeComposeTos(draft.to);
+    const attaches = [];
+    const list = Array.isArray(draft.attaches) ? draft.attaches : [];
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      attaches.push({
+        ...fingerprintFields(a),
+        to: String(a.to || "").trim()
+      });
+    }
+    return {
+      to,
+      subject: String(draft.subject || ""),
+      body: String(draft.body || ""),
+      attaches
+    };
+  }
+  function rebindAttachesToPool(attaches, tos) {
+    if (!tos.length) {
+      const out2 = [];
+      for (let i = 0; i < attaches.length; i++) {
+        out2.push({ ...attaches[i], to: "" });
+      }
+      return out2;
+    }
+    const ok = new Set(tos.map((t) => t.toLowerCase()));
+    let rr = 0;
+    const out = [];
+    for (let i = 0; i < attaches.length; i++) {
+      const a = attaches[i];
+      const cur = String(a.to || "").trim();
+      if (cur && ok.has(cur.toLowerCase())) {
+        out.push(a);
+        continue;
+      }
+      out.push({ ...a, to: tos[rr % tos.length] });
+      rr += 1;
+    }
+    return out;
+  }
+  function pickToForNewAttach(draft) {
+    var _a, _b;
+    const tos = normalizeComposeTos(draft.to);
+    if (!tos.length) return "";
+    const counts = {};
+    for (let i = 0; i < tos.length; i++) counts[tos[i].toLowerCase()] = 0;
+    for (let i = 0; i < draft.attaches.length; i++) {
+      const key = String(draft.attaches[i].to || "").toLowerCase();
+      if (!key || counts[key] == null) continue;
+      counts[key] += 1;
+    }
+    let best = tos[0];
+    let bestN = (_a = counts[best.toLowerCase()]) != null ? _a : 0;
+    for (let i = 1; i < tos.length; i++) {
+      const n = (_b = counts[tos[i].toLowerCase()]) != null ? _b : 0;
+      if (n < bestN) {
+        best = tos[i];
+        bestN = n;
+      }
+    }
+    return best;
+  }
+  function distributeAttachesAcrossTos(draft) {
+    const base = canonicalizeDraft(draft);
+    if (!base.to.length || !base.attaches.length) return base;
+    const attaches = [];
+    for (let i = 0; i < base.attaches.length; i++) {
+      attaches.push({
+        ...base.attaches[i],
+        to: base.to[i % base.to.length]
+      });
+    }
+    return { ...base, attaches };
+  }
+  function resolveComposeOpen(opts) {
+    const session = canonicalizeDraft(opts.session);
+    const sticky = normalizeComposeTos(opts.stickyTo);
+    const partial = opts.partial;
+    if (!partial) {
+      const to2 = session.to.length ? session.to : sticky.slice();
+      return canonicalizeDraft({ ...session, to: to2 });
+    }
+    const to = partial.to ? normalizeComposeTos(partial.to) : session.to.length ? session.to : sticky.slice();
+    const subject = partial.subject != null ? String(partial.subject) : session.subject;
+    const body = partial.body != null ? String(partial.body) : session.body;
+    let attaches = session.attaches;
+    if (partial.attaches !== void 0) {
+      attaches = [];
+      for (let i = 0; i < partial.attaches.length; i++) {
+        const a = partial.attaches[i];
+        attaches.push({
+          ...fingerprintFields(a),
+          to: String(a.to || "").trim()
+        });
+      }
+    }
+    return canonicalizeDraft({ to, subject, body, attaches });
+  }
+  function attachesHaveRecipients(attaches) {
+    if (!attaches.length) return true;
+    for (let i = 0; i < attaches.length; i++) {
+      if (!String(attaches[i].to || "").trim()) return false;
+    }
+    return true;
+  }
+
+  // src/host/mail/mailCaps.ts
+  var MAIL_ATTACH_CAP = 200;
+  var MAIL_ATTACH_SENDER_CAP = 20;
+  var MAIL_ATTACH_CAP_WARN = 160;
+  var MAIL_ATTACH_SENDER_CAP_WARN = 15;
+  function countsTowardAttachCap(m) {
+    if (!m.item) return false;
+    if (m.taken && !m.takenPending) return false;
+    return true;
+  }
+  function nameSet(names) {
+    const out = /* @__PURE__ */ new Set();
+    for (let i = 0; i < names.length; i++) {
+      const n = String(names[i] || "").trim().toLowerCase();
+      if (n) out.add(n);
+    }
+    return out;
+  }
+  function countAttachmentsByRecipient(mails, ownedNames) {
+    const owned = ownedNames && ownedNames.length ? nameSet(ownedNames) : null;
+    const buckets = /* @__PURE__ */ new Map();
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (!countsTowardAttachCap(m)) continue;
+      if (m.canTake === false) continue;
+      const display = String(m.to || "").trim();
+      const key = display.toLowerCase();
+      if (!key) continue;
+      if (owned && !owned.has(key)) continue;
+      const prev = buckets.get(key);
+      if (prev) prev.count += 1;
+      else buckets.set(key, { name: display, count: 1 });
+    }
+    const out = [];
+    buckets.forEach((v) => {
+      out.push({
+        name: v.name,
+        count: v.count,
+        pressure: mailboxCapPressure(v.count)
+      });
+    });
+    out.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
+    });
+    return out;
+  }
+  function countSenderAttachmentsTo(mails, fromNames, toName) {
+    const from = nameSet(fromNames);
+    const to = String(toName || "").trim().toLowerCase();
+    if (!from.size || !to) return 0;
+    let n = 0;
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (!countsTowardAttachCap(m)) continue;
+      if (String(m.to || "").trim().toLowerCase() !== to) {
+        continue;
+      }
+      if (!from.has(
+        String(m.fro || "").trim().toLowerCase()
+      )) {
+        continue;
+      }
+      n += 1;
+    }
+    return n;
+  }
+  function mailboxCapPressure(count, incomplete) {
+    if (count >= MAIL_ATTACH_CAP) return "full";
+    if (!incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
+    if (incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
+    return "";
+  }
+  function senderCapPressure(count, queued = 0) {
+    const have = Math.max(0, count | 0);
+    const add = Math.max(0, queued | 0);
+    if (have >= MAIL_ATTACH_SENDER_CAP || have + add > MAIL_ATTACH_SENDER_CAP) {
+      return "full";
+    }
+    if (have + add >= MAIL_ATTACH_SENDER_CAP_WARN) return "warn";
+    return "";
+  }
+  function formatCapFraction(count, cap, incomplete) {
+    const n = Math.max(0, count | 0);
+    return n + (incomplete ? "+" : "") + "/" + cap;
+  }
+  function worstPressure(fills) {
+    let worst = "";
+    for (let i = 0; i < fills.length; i++) {
+      const p = fills[i].pressure;
+      if (p === "full") return "full";
+      if (p === "warn") worst = "warn";
+    }
+    return worst;
+  }
+  function formatMailboxCapsLine(fills, opts) {
+    const incomplete = !!(opts && opts.incomplete);
+    const maxNames = opts && opts.maxNames != null ? opts.maxNames : 2;
+    if (!fills.length) {
+      return "0/" + MAIL_ATTACH_CAP + " per char" + (incomplete ? "+" : "");
+    }
+    const prefer = String(opts && opts.preferName || "").trim().toLowerCase();
+    const shown = [];
+    const used = /* @__PURE__ */ new Set();
+    if (prefer) {
+      for (let i = 0; i < fills.length; i++) {
+        const key = fills[i].name.toLowerCase();
+        if (key !== prefer) continue;
+        shown.push(fills[i]);
+        used.add(key);
+        break;
+      }
+    }
+    for (let i = 0; i < fills.length && shown.length < maxNames; i++) {
+      const key = fills[i].name.toLowerCase();
+      if (used.has(key)) continue;
+      shown.push(fills[i]);
+      used.add(key);
+    }
+    const parts = [];
+    for (let i = 0; i < shown.length; i++) {
+      const f = shown[i];
+      parts.push(
+        f.name + " " + formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete)
+      );
+    }
+    const rest = fills.length - shown.length;
+    if (rest > 0) {
+      parts.push("+" + rest + " char" + (rest === 1 ? "" : "s"));
+    }
+    return parts.join(" \xB7 ");
+  }
+  function mailboxCapsTitle(fills, incomplete) {
+    const lines = [
+      "Server caps are per character: 200 uncollected attachments each, and at most 20 from one sending account. Pending claims count; take or delete before new item mail can land."
+    ];
+    if (!fills.length) {
+      lines.push("No untaken attachments in the cached inbox.");
+    } else {
+      const maxList = Math.min(fills.length, 12);
+      for (let i = 0; i < maxList; i++) {
+        const f = fills[i];
+        const frac = formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete);
+        let note = "";
+        if (f.pressure === "full") note = " \u2014 full (new item mail blocked)";
+        else if (f.pressure === "warn") note = " \u2014 nearly full";
+        lines.push(f.name + " " + frac + note);
+      }
+      if (fills.length > maxList) {
+        lines.push("\u2026and " + (fills.length - maxList) + " more characters");
+      }
+    }
+    if (incomplete) {
+      lines.push("Cache still loading older pages \u2014 counts may rise.");
+    }
+    return lines.join("\n");
+  }
+  function withFillPressure(fills, incomplete) {
+    const out = [];
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      out.push({
+        name: f.name,
+        count: f.count,
+        pressure: mailboxCapPressure(f.count, incomplete)
+      });
+    }
+    return out;
+  }
+  function summarizeMailboxCaps(opts) {
+    const incomplete = !!opts.incomplete;
+    const withPressure = withFillPressure(opts.fills, incomplete);
+    return {
+      line: formatMailboxCapsLine(withPressure, {
+        incomplete,
+        preferName: opts.preferName
+      }),
+      pressure: worstPressure(withPressure),
+      title: mailboxCapsTitle(withPressure, incomplete)
+    };
+  }
+  function pickPrimaryFill(fills, preferName) {
+    if (!fills.length) return null;
+    const prefer = String(preferName || "").trim().toLowerCase();
+    if (prefer) {
+      for (let i = 0; i < fills.length; i++) {
+        if (fills[i].name.toLowerCase() === prefer) return fills[i];
+      }
+    }
+    for (let i = 0; i < fills.length; i++) {
+      if (fills[i].pressure === "full") return fills[i];
+    }
+    for (let i = 0; i < fills.length; i++) {
+      if (fills[i].pressure === "warn") return fills[i];
+    }
+    return fills[0];
+  }
+  function fillCapLabel(fill) {
+    if (fill.pressure === "full") {
+      return fill.count > MAIL_ATTACH_CAP ? "over cap" : "full";
+    }
+    if (fill.pressure === "warn") return "nearly full";
+    if (fill.count > 0) return "ok";
+    return "clear";
+  }
+  function fillCapPct(count) {
+    return Math.min(
+      100,
+      Math.round(100 * Math.max(0, count | 0) / MAIL_ATTACH_CAP)
+    );
+  }
+  function mergeOwnedMailboxFills(fills, ownedNames, incomplete) {
+    const byKey = /* @__PURE__ */ new Map();
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      byKey.set(f.name.toLowerCase(), {
+        name: f.name,
+        count: f.count,
+        pressure: mailboxCapPressure(f.count, incomplete)
+      });
+    }
+    for (let i = 0; i < ownedNames.length; i++) {
+      const display = String(ownedNames[i] || "").trim();
+      if (!display) continue;
+      const key = display.toLowerCase();
+      if (byKey.has(key)) continue;
+      byKey.set(key, {
+        name: display,
+        count: 0,
+        pressure: ""
+      });
+    }
+    const out = [];
+    byKey.forEach((v) => out.push(v));
+    out.sort((a, b) => {
+      const ra = a.pressure === "full" ? 0 : a.pressure === "warn" ? 1 : a.count > 0 ? 2 : 3;
+      const rb = b.pressure === "full" ? 0 : b.pressure === "warn" ? 1 : b.count > 0 ? 2 : 3;
+      if (ra !== rb) return ra - rb;
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
+    });
+    return out;
+  }
+  function formatCapsSummaryLine(fullCount, warnCount, holdingCount) {
+    const parts = [];
+    if (fullCount > 0) {
+      parts.push(fullCount + " full");
+    }
+    if (warnCount > 0) {
+      parts.push(warnCount + " near");
+    }
+    const quiet = Math.max(0, holdingCount - fullCount - warnCount);
+    if (quiet > 0) {
+      parts.push(quiet + " holding");
+    }
+    if (!parts.length) return "All clear";
+    return parts.join(" \xB7 ");
+  }
+  function buildMailboxCapsView(opts) {
+    const incomplete = !!opts.incomplete;
+    const owned = opts.ownedNames || [];
+    const fills = mergeOwnedMailboxFills(opts.fills, owned, incomplete);
+    const holding = fills.filter((f) => f.count > 0);
+    const primary = pickPrimaryFill(
+      holding.length ? holding : fills,
+      opts.preferName
+    );
+    let fullCount = 0;
+    let warnCount = 0;
+    for (let i = 0; i < holding.length; i++) {
+      if (holding[i].pressure === "full") fullCount += 1;
+      else if (holding[i].pressure === "warn") warnCount += 1;
+    }
+    const okCount = Math.max(0, holding.length - fullCount - warnCount);
+    return {
+      pressure: worstPressure(holding),
+      title: mailboxCapsTitle(holding, incomplete),
+      incomplete,
+      primary,
+      primaryPct: primary ? fillCapPct(primary.count) : 0,
+      primaryLabel: primary ? fillCapLabel(primary) : "clear",
+      summaryLine: formatCapsSummaryLine(
+        fullCount,
+        warnCount,
+        holding.length
+      ),
+      fullCount,
+      warnCount,
+      okCount,
+      holdingCount: holding.length,
+      fills
+    };
+  }
+  function worstCapPressure(a, b) {
+    if (a === "full" || b === "full") return "full";
+    if (a === "warn" || b === "warn") return "warn";
+    return "";
+  }
+  function buildOwnToCapFills(opts) {
+    const incomplete = !!opts.incomplete;
+    const mailboxFills = mergeOwnedMailboxFills(
+      countAttachmentsByRecipient(opts.mails, opts.selfNames),
+      opts.selfNames,
+      incomplete
+    );
+    const out = [];
+    for (let i = 0; i < mailboxFills.length; i++) {
+      const box = mailboxFills[i];
+      const fromYou = countSenderAttachmentsTo(
+        opts.mails,
+        opts.selfNames,
+        box.name
+      );
+      out.push({
+        name: box.name,
+        fromYou,
+        mailbox: box.count,
+        pressure: worstCapPressure(
+          senderCapPressure(fromYou),
+          mailboxCapPressure(box.count, incomplete)
+        )
+      });
+    }
+    return out;
+  }
+  function formatOwnToCapFraction(fill, incomplete) {
+    return formatCapFraction(fill.fromYou, MAIL_ATTACH_SENDER_CAP, incomplete);
+  }
+  function ownToCapTitle(fill, incomplete) {
+    const fromFrac = formatCapFraction(
+      fill.fromYou,
+      MAIL_ATTACH_SENDER_CAP,
+      incomplete
+    );
+    const boxFrac = formatCapFraction(
+      fill.mailbox,
+      MAIL_ATTACH_CAP,
+      incomplete
+    );
+    let note = fill.name + ": " + fromFrac + " uncollected from your account (sender limit) \xB7 mailbox " + boxFrac;
+    if (fill.pressure === "full") {
+      note += " \u2014 item mail may fail until they take or delete (20/account or 200/char)";
+    } else if (fill.pressure === "warn") {
+      note += " \u2014 nearing a send limit";
+    }
+    if (incomplete) note += ". Older pages may raise these counts.";
+    return note;
+  }
+  function canOwnCharReceiveAttach(fill, queued = 0) {
+    const extra = Math.max(0, queued | 0);
+    if (fill.mailbox + extra >= MAIL_ATTACH_CAP) return false;
+    if (senderCapPressure(fill.fromYou, extra + 1) === "full") return false;
+    return true;
+  }
+  function ownCharsWithFreeMailSpace(opts) {
+    const excl = nameSet(opts.exclude || []);
+    const queued = opts.queuedByTo || {};
+    const fills = buildOwnToCapFills({
+      mails: opts.mails,
+      selfNames: opts.selfNames,
+      incomplete: opts.incomplete
+    });
+    const out = [];
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      const key = f.name.toLowerCase();
+      if (excl.has(key)) continue;
+      const q = queued[key] | 0;
+      if (!canOwnCharReceiveAttach(f, q)) continue;
+      out.push(f.name);
+    }
+    return out;
+  }
+  function buildComposeCapNotices(opts) {
+    const notices = [];
+    const incomplete = !!opts.hasMore;
+    const fills = countAttachmentsByRecipient(opts.mails, opts.selfNames);
+    const box = summarizeMailboxCaps({
+      fills,
+      incomplete,
+      preferName: opts.queued.length === 1 ? opts.queued[0].to : null
+    });
+    notices.push({
+      key: "mailbox",
+      text: "Per-char mailbox \xB7 " + box.line + " \xB7 max 20 from one account",
+      pressure: box.pressure,
+      title: box.title
+    });
+    const self = nameSet(opts.selfNames);
+    const queued = opts.queued.slice();
+    queued.sort(
+      (a, b) => String(a.to || "").localeCompare(String(b.to || ""), void 0, {
+        sensitivity: "base"
+      })
+    );
+    for (let i = 0; i < queued.length; i++) {
+      const display = String(queued[i].to || "").trim();
+      const queuedN = queued[i].count | 0;
+      if (!display || queuedN <= 0) continue;
+      const key = display.toLowerCase();
+      const have = countSenderAttachmentsTo(opts.mails, opts.selfNames, display);
+      const pressure = senderCapPressure(have, queuedN);
+      const frac = formatCapFraction(have, MAIL_ATTACH_SENDER_CAP, incomplete);
+      const selfHit = self.has(key);
+      notices.push({
+        key: "to:" + key,
+        text: (selfHit ? "Self-mail " : "To " + display + " ") + frac + " from you" + (queuedN > 1 ? " \xB7 +" + queuedN + " queued" : " \xB7 +1 queued"),
+        pressure,
+        title: "Per-account sender cap to this character (" + frac + "). New item mail is refused at 20 uncollected from your account." + (incomplete ? " Older cached pages may raise this count." : "")
+      });
+    }
+    return notices;
+  }
+
+  // src/host/mail/composeExperience.ts
+  function queuedByToFromAttaches(attaches) {
+    const out = {};
+    for (let i = 0; i < attaches.length; i++) {
+      const to = String(attaches[i].to || "").trim();
+      if (!to) continue;
+      const key = to.toLowerCase();
+      out[key] = (out[key] | 0) + 1;
+    }
+    return out;
+  }
+  function countWithTo(attaches) {
+    let n = 0;
+    for (let i = 0; i < attaches.length; i++) {
+      if (String(attaches[i].to || "").trim()) n += 1;
+    }
+    return n;
+  }
+  function mergeFingerprintsIntoAttaches(existing, fps) {
+    const bySlot = /* @__PURE__ */ new Map();
+    for (let i = 0; i < existing.length; i++) {
+      bySlot.set(existing[i].slot, existing[i]);
+    }
+    let added = 0;
+    for (let i = 0; i < fps.length; i++) {
+      const fp = fps[i];
+      const slot = Number(fp.slot) | 0;
+      const had = bySlot.has(slot);
+      const prev = bySlot.get(slot);
+      const keepTo = prev && String(prev.to || "").trim() ? String(prev.to).trim() : "";
+      bySlot.set(slot, makeComposeAttach(fp, keepTo));
+      if (!had) added += 1;
+    }
+    const attaches = [];
+    bySlot.forEach((a) => attaches.push(a));
+    attaches.sort((a, b) => (a.slot | 0) - (b.slot | 0));
+    return { attaches, added };
+  }
+  function buildMailMatchingToFreeOwnDraft(opts) {
+    const base = canonicalizeDraft(opts.draft);
+    const merged = mergeFingerprintsIntoAttaches(
+      base.attaches,
+      opts.fingerprints
+    );
+    const freeOwn = normalizeComposeTos(opts.freeOwnNames);
+    let next = canonicalizeDraft({
+      ...base,
+      to: freeOwn,
+      attaches: merged.attaches,
+      subject: String(base.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : base.subject
+    });
+    if (next.to.length && next.attaches.length) {
+      next = distributeAttachesAcrossTos(next);
+    }
+    const assigned = countWithTo(next.attaches);
+    const needTo = Math.max(0, next.attaches.length - assigned);
+    const parts = [];
+    parts.push(
+      merged.added === 1 ? "Queued 1" : "Queued " + Math.max(merged.added, opts.fingerprints.length)
+    );
+    parts.push(
+      freeOwn.length === 1 ? "1 free own" : freeOwn.length + " free own"
+    );
+    if (assigned > 0) {
+      parts.push("distributed " + assigned);
+    }
+    if (needTo > 0) {
+      parts.push(needTo + " still need To");
+    }
+    const statusKind = needTo > 0 || freeOwn.length === 0 ? "warn" : "";
+    return {
+      draft: next,
+      queued: next.attaches.length,
+      freeOwn: freeOwn.length,
+      assigned,
+      needTo,
+      status: parts.join(" \xB7 "),
+      statusKind
+    };
+  }
+  function buildComposeSummary(opts) {
+    const draft = canonicalizeDraft(opts.draft);
+    const queued = draft.attaches.length;
+    const withTo = countWithTo(draft.attaches);
+    const needTo = Math.max(0, queued - withTo);
+    const queuedByTo = queuedByToFromAttaches(draft.attaches);
+    const freeOwn = ownCharsWithFreeMailSpace({
+      mails: opts.mails,
+      selfNames: opts.selfNames,
+      incomplete: opts.incomplete,
+      exclude: draft.to,
+      queuedByTo
+    }).length;
+    const fills = buildOwnToCapFills({
+      mails: opts.mails,
+      selfNames: opts.selfNames,
+      incomplete: opts.incomplete
+    });
+    let pressure = "";
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      const q = queuedByTo[f.name.toLowerCase()] | 0;
+      if (!canOwnCharReceiveAttach(f, q)) {
+        pressure = "full";
+        break;
+      }
+      if (pressure === "") {
+        if (f.pressure === "warn") pressure = "warn";
+      }
+    }
+    const parts = [];
+    if (queued > 0) {
+      parts.push(queued + " queued");
+      parts.push(withTo + " with To");
+      if (needTo > 0) parts.push(needTo + " need To");
+    } else {
+      parts.push(
+        draft.to.length ? draft.to.length === 1 ? "1 To \xB7 plain mail" : draft.to.length + " To \xB7 plain mail" : "No recipients yet"
+      );
+    }
+    if (opts.selfNames.length) {
+      parts.push(
+        freeOwn > 0 ? "Own free: " + freeOwn : draft.to.length ? "Own free: 0" : "Own free: 0 \u2014 all full or already listed"
+      );
+    }
+    return {
+      queued,
+      withTo,
+      needTo,
+      freeOwn,
+      toCount: draft.to.length,
+      pressure,
+      line: parts.join(" \xB7 ")
+    };
+  }
+  function composeSendBlockReason(opts) {
+    const draft = canonicalizeDraft(opts.draft);
+    if (opts.goldEnough === false) {
+      return { reason: "Not enough gold on the observed character", kind: "err" };
+    }
+    if (draft.attaches.length) {
+      if (!countWithTo(draft.attaches) || countWithTo(draft.attaches) < draft.attaches.length) {
+        const need = draft.attaches.length - countWithTo(draft.attaches);
+        return {
+          reason: need === 1 ? "1 attachment still needs a To" : need + " attachments still need a To",
+          kind: "warn"
+        };
+      }
+      const fills = buildOwnToCapFills({
+        mails: opts.mails,
+        selfNames: opts.selfNames,
+        incomplete: opts.incomplete
+      });
+      const byKey = /* @__PURE__ */ new Map();
+      for (let i = 0; i < fills.length; i++) {
+        byKey.set(fills[i].name.toLowerCase(), fills[i]);
+      }
+      const planned = {};
+      for (let i = 0; i < draft.attaches.length; i++) {
+        const to = String(draft.attaches[i].to || "").trim();
+        if (!to) continue;
+        const key = to.toLowerCase();
+        planned[key] = (planned[key] | 0) + 1;
+      }
+      const over = [];
+      const keys = Object.keys(planned);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        const fill = byKey.get(key);
+        if (!fill) continue;
+        if (!canOwnCharReceiveAttach(fill, planned[key] - 1)) {
+          over.push(fill.name);
+        }
+      }
+      if (over.length) {
+        return {
+          reason: over.length === 1 ? over[0] + " is at the attach cap (20/account or 200/char)" : over.slice(0, 2).join(", ") + (over.length > 2 ? " +" + (over.length - 2) : "") + " at attach cap",
+          kind: "err"
+        };
+      }
+      return null;
+    }
+    if (!draft.to.length) {
+      return { reason: "Add a recipient", kind: "warn" };
+    }
+    return null;
+  }
+
+  // src/host/mail/mailState.ts
+  var listeners7 = [];
+  var toastListeners = [];
+  var locallyReadIds = /* @__PURE__ */ new Set();
+  var state = {
+    mails: [],
+    nextCursor: null,
+    hasMore: false,
+    lastHeadAt: 0,
+    lastHeadReason: "\u2014",
+    status: "",
+    statusKind: "",
+    loading: false,
+    loadingMore: false,
+    prefetchArmed: false,
+    panelOpen: false,
+    view: { kind: "list" },
+    lastScript: "",
+    lastSeenUnread: -1,
+    newMailCount: 0,
+    commandBusy: false,
+    unreadStuckHint: "",
+    undoCount: 0,
+    undoEndsAt: 0,
+    deleteProgress: null,
+    refreshProgress: null,
+    sessionDraft: emptyDraft()
+  };
+  function notifyListeners() {
+    for (let i = 0; i < listeners7.length; i++) listeners7[i]();
+  }
+  function emitToast(message) {
+    for (let i = 0; i < toastListeners.length; i++) toastListeners[i](message);
+  }
+  function commit(patch, opts) {
+    let changed = false;
+    for (const key in patch) {
+      if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+      const k = key;
+      if (state[k] !== patch[k]) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) return;
+    Object.assign(state, patch);
+    if (!(opts && opts.silent)) notifyListeners();
+  }
+  function setStatus(text, kind = "") {
+    commit({ status: text, statusKind: kind });
+  }
+  function setMailView(next) {
+    commit({ view: next });
+  }
+  function subscribeMailStore(fn) {
+    listeners7.push(fn);
+    return () => {
+      const idx = listeners7.indexOf(fn);
+      if (idx >= 0) listeners7.splice(idx, 1);
+    };
+  }
+  function subscribeMailToast(fn) {
+    toastListeners.push(fn);
+    return () => {
+      const idx = toastListeners.indexOf(fn);
+      if (idx >= 0) toastListeners.splice(idx, 1);
+    };
+  }
+  function getMailSnapshot() {
+    return {
+      mails: state.mails,
+      nextCursor: state.nextCursor,
+      hasMore: state.hasMore,
+      lastHeadAt: state.lastHeadAt,
+      lastHeadReason: state.lastHeadReason,
+      status: state.status,
+      statusKind: state.statusKind,
+      loading: state.loading,
+      loadingMore: state.loadingMore,
+      prefetchArmed: state.prefetchArmed,
+      panelOpen: state.panelOpen,
+      view: state.view,
+      lastScript: state.lastScript,
+      lastSeenUnread: state.lastSeenUnread,
+      newMailCount: state.newMailCount,
+      commandBusy: state.commandBusy,
+      unreadStuckHint: state.unreadStuckHint,
+      undoCount: state.undoCount,
+      undoEndsAt: state.undoEndsAt,
+      deleteProgress: state.deleteProgress,
+      refreshProgress: state.refreshProgress
+    };
+  }
+  function getMails() {
+    return state.mails;
+  }
+  function getNextCursor() {
+    return state.nextCursor;
+  }
+  function getHasMore() {
+    return state.hasMore;
+  }
+  function getLastHeadAt() {
+    return state.lastHeadAt;
+  }
+  function getLoadingMore() {
+    return state.loadingMore;
+  }
+  function getPanelOpen() {
+    return state.panelOpen;
+  }
+  function getView() {
+    return state.view;
+  }
+  function getLastSeenUnread() {
+    return state.lastSeenUnread;
+  }
+  function getCommandBusy() {
+    return state.commandBusy;
+  }
+  function getRefreshProgress() {
+    return state.refreshProgress;
+  }
+  function getLocallyReadIds() {
+    return locallyReadIds;
+  }
+  function getActiveComposeDraft() {
+    if (state.view.kind === "compose") return state.view.draft;
+    return state.sessionDraft;
+  }
+
+  // src/host/mail/mailCompose.ts
+  var draftHydrated = false;
+  function ensureComposeDraftHydrated() {
+    if (draftHydrated) return;
+    draftHydrated = true;
+    const draft = loadPersistedDraft();
+    commit({ sessionDraft: draft }, { silent: true });
+  }
+  function stickyLastTo() {
+    try {
+      const last = loadSettings().mailLastTo;
+      return Array.isArray(last) ? last.map(String).filter(Boolean) : [];
+    } catch (e2) {
+      return [];
+    }
+  }
+  function writeDraftSettings(draft) {
+    try {
+      saveSettings({ mailDraft: JSON.stringify(draft) });
+    } catch (e2) {
+    }
+  }
+  function commitCompose(mutator, opts) {
+    ensureComposeDraftHydrated();
+    const cur = getActiveComposeDraft();
+    const next = canonicalizeDraft(mutator(cur));
+    const patch = {
+      view: { kind: "compose", draft: next },
+      sessionDraft: next
+    };
+    if (opts && opts.status != null) {
+      patch.status = opts.status;
+      patch.statusKind = opts.statusKind || "";
+    }
+    commit(patch);
+    writeDraftSettings(next);
+    return next;
+  }
+  function persistDraft(draft) {
+    const next = canonicalizeDraft(draft);
+    commit({ sessionDraft: next }, { silent: true });
+    writeDraftSettings(next);
+  }
+  function loadPersistedDraft() {
+    try {
+      const raw = loadSettings().mailDraft;
+      if (!raw || typeof raw !== "string") return emptyDraft();
+      const parsed = JSON.parse(raw);
+      const tos = normalizeComposeTos(
+        Array.isArray(parsed.to) ? parsed.to.map(String) : []
+      );
+      const fallback = tos[0] || "";
+      const hasAttaches = Array.isArray(parsed.attaches) && parsed.attaches.length > 0;
+      const rawList = hasAttaches ? parsed.attaches : parsed.attach ? [parsed.attach] : [];
+      const attaches = [];
+      for (let i = 0; i < rawList.length; i++) {
+        attaches.push(migrateComposeAttach(rawList[i], fallback));
+      }
+      const draft = canonicalizeDraft({
+        to: tos,
+        subject: String(parsed.subject || ""),
+        body: String(parsed.body || ""),
+        attaches
+      });
+      if (!hasAttaches && parsed.attach) {
+        writeDraftSettings(draft);
+      }
+      return draft;
+    } catch (e2) {
+      return emptyDraft();
+    }
+  }
+  function openCompose(partial) {
+    ensureComposeDraftHydrated();
+    const draft = resolveComposeOpen({
+      session: getActiveComposeDraft(),
+      stickyTo: stickyLastTo(),
+      partial
+    });
+    commit({
+      view: { kind: "compose", draft },
+      sessionDraft: draft
+    });
+    writeDraftSettings(draft);
+  }
+  function queueMailAttach(fp) {
+    ensureComposeDraftHydrated();
+    if (getView().kind !== "compose") openCompose();
+    const cur = getActiveComposeDraft();
+    const to = pickToForNewAttach(cur);
+    const nextLen = cur.attaches.filter((a) => a.slot !== fp.slot).length + 1;
+    commitCompose(
+      (d) => {
+        const list = d.attaches.filter((a) => a.slot !== fp.slot);
+        list.push(makeComposeAttach(fp, to));
+        const subject = String(d.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : d.subject;
+        return { ...d, subject, attaches: list };
+      },
+      {
+        status: to ? nextLen === 1 ? "Attached " + fp.name + " \u2192 " + to : "Queued " + nextLen + " items \xB7 " + fp.name + " \u2192 " + to : nextLen === 1 ? "Attached " + fp.name + " \xB7 add To to send" : "Queued " + nextLen + " items \xB7 " + fp.name + " \xB7 add To to send"
+      }
+    );
+  }
+  function queueMailAttaches(fps) {
+    ensureComposeDraftHydrated();
+    if (!fps.length) return 0;
+    if (getView().kind !== "compose") openCompose();
+    let added = 0;
+    commitCompose(
+      (d) => {
+        const bySlot = /* @__PURE__ */ new Map();
+        for (let i = 0; i < d.attaches.length; i++) {
+          bySlot.set(d.attaches[i].slot, d.attaches[i]);
+        }
+        let rr = 0;
+        const pool = d.to.slice();
+        for (let i = 0; i < fps.length; i++) {
+          const fp = fps[i];
+          const slot = Number(fp.slot) | 0;
+          const had = bySlot.has(slot);
+          const prev = bySlot.get(slot);
+          let to = prev && String(prev.to || "").trim() ? String(prev.to) : "";
+          if (!to && pool.length) {
+            to = pool[rr % pool.length];
+            rr += 1;
+          }
+          bySlot.set(slot, makeComposeAttach(fp, to));
+          if (!had) added += 1;
+        }
+        const list = [];
+        bySlot.forEach((a) => list.push(a));
+        list.sort((a, b) => (a.slot | 0) - (b.slot | 0));
+        const subject = String(d.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : d.subject;
+        return { ...d, subject, attaches: list };
+      },
+      {
+        status: added <= 0 ? "Matching items already queued" : added === 1 ? "Queued 1 matching item" : "Queued " + added + " matching items"
+      }
+    );
+    return added;
+  }
+  function patchComposeDraft(partial) {
+    if (getView().kind !== "compose") return;
+    commitCompose((d) => {
+      const to = partial.to ? normalizeComposeTos(partial.to) : d.to;
+      const subject = partial.subject != null ? partial.subject : d.subject;
+      const body = partial.body != null ? partial.body : d.body;
+      let attaches = d.attaches;
+      if (partial.attaches) {
+        attaches = [];
+        for (let i = 0; i < partial.attaches.length; i++) {
+          const a = partial.attaches[i];
+          attaches.push(
+            makeComposeAttach(a, String(a.to || "").trim())
+          );
+        }
+      } else if (partial.to) {
+        attaches = rebindAttachesToPool(d.attaches, to);
+      }
+      return { to, subject, body, attaches };
+    });
+  }
+  function setMailAttachTo(index, to) {
+    if (getView().kind !== "compose") return;
+    const name = String(to || "").trim();
+    if (!name) return;
+    commitCompose((d) => {
+      if (index < 0 || index >= d.attaches.length) return d;
+      const list = d.attaches.slice();
+      list[index] = { ...list[index], to: name };
+      return {
+        ...d,
+        to: normalizeComposeTos(d.to.concat([name])),
+        attaches: list
+      };
+    });
+  }
+  function distributeMailAttaches() {
+    if (getView().kind !== "compose") return;
+    commitCompose((d) => distributeAttachesAcrossTos(d), {
+      status: "Distributed items across To recipients"
+    });
+  }
+  function mailMatchingToFreeOwn(opts) {
+    ensureComposeDraftHydrated();
+    if (getView().kind !== "compose") openCompose();
+    const cur = getActiveComposeDraft();
+    const freeOwn = ownCharsWithFreeMailSpace({
+      mails: opts.mails,
+      selfNames: opts.selfNames,
+      incomplete: opts.incomplete,
+      exclude: []
+    });
+    const planned = buildMailMatchingToFreeOwnDraft({
+      draft: cur,
+      fingerprints: opts.fingerprints,
+      freeOwnNames: freeOwn
+    });
+    commitCompose(() => planned.draft, {
+      status: planned.status,
+      statusKind: planned.statusKind
+    });
+    return {
+      queued: planned.queued,
+      freeOwn: planned.freeOwn,
+      assigned: planned.assigned,
+      needTo: planned.needTo
+    };
+  }
+  function clearComposeAndClose() {
+    ensureComposeDraftHydrated();
+    commitCompose(() => emptyDraft(), { status: "Compose cleared" });
+    try {
+      saveSettings({ mailLastTo: [] });
+    } catch (e2) {
+    }
+    setMailView({ kind: "list" });
+  }
+  function clearComposeDraft() {
+    if (getView().kind !== "compose") return;
+    commitCompose(() => emptyDraft(), { status: "Compose cleared" });
+    try {
+      saveSettings({ mailLastTo: [] });
+    } catch (e2) {
+    }
+  }
+  function addOwnCharsWithFreeMailSpace(names) {
+    if (getView().kind !== "compose") return 0;
+    const add = normalizeComposeTos(names);
+    if (!add.length) return 0;
+    let added = 0;
+    commitCompose(
+      (d) => {
+        const before = d.to.length;
+        const to = normalizeComposeTos(d.to.concat(add));
+        added = Math.max(0, to.length - before);
+        return {
+          ...d,
+          to,
+          attaches: rebindAttachesToPool(d.attaches, to)
+        };
+      },
+      {
+        status: added <= 0 ? "No own characters with free attach space" : added === 1 ? "Added 1 own character with free space" : "Added " + added + " own characters with free space",
+        statusKind: added <= 0 ? "warn" : ""
+      }
+    );
+    return added;
+  }
+  function removeMailAttachAt(index) {
+    if (getView().kind !== "compose") return;
+    commitCompose((d) => {
+      if (index < 0 || index >= d.attaches.length) return d;
+      const list = d.attaches.slice();
+      list.splice(index, 1);
+      return { ...d, attaches: list };
+    });
+  }
+  function replyToMail(mail) {
+    openCompose({
+      to: mail.fro ? [mail.fro] : [],
+      subject: mail.subject ? mail.subject.indexOf("Re:") === 0 ? mail.subject : "Re: " + mail.subject : "Re:",
+      body: "",
+      attaches: []
+    });
+  }
+  function forwardMail(mail) {
+    const quoted = "\n\n---------- Forwarded message ----------\nFrom: " + (mail.fro || "?") + "\nTo: " + (mail.to || "?") + "\nSubject: " + (mail.subject || "") + "\n\n" + (mail.message || "");
+    openCompose({
+      to: [],
+      subject: mail.subject ? mail.subject.indexOf("Fwd:") === 0 ? mail.subject : "Fwd: " + mail.subject : "Fwd:",
+      body: quoted,
+      attaches: []
+    });
+  }
+
+  // src/ui/bag/composeBagHighlight.ts
+  var HOST_ID2 = "bottomleftcorner";
+  var COMPOSE_BAG_QUEUE_CLASS = "is-ecu-compose-queue";
+  var activeSlots = [];
+  var installed2 = false;
+  function uniqueSlots(slots) {
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (let i = 0; i < slots.length; i++) {
+      const n = Number(slots[i]);
+      if (!Number.isFinite(n) || n < 0) continue;
+      const slot = n | 0;
+      if (seen.has(slot)) continue;
+      seen.add(slot);
+      out.push(slot);
+    }
+    return out;
+  }
+  function slotsFromComposeAttaches(attaches) {
+    const slots = [];
+    for (let i = 0; i < attaches.length; i++) {
+      slots.push(attaches[i].slot);
+    }
+    return uniqueSlots(slots);
+  }
+  function applyComposeBagHighlights() {
+    const host2 = document.getElementById(HOST_ID2);
+    if (!host2) return;
+    const want = new Set(activeSlots);
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const raw = node.getAttribute("data-cnum");
+      if (raw == null || raw === "") {
+        node.classList.remove(COMPOSE_BAG_QUEUE_CLASS);
+        continue;
+      }
+      const num = parseInt(raw, 10);
+      if (want.has(num)) node.classList.add(COMPOSE_BAG_QUEUE_CLASS);
+      else node.classList.remove(COMPOSE_BAG_QUEUE_CLASS);
+    }
+  }
+  function setComposeBagHighlights(slots) {
+    activeSlots = uniqueSlots(slots);
+    applyComposeBagHighlights();
+  }
+  function clearComposeBagHighlights() {
+    activeSlots = [];
+    applyComposeBagHighlights();
+  }
+  function syncComposeBagHighlightsFromDraft() {
+    const draft = getActiveComposeDraft();
+    setComposeBagHighlights(slotsFromComposeAttaches(draft.attaches));
+  }
+  function installComposeBagHighlight() {
+    if (installed2) return () => {
+    };
+    installed2 = true;
+    ensureComposeDraftHydrated();
+    syncComposeBagHighlightsFromDraft();
+    const unsub2 = subscribeMailStore(syncComposeBagHighlightsFromDraft);
+    return () => {
+      unsub2();
+      installed2 = false;
+      clearComposeBagHighlights();
+    };
+  }
+
+  // src/lib/luckyUpgradePrefs.ts
+  var STORAGE_KEY = "al-comm-ui-lucky-upgrade-v1";
+  var LUCKY_SLOT_MAX_DEFAULT = 41;
+  function normalizeLuckySlot(raw, maxSlot = LUCKY_SLOT_MAX_DEFAULT) {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(n)) return 0;
+    const slot = Math.floor(n);
+    if (slot < 0) return 0;
+    const max = Math.max(0, maxSlot | 0);
+    return slot > max ? max : slot;
+  }
+  function normalizeLuckyUpgradePref(raw) {
+    if (!raw || typeof raw !== "object") {
+      return { enabled: false, slot: 0 };
+    }
+    const o = raw;
+    return {
+      enabled: !!o.enabled,
+      slot: normalizeLuckySlot(o.slot)
+    };
+  }
+  function luckyUpgradeCharKey() {
+    try {
+      const obs = window.observing;
+      const obsName = obs && obs.name != null ? String(obs.name).trim() : "";
+      if (obsName) return obsName;
+      const ch = window.character;
+      const chName = ch && ch.name != null ? String(ch.name).trim() : "";
+      return chName || null;
+    } catch (e2) {
+      return null;
+    }
+  }
+  function readStore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return /* @__PURE__ */ Object.create(null);
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return /* @__PURE__ */ Object.create(null);
+      }
+      const out = /* @__PURE__ */ Object.create(null);
+      const keys = Object.keys(parsed);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        out[k] = normalizeLuckyUpgradePref(
+          parsed[k]
+        );
+      }
+      return out;
+    } catch (e2) {
+      return /* @__PURE__ */ Object.create(null);
+    }
+  }
+  function writeStore(store) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    } catch (e2) {
+    }
+  }
+  function getLuckyUpgradePref(charKey) {
+    const key = charKey != null && String(charKey).trim() ? String(charKey).trim() : luckyUpgradeCharKey();
+    if (!key) return { enabled: false, slot: 0 };
+    const store = readStore();
+    return store[key] ? normalizeLuckyUpgradePref(store[key]) : { enabled: false, slot: 0 };
+  }
+  function setLuckyUpgradePref(partial, charKey) {
+    const key = charKey != null && String(charKey).trim() ? String(charKey).trim() : luckyUpgradeCharKey();
+    if (!key) {
+      return normalizeLuckyUpgradePref({
+        enabled: !!partial.enabled,
+        slot: partial.slot
+      });
+    }
+    const prev = getLuckyUpgradePref(key);
+    const next = normalizeLuckyUpgradePref({
+      enabled: partial.enabled != null ? partial.enabled : prev.enabled,
+      slot: partial.slot != null ? partial.slot : prev.slot
+    });
+    const store = readStore();
+    store[key] = next;
+    writeStore(store);
+    return next;
+  }
+  function resolveLuckySlotForShrine(charKey) {
+    const pref = getLuckyUpgradePref(charKey);
+    if (!pref.enabled) return null;
+    return normalizeLuckySlot(pref.slot);
+  }
+
+  // src/ui/bag/shrineBagHighlight.ts
+  var HOST_ID3 = "bottomleftcorner";
+  var SHRINE_BAG_PICK_CLASS = "is-ecu-shrine-pick";
+  var SHRINE_BAG_LUCKY_CLASS = "is-ecu-shrine-lucky";
+  var SHRINE_BAG_LUCKY_EMPTY_CLASS = "is-ecu-shrine-lucky-empty";
+  var activeSlots2 = [];
+  var luckyOverride = void 0;
+  function bagSlotIsEmpty(slot) {
+    try {
+      const obs = window.observing;
+      const items = obs && Array.isArray(obs.items) ? obs.items : null;
+      if (!items || slot < 0 || slot >= items.length) return true;
+      const it = items[slot];
+      return !it || !it.name || it.name === "placeholder";
+    } catch (e2) {
+      return true;
+    }
+  }
+  function uniqueSlots2(slots) {
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (let i = 0; i < slots.length; i++) {
+      const n = Number(slots[i]);
+      if (!Number.isFinite(n) || n < 0) continue;
+      const slot = n | 0;
+      if (seen.has(slot)) continue;
+      seen.add(slot);
+      out.push(slot);
+    }
+    return out;
+  }
+  function resolvedLuckySlot() {
+    if (luckyOverride !== void 0) {
+      if (luckyOverride == null || !Number.isFinite(luckyOverride) || luckyOverride < 0) {
+        return null;
+      }
+      return luckyOverride | 0;
+    }
+    return resolveLuckySlotForShrine();
+  }
+  function applyShrineBagHighlights() {
+    const host2 = document.getElementById(HOST_ID3);
+    if (!host2) return;
+    const want = new Set(activeSlots2);
+    const luckySlot = resolvedLuckySlot();
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const raw = node.getAttribute("data-cnum");
+      if (raw == null || raw === "") {
+        node.classList.remove(SHRINE_BAG_PICK_CLASS);
+        node.classList.remove(SHRINE_BAG_LUCKY_CLASS);
+        node.classList.remove(SHRINE_BAG_LUCKY_EMPTY_CLASS);
+        continue;
+      }
+      const num = parseInt(raw, 10);
+      if (want.has(num)) node.classList.add(SHRINE_BAG_PICK_CLASS);
+      else node.classList.remove(SHRINE_BAG_PICK_CLASS);
+      if (luckySlot != null && num === luckySlot) {
+        node.classList.add(SHRINE_BAG_LUCKY_CLASS);
+        if (bagSlotIsEmpty(num)) node.classList.add(SHRINE_BAG_LUCKY_EMPTY_CLASS);
+        else node.classList.remove(SHRINE_BAG_LUCKY_EMPTY_CLASS);
+      } else {
+        node.classList.remove(SHRINE_BAG_LUCKY_CLASS);
+        node.classList.remove(SHRINE_BAG_LUCKY_EMPTY_CLASS);
+      }
+    }
+  }
+  function setShrineBagHighlights(slots) {
+    activeSlots2 = uniqueSlots2(slots);
+    applyShrineBagHighlights();
+  }
+  function setShrineLuckySlotHighlight(slot) {
+    if (slot == null || !Number.isFinite(slot) || slot < 0) {
+      luckyOverride = null;
+    } else {
+      luckyOverride = slot | 0;
+    }
+    applyShrineBagHighlights();
+  }
+  function clearShrineBagHighlights() {
+    activeSlots2 = [];
+    luckyOverride = void 0;
+    applyShrineBagHighlights();
+  }
+
+  // src/ui/chrome/stripNativeTitles.ts
+  function stripNativeTitles(root) {
+    if (!root) return;
+    root.removeAttribute("title");
+    const titled = root.querySelectorAll("[title]");
+    for (let i = 0; i < titled.length; i++) {
+      titled[i].removeAttribute("title");
+    }
+  }
+
+  // src/host/infoDialog/bindings.ts
+  var openItemFn = null;
+  var openConditionFn = null;
+  function bindOpenHandlers(openItem2, openCondition2) {
+    openItemFn = openItem2;
+    openConditionFn = openCondition2;
+  }
+  function callOpenItem(entity, slotName, slotOverride) {
+    if (openItemFn) openItemFn(entity, slotName, slotOverride);
+  }
+  function callOpenCondition(entity, conditionName) {
+    if (openConditionFn) openConditionFn(entity, conditionName);
+  }
+
+  // src/host/infoDialog/types.ts
+  var BUFF_DIALOG_ID = "ecu-buff-dialog";
+  var ITEM_DIALOG_ID = "ecu-item-dialog";
+  var STOCK_DIALOG_ID = "topleftcornerdialog";
+  var INFO_SOURCE_ATTR = "data-ecu-info-source";
+  var CLOSE_CLASS = "ecu-dialog-close";
+  var ADOPTED_CLASS = "ecu-info-dialog-adopted";
+  var BUFF_SEL = "#" + BUFF_DIALOG_ID;
+  var ITEM_SEL = "#" + ITEM_DIALOG_ID;
+  var STOCK_SEL = "#" + STOCK_DIALOG_ID;
+  function dialogIdFor(kind) {
+    return kind === "buff" ? BUFF_DIALOG_ID : ITEM_DIALOG_ID;
+  }
+  function panelAttrFor(kind) {
+    return kind === "buff" ? "buffInfo" : "itemInfo";
+  }
+
+  // src/host/infoDialog/css.ts
+  var STYLE_ID2 = "comm-ui-dialog-host-css";
+  function injectDialogHostCss() {
+    let style = document.getElementById(STYLE_ID2);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = STYLE_ID2;
+      document.head.append(style);
+    }
+    style.textContent = `
+/* Fallback host when not yet adopted into CommUI layout panel. */
+#topleftcorner:not(.ecu-info-slot-host) {
+  position: fixed !important;
+  top: 8px !important;
+  left: 8px !important;
+  z-index: 230 !important;
+  pointer-events: none !important;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
+}
+#topleftcornerui {
+  pointer-events: auto !important;
+  vertical-align: top;
+  display: inline-block;
+}
+/* Stub: leftover stock selectors still target this id; content lives in ecu-* hosts. */
+#${STOCK_DIALOG_ID} {
+  display: none !important;
+}
+#${BUFF_DIALOG_ID},
+#${ITEM_DIALOG_ID} {
+  /* Idle hosts must not eat clicks \u2014 parent panels can be pointer-events:none
+   * while this child still had auto !important and a leftover frame box. */
+  pointer-events: none !important;
+  vertical-align: top;
+  display: none;
+  position: relative;
+}
+#${BUFF_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty),
+#${ITEM_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty) {
+  display: block;
+  pointer-events: auto !important;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
+}
+#${BUFF_DIALOG_ID} .${CLOSE_CLASS},
+#${ITEM_DIALOG_ID} .${CLOSE_CLASS} {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  cursor: pointer;
+  border: 1px solid #555;
+  background: #1c1c1c;
+  color: #ddd;
+  width: 28px;
+  height: 28px;
+  line-height: 24px;
+  padding: 0;
+  font-size: 18px;
+  text-align: center;
+  box-sizing: border-box;
+}
+#${BUFF_DIALOG_ID} .${CLOSE_CLASS}:hover,
+#${ITEM_DIALOG_ID} .${CLOSE_CLASS}:hover {
+  border-color: #888;
+  color: #fff;
+}
+`;
+  }
+
+  // src/host/infoDialog/hosts.ts
+  function dialogEl(kind) {
+    return document.getElementById(dialogIdFor(kind));
+  }
+  function hasContent(el) {
+    if (!el) return false;
+    if (el.querySelector(".buyitem, .cccx, img, canvas, table, svg")) return true;
+    const walk = (node) => {
+      if (node.nodeType === 3) return node.textContent || "";
+      if (node.nodeType !== 1) return "";
+      const he = node;
+      if (he.classList && he.classList.contains(CLOSE_CLASS)) return "";
+      let out = "";
+      const kids = he.childNodes;
+      for (let i = 0; i < kids.length; i++) out += walk(kids[i]);
+      return out;
+    };
+    return walk(el).replace(/\s+/g, "").length > 0;
+  }
+  function ensureNamedDialog(id, parent) {
+    let dialog = document.getElementById(id);
+    if (!dialog) {
+      dialog = document.createElement("div");
+      dialog.id = id;
+      dialog.className = "bpclicks enableclicks";
+      parent.append(dialog);
+    }
+    return dialog;
+  }
+  function ensureDialogElements() {
+    injectDialogHostCss();
+    const body = document.body;
+    if (!body) {
+      throw new Error("ensureDialogElements: document.body is not ready");
+    }
+    let corner = document.getElementById("topleftcorner");
+    if (!corner) {
+      corner = document.createElement("div");
+      corner.id = "topleftcorner";
+      corner.className = "bpclicks";
+      body.append(corner);
+    }
+    if (!document.getElementById("topleftcornerui")) {
+      const ui = document.createElement("div");
+      ui.id = "topleftcornerui";
+      ui.className = "bpclicks";
+      corner.append(ui);
+    }
+    const stock = ensureNamedDialog(STOCK_DIALOG_ID, corner);
+    const buff = ensureNamedDialog(BUFF_DIALOG_ID, corner);
+    const item = ensureNamedDialog(ITEM_DIALOG_ID, corner);
+    return { buff, item, stock };
+  }
+  function adoptInfoDialog(kind, slot) {
+    const { buff, item } = ensureDialogElements();
+    const dialog = kind === "buff" ? buff : item;
+    if (dialog.parentElement !== slot) {
+      slot.appendChild(dialog);
+    }
+    dialog.classList.add(ADOPTED_CLASS);
+    dialog.setAttribute("data-ecu-kind", kind);
+    dialog.setAttribute("data-panel-host", panelAttrFor(kind));
+    const corner = document.getElementById("topleftcorner");
+    if (corner) corner.classList.add("ecu-info-slot-host");
+    return dialog;
+  }
+  function ensureAdoptedHost(kind) {
+    const { buff, item } = ensureDialogElements();
+    const slotSel = kind === "item" ? ".comm-item-info-slot" : ".comm-buff-info-slot";
+    const slot = document.querySelector(slotSel);
+    if (slot) return adoptInfoDialog(kind, slot);
+    return kind === "buff" ? buff : item;
+  }
+
+  // src/host/infoDialog/write.ts
+  var listeners8 = /* @__PURE__ */ new Set();
+  var pendingWriteKind = "item";
+  function setPendingWriteKind(kind) {
+    pendingWriteKind = kind;
+  }
+  function getPendingWriteKind() {
+    return pendingWriteKind;
+  }
+  function subscribeInfoDialogChange(listener) {
+    listeners8.add(listener);
+    return () => {
+      listeners8.delete(listener);
+    };
+  }
+  function emitInfoDialogChange(kind, open) {
+    for (const listener of Array.from(listeners8)) {
+      try {
+        listener(kind, open);
+      } catch (e2) {
+      }
+    }
+  }
+  function clearDialogOnlyXTarget() {
+    if (window.__ecuDialogOnlyXTarget) {
+      window.__ecuDialogOnlyXTarget = false;
+      window.xtarget = null;
+    }
+  }
+  function clearDialogsTarget() {
+    try {
+      window.dialogs_target = null;
+    } catch (e2) {
+    }
+  }
+  function ensureCloseButton(dialog, kind, closeFn) {
+    if (!hasContent(dialog)) return;
+    if (dialog.querySelector("." + CLOSE_CLASS)) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = CLOSE_CLASS;
+    btn.title = "Close";
+    btn.setAttribute("aria-label", "Close");
+    btn.textContent = "\xD7";
+    btn.addEventListener("click", (ev) => {
+      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      closeFn(kind);
+    });
+    const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
+    if (panel) {
+      const pos = window.getComputedStyle(panel).position;
+      if (!pos || pos === "static") panel.style.position = "relative";
+      panel.appendChild(btn);
+    } else {
+      dialog.appendChild(btn);
+    }
+  }
+  var FN_ORIG = "__ecuInfoOrig";
+  function buildItemHtml(args) {
+    const w = window;
+    const renderItem = typeof w.render_item === "function" && w.render_item[FN_ORIG] || w.render_item;
+    if (typeof renderItem !== "function") return "";
+    try {
+      const html = renderItem.call(w, "html", args);
+      return typeof html === "string" ? html : "";
+    } catch (e2) {
+      return "";
+    }
+  }
+  function buildConditionHtml(name) {
+    const w = window;
+    const G = w.G;
+    if (!G || !G.conditions) return "";
+    let def = G.conditions[name];
+    let minutes = 0;
+    let condition;
+    const target = w.xtarget || w.ctarget;
+    if (target && target.s && target.s[name] && target.s[name].ms) {
+      minutes = target.s[name].ms / 6e3 / 10;
+    }
+    if (target && target.s && target.s[name]) {
+      const clone = typeof w.clone === "function" ? w.clone : null;
+      def = !def ? {} : clone ? clone(def) : { ...def };
+      condition = target.s[name];
+      const keys = Object.keys(condition);
+      for (let i = 0; i < keys.length; i++) {
+        def[keys[i]] = condition[keys[i]];
+      }
+    }
+    return buildItemHtml({
+      skin: condition && condition.skin || def && def.skin,
+      item: def,
+      prop: def,
+      minutes,
+      condition
+    });
+  }
+  var closeKindImpl = () => false;
+  function bindCloseImpl(fn) {
+    closeKindImpl = fn;
+  }
+  function writeInfoHtml(kind, html) {
+    const host2 = ensureAdoptedHost(kind);
+    host2.innerHTML = html || "";
+    if (hasContent(host2)) {
+      ensureCloseButton(host2, kind, (k) => {
+        closeKindImpl(k);
+      });
+      emitInfoDialogChange(kind, true);
+      return;
+    }
+    if (host2.innerHTML) host2.innerHTML = "";
+    emitInfoDialogChange(kind, false);
+  }
+  function clearInfoHost(kind) {
+    const el = dialogEl(kind);
+    if (!el) return false;
+    const had = hasContent(el) || !!String(el.innerHTML || "").trim();
+    if (!had) return false;
+    el.innerHTML = "";
+    if (kind === "buff") clearDialogOnlyXTarget();
+    clearDialogsTarget();
+    emitInfoDialogChange(kind, false);
+    return true;
+  }
+
+  // src/host/infoDialog/dismiss.ts
+  var HANDLER = "__ecuDialogDismissHandler";
+  var layoutEditing = false;
+  function setInfoDialogLayoutEditing(editing) {
+    layoutEditing = !!editing;
+  }
+  function isOpen(kind) {
+    return hasContent(dialogEl(kind));
+  }
+  function isInfoDialogChrome(el) {
+    if (!el.closest) return false;
+    return !!(el.closest("#" + BUFF_DIALOG_ID) || el.closest("#" + ITEM_DIALOG_ID) || el.closest('[data-panel="buffInfo"]') || el.closest('[data-panel="itemInfo"]'));
+  }
+  function isInfoSource(el) {
+    if (!el.closest) return false;
+    return !!el.closest("[" + INFO_SOURCE_ATTR + "]");
+  }
+  function isTourChrome(el) {
+    if (!el.closest) return false;
+    return !!(el.closest("[data-ecu-tour-portal]") || el.closest(".ecu-tour-root") || el.closest(".ecu-tour-card"));
+  }
+  function onDialogDismissPointerDown(ev) {
+    if (layoutEditing) return;
+    if (!isOpen("buff") && !isOpen("item")) return;
+    const t = ev.target;
+    if (!t) return;
+    const el = t;
+    if (isInfoDialogChrome(el) || isInfoSource(el) || isTourChrome(el)) {
+      return;
+    }
+    clearInfoHost("buff");
+    clearInfoHost("item");
+  }
+  function installDialogDismiss() {
+    const prev = window[HANDLER];
+    if (prev) {
+      document.removeEventListener("pointerdown", prev, true);
+    }
+    window[HANDLER] = onDialogDismissPointerDown;
+    document.addEventListener("pointerdown", onDialogDismissPointerDown, true);
+  }
+
+  // src/host/infoDialog/patches.ts
+  var PATCHED = "__ecuDialogRendersPatched";
+  var FN_MARK = "__ecuInfoPatched";
+  var FN_ORIG2 = "__ecuInfoOrig";
+  function markPatched(patched, orig) {
+    patched[FN_MARK] = true;
+    patched[FN_ORIG2] = orig;
+    return patched;
+  }
+  function isOurPatch(fn) {
+    return !!(fn && fn[FN_MARK]);
+  }
+  function isStockOrEcuSelector(selector) {
+    return selector === STOCK_SEL || selector === STOCK_DIALOG_ID || selector === BUFF_SEL || selector === ITEM_SEL || selector === "#" + STOCK_DIALOG_ID;
+  }
+  function kindFromSelector(selector) {
+    if (selector === BUFF_SEL) return "buff";
+    if (selector === ITEM_SEL) return "item";
+    return getPendingWriteKind();
+  }
+  function installRenderPatches() {
+    const w = window;
+    const done = w[PATCHED] || (w[PATCHED] = {});
+    if (typeof w.render_condition === "function" && !isOurPatch(w.render_condition)) {
+      const orig = w.render_condition[FN_ORIG2] || w.render_condition;
+      w.render_condition = markPatched(function(selector, name) {
+        setPendingWriteKind("buff");
+        return orig.call(this, selector, name);
+      }, orig);
+      done.condition = true;
+    }
+    if (typeof w.render_skill === "function" && !isOurPatch(w.render_skill)) {
+      const orig = w.render_skill[FN_ORIG2] || w.render_skill;
+      w.render_skill = markPatched(function(selector, skill, args) {
+        setPendingWriteKind("buff");
+        return orig.call(this, selector, skill, args);
+      }, orig);
+      done.skill = true;
+    }
+    if (typeof w.render_item === "function" && !isOurPatch(w.render_item)) {
+      const orig = w.render_item[FN_ORIG2] || w.render_item;
+      w.render_item = markPatched(function(selector, args) {
+        if (selector === "html") {
+          return orig.call(this, "html", args);
+        }
+        if (isStockOrEcuSelector(selector)) {
+          const kind = kindFromSelector(selector);
+          setPendingWriteKind(kind);
+          const html = orig.call(this, "html", args);
+          if (typeof html === "string") writeInfoHtml(kind, html);
+          return html;
+        }
+        return orig.call(this, selector, args);
+      }, orig);
+      done.item = true;
+    }
+    if (typeof w.slot_click === "function" && !isOurPatch(w.slot_click)) {
+      const origSlot = w.slot_click[FN_ORIG2] || w.slot_click;
+      w.slot_click = markPatched(function(name) {
+        const target = w.xtarget || w.ctarget;
+        if (target) callOpenItem(target, name);
+      }, origSlot);
+      done.slot = true;
+    }
+    if (typeof w.condition_click === "function" && !isOurPatch(w.condition_click)) {
+      const origCond = w.condition_click[FN_ORIG2] || w.condition_click;
+      w.condition_click = markPatched(function(name) {
+        const target = w.xtarget || w.ctarget;
+        if (target) callOpenCondition(target, name);
+        else origCond.call(this, name);
+      }, origCond);
+      done.conditionClick = true;
+    }
+  }
+  function installInfoDialogLifecycle() {
+    ensureDialogElements();
+    installRenderPatches();
+    installDialogDismiss();
+    if (!window.__ecuDialogPatchRetry) {
+      window.__ecuDialogPatchRetry = true;
+      let tries = 0;
+      const timer = window.setInterval(() => {
+        tries += 1;
+        installRenderPatches();
+        const w = window;
+        const ready = isOurPatch(w.render_condition) && isOurPatch(w.render_item) && isOurPatch(w.slot_click) && isOurPatch(w.render_skill);
+        if (ready || tries >= 80) {
+          window.clearInterval(timer);
+        }
+      }, 250);
+    }
+  }
+
+  // src/host/infoDialog/api.ts
+  var lastConditionId = "";
+  var lastSlotName = "";
+  function resolvePaperdollEntity(entity) {
+    if (!entity) return entity;
+    const id = entity.id;
+    if (id == null || id === "") return entity;
+    const tid = String(id);
+    const raw = window.entities;
+    if (!raw) return entity;
+    if (!Array.isArray(raw)) {
+      const byKey = raw[tid] || raw[id];
+      if (byKey && byKey.slots) return byKey;
+    }
+    const list = Array.isArray(raw) ? raw : Object.values(raw);
+    for (let i = 0; i < list.length; i++) {
+      const ent = list[i];
+      if (ent && String(ent.id) === tid && ent.slots) return ent;
+    }
+    return entity;
+  }
+  function setDialogOnlyXTarget(entity) {
+    window.xtarget = entity || null;
+    window.__ecuDialogOnlyXTarget = !!entity;
+  }
+  function setSelectionXTarget(entity) {
+    window.xtarget = entity || null;
+    window.__ecuDialogOnlyXTarget = false;
+  }
+  function isBuffDialogOpen() {
+    return hasContent(dialogEl("buff"));
+  }
+  function isItemDialogOpen() {
+    return hasContent(dialogEl("item"));
+  }
+  function isTopLeftDialogOpen() {
+    return isBuffDialogOpen() || isItemDialogOpen();
+  }
+  function closeBuffDialog() {
+    lastConditionId = "";
+    return clearInfoHost("buff");
+  }
+  function closeItemDialog() {
+    lastSlotName = "";
+    return clearInfoHost("item");
+  }
+  function closeInfo(kind) {
+    if (kind === "buff") return closeBuffDialog();
+    if (kind === "item") return closeItemDialog();
+    if (closeBuffDialog()) return true;
+    return closeItemDialog();
+  }
+  function closeTopLeftDialog() {
+    return closeInfo();
+  }
+  function closeAllInfoDialogs() {
+    const a = closeBuffDialog();
+    const b = closeItemDialog();
+    return a || b;
+  }
+  bindCloseImpl((kind) => closeInfo(kind));
+  function openItem(entity, slotName, slotOverride, opts) {
+    if (!entity || !slotName) return;
+    installInfoDialogLifecycle();
+    const target = resolvePaperdollEntity(entity);
+    const slot = slotOverride && slotOverride.name ? slotOverride : target && target.slots && target.slots[slotName];
+    if (!slot || !slot.name) return;
+    const w = window;
+    const itemHost = ensureAdoptedHost("item");
+    if (lastSlotName === slotName && String(itemHost.innerHTML || "").trim()) {
+      closeItemDialog();
+      w.last_sclick = "";
+      return;
+    }
+    const G = w.G;
+    const def = G && G.items && G.items[slot.name];
+    if (!def) return;
+    setPendingWriteKind("item");
+    lastSlotName = slotName;
+    w.last_sclick = slotName;
+    w.dialogs_target = target;
+    if (opts && opts.dialogOnly) {
+      setDialogOnlyXTarget(target);
+    } else {
+      setSelectionXTarget(target);
+    }
+    const html = buildItemHtml({
+      id: "item" + slotName,
+      item: def,
+      name: slot.name,
+      actual: slot,
+      slot: slotName,
+      from_player: target.id
+    });
+    writeInfoHtml("item", html);
+  }
+  function openCondition(entity, conditionName) {
+    if (!entity || !conditionName) return;
+    installInfoDialogLifecycle();
+    const host2 = ensureAdoptedHost("buff");
+    if (lastConditionId === conditionName && hasContent(host2)) {
+      closeBuffDialog();
+      return;
+    }
+    const w = window;
+    setPendingWriteKind("buff");
+    lastConditionId = conditionName;
+    w.dialogs_target = entity;
+    setDialogOnlyXTarget(entity);
+    const html = buildConditionHtml(conditionName);
+    writeInfoHtml("buff", html);
+  }
+  bindOpenHandlers(openItem, openCondition);
+  function adoptInfoDialog2(kind, slot) {
+    installInfoDialogLifecycle();
+    return adoptInfoDialog(kind, slot);
+  }
+  function ensureDialogHost() {
+    ensureDialogElements();
+    installInfoDialogLifecycle();
+    installRenderPatches();
+    installDialogDismiss();
+  }
+  var info = {
+    openItem,
+    openBuff: openCondition,
+    openCondition,
+    close: closeInfo,
+    closeAll: closeAllInfoDialogs,
+    isOpen: (kind) => {
+      if (kind === "buff") return isBuffDialogOpen();
+      if (kind === "item") return isItemDialogOpen();
+      return isTopLeftDialogOpen();
+    },
+    adopt: adoptInfoDialog2,
+    ensure: ensureDialogHost,
+    subscribe: subscribeInfoDialogChange,
+    setLayoutEditing: setInfoDialogLayoutEditing,
+    sourceAttr: INFO_SOURCE_ATTR
+  };
+
+  // src/host/inventory.ts
+  var HOST_ID4 = "bottomleftcorner";
+  var STYLE_ID3 = "comm-ui-inventory-host-css";
+  var MOUNT_ID = "comm-bag-mount";
+  var SAVED_CHAR = "__ecuInvSavedChar";
+  var HOLD_CHAR = "__ecuInvHoldChar";
+  var BAG_SYNC_STAMP_KEY = "__ecuBagSyncedAt";
+  var listeners9 = [];
+  var syncListeners = [];
+  var bagSyncedAt = null;
+  var bagSyncedForName = null;
+  var bagRenderedForName = null;
+  var bagRefreshing = false;
+  var refreshPendingName = null;
+  var refreshPollTimer = null;
+  var bagSyncSocketId = null;
+  var bagSyncSocketPoll = null;
+  var bagRefreshKind = null;
+  function injectHostCss() {
+    if (document.getElementById(STYLE_ID3)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID3;
+    style.textContent = `
+#${HOST_ID4} {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+  pointer-events: auto;
+  /* 7\xD7~54px float grid needs ~385px \u2014 shrinking below that wraps slots 6+1. */
+  min-width: 385px;
+  width: max-content;
+  max-width: 420px;
+  max-height: min(70vh, calc(100vh - 72px));
+  overflow: auto;
+  box-sizing: border-box;
+}
+html.ecu-phone-dock-on #${HOST_ID4} {
+  max-height: none;
+}
+#${HOST_ID4} .theinventory {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+.imodal .theinventory {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+#${HOST_ID4}.is-trade-delist-target {
+  outline: 2px solid #6ab04c;
+  outline-offset: 2px;
+}
+#${HOST_ID4} [data-cnum].is-bag-swap-target {
+  outline: 2px solid #6ab04c;
+  outline-offset: 1px;
+}
+#${HOST_ID4} [data-cnum].is-ecu-shrine-pick {
+  outline: 2px solid #e8c96a;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.45), inset 0 0 10px rgba(232, 201, 106, 0.12);
+}
+#${HOST_ID4} [data-cnum].is-ecu-shrine-lucky {
+  position: relative;
+  outline: 2px solid #3dba5f;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(61, 186, 95, 0.55), inset 0 0 10px rgba(61, 186, 95, 0.18);
+}
+/* Occupied: small clover tucked top-left over the item. */
+#${HOST_ID4} [data-cnum].is-ecu-shrine-lucky::after {
+  content: "\u{1F340}";
+  position: absolute;
+  left: 0;
+  top: -1px;
+  z-index: 2;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(0, 0, 0, 0.75);
+  opacity: 0.95;
+}
+/* Empty: large clover centered in the cell. */
+#${HOST_ID4} [data-cnum].is-ecu-shrine-lucky.is-ecu-shrine-lucky-empty::after {
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  opacity: 0.88;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.85);
+}
+#${HOST_ID4} [data-cnum].is-ecu-shrine-pick.is-ecu-shrine-lucky {
+  outline: 2px solid #4fd06a;
+  box-shadow: 0 0 0 1px rgba(79, 208, 106, 0.65), inset 0 0 12px rgba(232, 201, 106, 0.16);
+}
+#${HOST_ID4} [data-cnum].is-ecu-compose-queue {
+  outline: 2px solid #6a9ae8;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(106, 154, 232, 0.5), inset 0 0 10px rgba(106, 154, 232, 0.14);
+}
+#${MOUNT_ID} {
+  pointer-events: auto;
+}
+`;
+    document.head.append(style);
+  }
+  function notifyInventory(open) {
+    for (let i = 0; i < listeners9.length; i++) {
+      try {
+        listeners9[i](open);
+      } catch (e2) {
+      }
+    }
+  }
+  function notifyBagSync() {
+    clearObserverCommandPending();
+    for (let i = 0; i < syncListeners.length; i++) {
+      try {
+        syncListeners[i]();
+      } catch (e2) {
+      }
+    }
+  }
+  function observingSnapshotName(obs = window.observing) {
+    if (!obs || obs.name == null) return null;
+    return String(obs.name);
+  }
+  function hasItemsSnapshot(obs = window.observing) {
+    return !!(obs && Array.isArray(obs.items));
+  }
+  function setBagSyncedAt(ts, name) {
+    bagSyncedAt = ts;
+    if (ts == null) bagSyncedForName = null;
+    else if (name !== void 0) bagSyncedForName = name;
+    notifyBagSync();
+  }
+  function setBagRefreshing(next) {
+    if (bagRefreshing === next) return;
+    bagRefreshing = next;
+    notifyBagSync();
+  }
+  function clearRefreshPoll() {
+    if (refreshPollTimer != null) {
+      window.clearInterval(refreshPollTimer);
+      refreshPollTimer = null;
+    }
+  }
+  function onObserveWelcome(data) {
+    if (data && data.character) {
+      const ts = Date.now();
+      data.character[BAG_SYNC_STAMP_KEY] = ts;
+      const name = data.character.name != null ? String(data.character.name) : null;
+      setBagSyncedAt(ts, name);
+      return;
+    }
+    if (bagSyncedAt != null) setBagSyncedAt(null);
+  }
+  function backfillBagSyncedAt() {
+    if (bagSyncedAt != null) return;
+    const obs = window.observing;
+    if (!hasItemsSnapshot(obs)) return;
+    stampBagSyncedFromObserving(obs);
+  }
+  function syncBagStateForSocket() {
+    const socket = window.socket;
+    if (!socket || !socket.id || typeof socket.on !== "function") return;
+    const socketChanged = socket.id !== bagSyncSocketId;
+    if (socketChanged) {
+      bagSyncSocketId = socket.id;
+      socket.on("welcome", onObserveWelcome);
+    }
+    const obs = window.observing;
+    if (hasItemsSnapshot(obs)) {
+      if (socketChanged || bagSyncedAt == null) {
+        stampBagSyncedFromObserving(obs);
+      }
+      const name = observingSnapshotName(obs);
+      if (window.inventory && name != null && name !== bagRenderedForName) {
+        repaintObservedInventoryFromSnapshot();
+      }
+    } else if (socketChanged && bagSyncedAt != null) {
+      setBagSyncedAt(null);
+    }
+  }
+  function installBagSyncSocketWatch() {
+    syncBagStateForSocket();
+    if (bagSyncSocketPoll != null) return;
+    bagSyncSocketPoll = window.setInterval(syncBagStateForSocket, 500);
+  }
+  function subscribeInventory(listener) {
+    listeners9.push(listener);
+    return () => {
+      const idx = listeners9.indexOf(listener);
+      if (idx >= 0) listeners9.splice(idx, 1);
+    };
+  }
+  function subscribeBagSync(listener) {
+    syncListeners.push(listener);
+    return () => {
+      const idx = syncListeners.indexOf(listener);
+      if (idx >= 0) syncListeners.splice(idx, 1);
+    };
+  }
+  function isInventoryOpen() {
+    return !!window.inventory;
+  }
+  function getBagSyncedAt() {
+    return bagSyncedAt;
+  }
+  function getBagSyncedName() {
+    return bagSyncedForName;
+  }
+  function isBagGridStale() {
+    if (!window.inventory) return false;
+    const name = observingSnapshotName();
+    if (!name || bagRenderedForName == null) return false;
+    return name !== bagRenderedForName;
+  }
+  function isBagRefreshing() {
+    return bagRefreshing;
+  }
+  function getBagRefreshKind() {
+    return bagRefreshKind;
+  }
+  function hasObservingInventorySnapshot() {
+    return hasItemsSnapshot();
+  }
+  function stampBagSyncedFromObserving(obs) {
+    if (!obs) return;
+    const name = observingSnapshotName(obs);
+    const stamped = obs[BAG_SYNC_STAMP_KEY];
+    if (typeof stamped === "number" && stamped > 0) {
+      setBagSyncedAt(stamped, name);
+      return;
+    }
+    const ts = Date.now();
+    obs[BAG_SYNC_STAMP_KEY] = ts;
+    setBagSyncedAt(ts, name);
+  }
+  function findObserveSecret(name) {
+    const chars = window.X && window.X.characters || [];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (ch && ch.name === name && ch.secret) return String(ch.secret);
+    }
+    return null;
+  }
+  function closeInventory() {
+    closeInventoryHost();
+  }
+  function closeInventoryHost() {
+    const host2 = document.getElementById(HOST_ID4);
+    if (host2) host2.innerHTML = "";
+    window.inventory = false;
+    bagRenderedForName = null;
+    restoreCharacter();
+    notifyInventory(false);
+    notifyBagSync();
+  }
+  function repaintObservedInventoryFromSnapshot() {
+    bagRefreshKind = "local";
+    callThroughDraw(() => {
+      if (typeof window.render_inventory !== "function") return;
+      if (window.inventory) {
+        window.render_inventory(true);
+        bagRenderedForName = observingSnapshotName();
+        notifyBagSync();
+      } else {
+        window.render_inventory();
+      }
+    });
+  }
+  function refreshObservedInventory() {
+    const obs = window.observing;
+    const name = obs && obs.name != null ? String(obs.name) : "";
+    const secret = name ? findObserveSecret(name) : null;
+    if (!name || !secret || typeof window.init_socket !== "function") {
+      repaintObservedInventoryFromSnapshot();
+      return;
+    }
+    clearRefreshPoll();
+    bagRefreshKind = null;
+    refreshPendingName = name;
+    setBagRefreshing(true);
+    if (window.inventory) closeInventoryHost();
+    saveSettings({ bagOpenPreferred: true });
+    const initSocket = window.init_socket;
+    if (typeof initSocket !== "function") {
+      setBagRefreshing(false);
+      refreshPendingName = null;
+      repaintObservedInventoryFromSnapshot();
+      return;
+    }
+    initSocket({ secret });
+    let attempts = 0;
+    refreshPollTimer = window.setInterval(() => {
+      attempts += 1;
+      const next = window.observing;
+      if (next && next.name === refreshPendingName && next.items) {
+        clearRefreshPoll();
+        bagRefreshKind = "server";
+        refreshPendingName = null;
+        backfillBagSyncedAt();
+        if (bagSyncedAt == null) stampBagSyncedFromObserving(next);
+        openInventory();
+        setBagRefreshing(false);
+        return;
+      }
+      if (attempts > 40) {
+        clearRefreshPoll();
+        refreshPendingName = null;
+        if (window.observing) {
+          bagRefreshKind = "server";
+          backfillBagSyncedAt();
+          if (bagSyncedAt == null) stampBagSyncedFromObserving(window.observing);
+          openInventory();
+        } else {
+          bagRefreshKind = "local";
+        }
+        setBagRefreshing(false);
+      }
+    }, 250);
+  }
+  function applyBagLayoutPos(pos) {
+    const host2 = document.getElementById(HOST_ID4);
+    if (!host2) return;
+    if (host2.parentElement && host2.parentElement.id === MOUNT_ID) {
+      host2.style.position = "relative";
+      host2.style.left = "";
+      host2.style.top = "";
+      host2.style.transform = "";
+      host2.style.zIndex = "";
+      return;
+    }
+    const layout = mergeLayout(getSettings().panelLayout);
+    const p = pos || layout.bag;
+    const style = panelStyle(p, false);
+    host2.style.position = "fixed";
+    host2.style.left = String(style.left);
+    host2.style.top = String(style.top);
+    host2.style.transform = String(style.transform);
+    host2.style.zIndex = "240";
+    host2.style.pointerEvents = "auto";
+    host2.style.maxWidth = "min(96vw, 420px)";
+    host2.style.maxHeight = "min(70vh, calc(100vh - 72px))";
+    host2.style.overflow = "auto";
+  }
+  function ensureInventoryHost() {
+    injectHostCss();
+    let el = document.getElementById(HOST_ID4);
+    if (!el) {
+      el = document.createElement("div");
+      el.id = HOST_ID4;
+      el.className = "bpclicks enableclicks";
+      document.body.append(el);
+    }
+    applyBagLayoutPos();
+    return el;
+  }
+  function attachInventoryToMount(mount) {
+    if (!mount) return;
+    mount.id = MOUNT_ID;
+    const host2 = ensureInventoryHost();
+    if (host2.parentElement !== mount) {
+      mount.append(host2);
+    }
+    applyBagLayoutPos();
+  }
+  function callThroughDraw(fn) {
+    if (typeof window.draw_trigger === "function") {
+      window.draw_trigger(fn);
+    } else {
+      fn();
+    }
+  }
+  function restoreCharacter() {
+    if (!window[HOLD_CHAR]) return;
+    window.character = window[SAVED_CHAR];
+    delete window[SAVED_CHAR];
+    window[HOLD_CHAR] = false;
+  }
+  function stripObservedBagNativeDropHandlers() {
+    if (!window.is_comm || !window.observing) return;
+    const host2 = document.getElementById(HOST_ID4);
+    if (!host2) return;
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      node.removeAttribute("ondrop");
+      node.removeAttribute("ondragover");
+    }
+  }
+  function refreshInventoryItemTitles() {
+    if (!window.inventory) return;
+    const host2 = document.getElementById(HOST_ID4);
+    if (!host2) return;
+    const obs = window.observing;
+    const items = obs && Array.isArray(obs.items) ? obs.items : null;
+    if (!items) return;
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const raw = node.getAttribute("data-cnum");
+      if (raw == null || raw === "") continue;
+      const num = parseInt(raw, 10);
+      if (!Number.isFinite(num) || num < 0 || num >= items.length) continue;
+      const item = items[num];
+      stripNativeTitles(node);
+      if (!item || !item.name || item.name === "placeholder") continue;
+      const p = typeof item.p === "string" ? item.p : void 0;
+      if (shouldShowTitleBorder(p)) stampNativeItemTitleBorder(node, p);
+    }
+    stripObservedBagNativeDropHandlers();
+    refreshBagBuyOrderIndicators();
+    applyShrineBagHighlights();
+    applyComposeBagHighlights();
+  }
+  function prepareObservingCharacter() {
+    const obs = window.observing;
+    if (!window[HOLD_CHAR]) {
+      window[SAVED_CHAR] = window.character;
+      window[HOLD_CHAR] = true;
+    }
+    if (obs) {
+      window.character = obs;
+    }
+    const ch = window.character;
+    if (!ch) return false;
+    if (!ch.items) ch.items = [];
+    if (ch.isize == null) ch.isize = 42;
+    if (!ch.q) ch.q = {};
+    return true;
+  }
+  function openInventory() {
+    callThroughDraw(() => {
+      if (isInventoryOpen()) return;
+      if (typeof window.render_inventory === "function") {
+        window.render_inventory();
+      }
+    });
+  }
+  function toggleInventory() {
+    callThroughDraw(() => {
+      if (typeof window.render_inventory === "function") {
+        window.render_inventory();
+      }
+    });
+  }
+  function syncInventoryToBagPanel(wantOpen) {
+    if (wantOpen === isInventoryOpen()) return;
+    if (!wantOpen) {
+      closeInventory();
+      return;
+    }
+    openInventory();
+  }
+  function restorePreferredBagOpen() {
+    const preferOpen = !!getSettings().bagOpenPreferred;
+    if (!preferOpen) return;
+    if (isInventoryOpen()) return;
+    window.setTimeout(() => {
+      if (isInventoryOpen()) return;
+      if (typeof window.render_inventory === "function") {
+        openInventory();
+      }
+    }, 600);
+  }
+  function installInventoryClickBridge() {
+    if (window.__ecuInvClickPatched) return;
+    const tryPatch = () => {
+      const original = window.inventory_click;
+      if (typeof original !== "function") return false;
+      if (window.__ecuInvClickPatched) return true;
+      window.__ecuInvClickPatched = true;
+      window.inventory_click = function patchedInventoryClick(num, event) {
+        if (window.is_comm) {
+          if (event && typeof window.stpr === "function") window.stpr(event);
+          const obs = window.observing;
+          const item = obs && Array.isArray(obs.items) ? obs.items[num] : null;
+          if (!item || !item.name || item.name === "placeholder") return;
+          openItem(obs, `inv${num}`, item, { dialogOnly: true });
+          return;
+        }
+        return original.call(this, num, event);
+      };
+      return true;
+    };
+    if (tryPatch()) return;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      if (tryPatch() || attempts > 40) window.clearInterval(timer);
+    }, 250);
+  }
+  function installInventoryFix() {
+    installInventoryClickBridge();
+    installBagSyncSocketWatch();
+    if (window.__ecuInventoryPatched) return;
+    const tryPatch = () => {
+      const original = window.render_inventory;
+      if (typeof original !== "function") return false;
+      if (window.__ecuInventoryPatched) return true;
+      window.__ecuInventoryPatched = true;
+      ensureInventoryHost();
+      window.render_inventory = function patchedRenderInventory(reset) {
+        ensureInventoryHost();
+        if (window.inventory && !reset) {
+          const host2 = document.getElementById(HOST_ID4);
+          if (host2) host2.innerHTML = "";
+          window.inventory = false;
+          bagRenderedForName = null;
+          restoreCharacter();
+          notifyInventory(false);
+          notifyBagSync();
+          return;
+        }
+        const savedComm = window.is_comm;
+        if (!prepareObservingCharacter()) {
+          restoreCharacter();
+          return;
+        }
+        window.is_comm = false;
+        let opened = false;
+        try {
+          if (typeof window.hide_modal === "function") {
+            try {
+              window.hide_modal();
+            } catch (e2) {
+            }
+          }
+          const result = original.call(this, reset);
+          opened = !!window.inventory;
+          return result;
+        } finally {
+          window.is_comm = savedComm;
+          restoreCharacter();
+          if (opened) {
+            bagRenderedForName = observingSnapshotName();
+            backfillBagSyncedAt();
+            applyBagLayoutPos();
+            refreshInventoryItemTitles();
+            window.requestAnimationFrame(() => refreshInventoryItemTitles());
+            notifyInventory(true);
+            notifyBagSync();
+          } else if (!window.inventory) {
+            bagRenderedForName = null;
+            notifyInventory(false);
+          }
+        }
+      };
+      restorePreferredBagOpen();
+      return true;
+    };
+    if (tryPatch()) return;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      if (tryPatch() || attempts > 40) {
+        window.clearInterval(timer);
+      }
+    }, 250);
+  }
+  if (typeof window !== "undefined") {
+    installBagSyncSocketWatch();
+  }
+
+  // src/lib/panelActuallyOpen.ts
+  function isOnScreen(el) {
+    if (!el) return false;
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") return false;
+    if (cs.opacity === "0") return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 40 && r.height > 40;
+  }
+  function panelActuallyOpen(id) {
+    if (typeof document === "undefined") return false;
+    if (id === "bag") {
+      const grid = document.querySelector(
+        "#bottomleftcorner .theinventory"
+      );
+      return isOnScreen(grid);
+    }
+    const el = document.querySelector(
+      '[data-panel="' + id + '"]'
+    );
+    return isOnScreen(el);
   }
 
   // src/host/mail/mailPersistLogic.ts
@@ -16974,279 +20166,6 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       hasMore: meta2.hasMore,
       strategy: "truncate"
     };
-  }
-
-  // src/host/mail/composeDraft.ts
-  function emptyDraft() {
-    return { to: [], subject: "", body: "", attaches: [] };
-  }
-  function normalizeComposeTos(raw) {
-    const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
-    const out = [];
-    const seen = /* @__PURE__ */ new Set();
-    for (let i = 0; i < list.length; i++) {
-      const name = String(list[i] || "").trim();
-      if (!name) continue;
-      const key = name.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(name);
-    }
-    return out;
-  }
-  function fingerprintFields(raw) {
-    const fp = {
-      slot: Number(raw.slot) | 0,
-      name: String(raw.name || "")
-    };
-    if (raw.level != null) fp.level = Number(raw.level);
-    if (raw.q != null) fp.q = Number(raw.q);
-    if (raw.p != null) fp.p = String(raw.p);
-    return fp;
-  }
-  function makeComposeAttach(raw, to = "") {
-    return { ...fingerprintFields(raw), to: String(to || "").trim() };
-  }
-  function migrateComposeAttach(raw, fallbackTo) {
-    const to = String(raw.to || fallbackTo || "").trim();
-    return { ...fingerprintFields(raw), to };
-  }
-  function canonicalizeDraft(draft) {
-    const to = normalizeComposeTos(draft.to);
-    const attaches = [];
-    const list = Array.isArray(draft.attaches) ? draft.attaches : [];
-    for (let i = 0; i < list.length; i++) {
-      const a = list[i];
-      attaches.push({
-        ...fingerprintFields(a),
-        to: String(a.to || "").trim()
-      });
-    }
-    return {
-      to,
-      subject: String(draft.subject || ""),
-      body: String(draft.body || ""),
-      attaches
-    };
-  }
-  function rebindAttachesToPool(attaches, tos) {
-    if (!tos.length) {
-      const out2 = [];
-      for (let i = 0; i < attaches.length; i++) {
-        out2.push({ ...attaches[i], to: "" });
-      }
-      return out2;
-    }
-    const ok = new Set(tos.map((t) => t.toLowerCase()));
-    let rr = 0;
-    const out = [];
-    for (let i = 0; i < attaches.length; i++) {
-      const a = attaches[i];
-      const cur = String(a.to || "").trim();
-      if (cur && ok.has(cur.toLowerCase())) {
-        out.push(a);
-        continue;
-      }
-      out.push({ ...a, to: tos[rr % tos.length] });
-      rr += 1;
-    }
-    return out;
-  }
-  function pickToForNewAttach(draft) {
-    var _a, _b;
-    const tos = normalizeComposeTos(draft.to);
-    if (!tos.length) return "";
-    const counts = {};
-    for (let i = 0; i < tos.length; i++) counts[tos[i].toLowerCase()] = 0;
-    for (let i = 0; i < draft.attaches.length; i++) {
-      const key = String(draft.attaches[i].to || "").toLowerCase();
-      if (!key || counts[key] == null) continue;
-      counts[key] += 1;
-    }
-    let best = tos[0];
-    let bestN = (_a = counts[best.toLowerCase()]) != null ? _a : 0;
-    for (let i = 1; i < tos.length; i++) {
-      const n = (_b = counts[tos[i].toLowerCase()]) != null ? _b : 0;
-      if (n < bestN) {
-        best = tos[i];
-        bestN = n;
-      }
-    }
-    return best;
-  }
-  function distributeAttachesAcrossTos(draft) {
-    const base = canonicalizeDraft(draft);
-    if (!base.to.length || !base.attaches.length) return base;
-    const attaches = [];
-    for (let i = 0; i < base.attaches.length; i++) {
-      attaches.push({
-        ...base.attaches[i],
-        to: base.to[i % base.to.length]
-      });
-    }
-    return { ...base, attaches };
-  }
-  function resolveComposeOpen(opts) {
-    const session = canonicalizeDraft(opts.session);
-    const sticky = normalizeComposeTos(opts.stickyTo);
-    const partial = opts.partial;
-    if (!partial) {
-      const to2 = session.to.length ? session.to : sticky.slice();
-      return canonicalizeDraft({ ...session, to: to2 });
-    }
-    const to = partial.to ? normalizeComposeTos(partial.to) : session.to.length ? session.to : sticky.slice();
-    const subject = partial.subject != null ? String(partial.subject) : session.subject;
-    const body = partial.body != null ? String(partial.body) : session.body;
-    let attaches = session.attaches;
-    if (partial.attaches !== void 0) {
-      attaches = [];
-      for (let i = 0; i < partial.attaches.length; i++) {
-        const a = partial.attaches[i];
-        attaches.push({
-          ...fingerprintFields(a),
-          to: String(a.to || "").trim()
-        });
-      }
-    }
-    return canonicalizeDraft({ to, subject, body, attaches });
-  }
-  function attachesHaveRecipients(attaches) {
-    if (!attaches.length) return true;
-    for (let i = 0; i < attaches.length; i++) {
-      if (!String(attaches[i].to || "").trim()) return false;
-    }
-    return true;
-  }
-
-  // src/host/mail/mailState.ts
-  var listeners7 = [];
-  var toastListeners = [];
-  var locallyReadIds = /* @__PURE__ */ new Set();
-  var state = {
-    mails: [],
-    nextCursor: null,
-    hasMore: false,
-    lastHeadAt: 0,
-    lastHeadReason: "\u2014",
-    status: "",
-    statusKind: "",
-    loading: false,
-    loadingMore: false,
-    prefetchArmed: false,
-    panelOpen: false,
-    view: { kind: "list" },
-    lastScript: "",
-    lastSeenUnread: -1,
-    newMailCount: 0,
-    commandBusy: false,
-    unreadStuckHint: "",
-    undoCount: 0,
-    undoEndsAt: 0,
-    deleteProgress: null,
-    refreshProgress: null,
-    sessionDraft: emptyDraft()
-  };
-  function notifyListeners() {
-    for (let i = 0; i < listeners7.length; i++) listeners7[i]();
-  }
-  function emitToast(message) {
-    for (let i = 0; i < toastListeners.length; i++) toastListeners[i](message);
-  }
-  function commit(patch, opts) {
-    let changed = false;
-    for (const key in patch) {
-      if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
-      const k = key;
-      if (state[k] !== patch[k]) {
-        changed = true;
-        break;
-      }
-    }
-    if (!changed) return;
-    Object.assign(state, patch);
-    if (!(opts && opts.silent)) notifyListeners();
-  }
-  function setStatus(text, kind = "") {
-    commit({ status: text, statusKind: kind });
-  }
-  function setMailView(next) {
-    commit({ view: next });
-  }
-  function subscribeMailStore(fn) {
-    listeners7.push(fn);
-    return () => {
-      const idx = listeners7.indexOf(fn);
-      if (idx >= 0) listeners7.splice(idx, 1);
-    };
-  }
-  function subscribeMailToast(fn) {
-    toastListeners.push(fn);
-    return () => {
-      const idx = toastListeners.indexOf(fn);
-      if (idx >= 0) toastListeners.splice(idx, 1);
-    };
-  }
-  function getMailSnapshot() {
-    return {
-      mails: state.mails,
-      nextCursor: state.nextCursor,
-      hasMore: state.hasMore,
-      lastHeadAt: state.lastHeadAt,
-      lastHeadReason: state.lastHeadReason,
-      status: state.status,
-      statusKind: state.statusKind,
-      loading: state.loading,
-      loadingMore: state.loadingMore,
-      prefetchArmed: state.prefetchArmed,
-      panelOpen: state.panelOpen,
-      view: state.view,
-      lastScript: state.lastScript,
-      lastSeenUnread: state.lastSeenUnread,
-      newMailCount: state.newMailCount,
-      commandBusy: state.commandBusy,
-      unreadStuckHint: state.unreadStuckHint,
-      undoCount: state.undoCount,
-      undoEndsAt: state.undoEndsAt,
-      deleteProgress: state.deleteProgress,
-      refreshProgress: state.refreshProgress
-    };
-  }
-  function getMails() {
-    return state.mails;
-  }
-  function getNextCursor() {
-    return state.nextCursor;
-  }
-  function getHasMore() {
-    return state.hasMore;
-  }
-  function getLastHeadAt() {
-    return state.lastHeadAt;
-  }
-  function getLoadingMore() {
-    return state.loadingMore;
-  }
-  function getPanelOpen() {
-    return state.panelOpen;
-  }
-  function getView() {
-    return state.view;
-  }
-  function getLastSeenUnread() {
-    return state.lastSeenUnread;
-  }
-  function getCommandBusy() {
-    return state.commandBusy;
-  }
-  function getRefreshProgress() {
-    return state.refreshProgress;
-  }
-  function getLocallyReadIds() {
-    return locallyReadIds;
-  }
-  function getActiveComposeDraft() {
-    if (state.view.kind === "compose") return state.view.draft;
-    return state.sessionDraft;
   }
 
   // src/host/mail/mailPersist.ts
@@ -18112,38 +21031,6 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     };
   }
 
-  // src/lib/itemInstanceData.ts
-  function getItemData(item) {
-    if (!item || !("data" in item)) return void 0;
-    const raw = item.data;
-    if (typeof raw !== "string") return void 0;
-    const trimmed = raw.trim();
-    return trimmed || void 0;
-  }
-  function isCxJarName(name) {
-    return name === "cxjar";
-  }
-  function cxJarData(item) {
-    if (!item || !isCxJarName(item.name)) return void 0;
-    return getItemData(item);
-  }
-  function itemStackIdentityKey(item) {
-    const base = String(item.name) + "\0" + (item.level != null && item.level !== "" ? String(item.level) : "") + "\0" + (item.p != null && String(item.p) !== "" ? String(item.p) : "");
-    const data = getItemData(item);
-    return data ? base + "\0" + data : base;
-  }
-  function cxJarContentSkin(data) {
-    if (!data) return void 0;
-    const G = getG();
-    if (!G) return void 0;
-    const skill = G.skills && G.skills[data];
-    if (skill && skill.emote && typeof skill.skin === "string" && skill.skin) {
-      return skill.skin;
-    }
-    if (G.positions && G.positions[data] != null) return data;
-    return void 0;
-  }
-
   // src/lib/commTouchUi.ts
   function isCommTouchUi() {
     if (typeof document !== "undefined") {
@@ -18153,302 +21040,11 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     return isTouchishProfile(detectViewportProfile());
   }
 
-  // src/host/infoDialog/types.ts
-  var BUFF_DIALOG_ID = "ecu-buff-dialog";
-  var ITEM_DIALOG_ID = "ecu-item-dialog";
-  var STOCK_DIALOG_ID = "topleftcornerdialog";
-  var INFO_SOURCE_ATTR = "data-ecu-info-source";
-  var CLOSE_CLASS = "ecu-dialog-close";
-  var ADOPTED_CLASS = "ecu-info-dialog-adopted";
-  var BUFF_SEL = "#" + BUFF_DIALOG_ID;
-  var ITEM_SEL = "#" + ITEM_DIALOG_ID;
-  var STOCK_SEL = "#" + STOCK_DIALOG_ID;
-  function dialogIdFor(kind) {
-    return kind === "buff" ? BUFF_DIALOG_ID : ITEM_DIALOG_ID;
-  }
-  function panelAttrFor(kind) {
-    return kind === "buff" ? "buffInfo" : "itemInfo";
-  }
-
-  // src/host/infoDialog/css.ts
-  var STYLE_ID2 = "comm-ui-dialog-host-css";
-  function injectDialogHostCss() {
-    let style = document.getElementById(STYLE_ID2);
-    if (!style) {
-      style = document.createElement("style");
-      style.id = STYLE_ID2;
-      document.head.append(style);
-    }
-    style.textContent = `
-/* Fallback host when not yet adopted into CommUI layout panel. */
-#topleftcorner:not(.ecu-info-slot-host) {
-  position: fixed !important;
-  top: 8px !important;
-  left: 8px !important;
-  z-index: 230 !important;
-  pointer-events: none !important;
-  max-width: min(96vw, 520px);
-  max-height: min(80vh, calc(100vh - 96px));
-  overflow: auto;
-}
-#topleftcornerui {
-  pointer-events: auto !important;
-  vertical-align: top;
-  display: inline-block;
-}
-/* Stub: leftover stock selectors still target this id; content lives in ecu-* hosts. */
-#${STOCK_DIALOG_ID} {
-  display: none !important;
-}
-#${BUFF_DIALOG_ID},
-#${ITEM_DIALOG_ID} {
-  /* Idle hosts must not eat clicks \u2014 parent panels can be pointer-events:none
-   * while this child still had auto !important and a leftover frame box. */
-  pointer-events: none !important;
-  vertical-align: top;
-  display: none;
-  position: relative;
-}
-#${BUFF_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty),
-#${ITEM_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty) {
-  display: block;
-  pointer-events: auto !important;
-  max-width: min(96vw, 520px);
-  max-height: min(80vh, calc(100vh - 96px));
-  overflow: auto;
-}
-#${BUFF_DIALOG_ID} .${CLOSE_CLASS},
-#${ITEM_DIALOG_ID} .${CLOSE_CLASS} {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 2;
-  cursor: pointer;
-  border: 1px solid #555;
-  background: #1c1c1c;
-  color: #ddd;
-  width: 28px;
-  height: 28px;
-  line-height: 24px;
-  padding: 0;
-  font-size: 18px;
-  text-align: center;
-  box-sizing: border-box;
-}
-#${BUFF_DIALOG_ID} .${CLOSE_CLASS}:hover,
-#${ITEM_DIALOG_ID} .${CLOSE_CLASS}:hover {
-  border-color: #888;
-  color: #fff;
-}
-`;
-  }
-
-  // src/host/infoDialog/hosts.ts
-  function dialogEl(kind) {
-    return document.getElementById(dialogIdFor(kind));
-  }
-  function hasContent(el) {
-    if (!el) return false;
-    if (el.querySelector(".buyitem, .cccx, img, canvas, table, svg")) return true;
-    const walk = (node) => {
-      if (node.nodeType === 3) return node.textContent || "";
-      if (node.nodeType !== 1) return "";
-      const he = node;
-      if (he.classList && he.classList.contains(CLOSE_CLASS)) return "";
-      let out = "";
-      const kids = he.childNodes;
-      for (let i = 0; i < kids.length; i++) out += walk(kids[i]);
-      return out;
-    };
-    return walk(el).replace(/\s+/g, "").length > 0;
-  }
-  function ensureNamedDialog(id, parent) {
-    let dialog = document.getElementById(id);
-    if (!dialog) {
-      dialog = document.createElement("div");
-      dialog.id = id;
-      dialog.className = "bpclicks enableclicks";
-      parent.append(dialog);
-    }
-    return dialog;
-  }
-  function ensureDialogElements() {
-    injectDialogHostCss();
-    const body = document.body;
-    if (!body) {
-      throw new Error("ensureDialogElements: document.body is not ready");
-    }
-    let corner = document.getElementById("topleftcorner");
-    if (!corner) {
-      corner = document.createElement("div");
-      corner.id = "topleftcorner";
-      corner.className = "bpclicks";
-      body.append(corner);
-    }
-    if (!document.getElementById("topleftcornerui")) {
-      const ui = document.createElement("div");
-      ui.id = "topleftcornerui";
-      ui.className = "bpclicks";
-      corner.append(ui);
-    }
-    const stock = ensureNamedDialog(STOCK_DIALOG_ID, corner);
-    const buff = ensureNamedDialog(BUFF_DIALOG_ID, corner);
-    const item = ensureNamedDialog(ITEM_DIALOG_ID, corner);
-    return { buff, item, stock };
-  }
-  function adoptInfoDialog(kind, slot) {
-    const { buff, item } = ensureDialogElements();
-    const dialog = kind === "buff" ? buff : item;
-    if (dialog.parentElement !== slot) {
-      slot.appendChild(dialog);
-    }
-    dialog.classList.add(ADOPTED_CLASS);
-    dialog.setAttribute("data-ecu-kind", kind);
-    dialog.setAttribute("data-panel-host", panelAttrFor(kind));
-    const corner = document.getElementById("topleftcorner");
-    if (corner) corner.classList.add("ecu-info-slot-host");
-    return dialog;
-  }
-  function ensureAdoptedHost(kind) {
-    const { buff, item } = ensureDialogElements();
-    const slotSel = kind === "item" ? ".comm-item-info-slot" : ".comm-buff-info-slot";
-    const slot = document.querySelector(slotSel);
-    if (slot) return adoptInfoDialog(kind, slot);
-    return kind === "buff" ? buff : item;
-  }
-
-  // src/host/infoDialog/write.ts
-  var listeners8 = /* @__PURE__ */ new Set();
-  var pendingWriteKind = "item";
-  function setPendingWriteKind(kind) {
-    pendingWriteKind = kind;
-  }
-  function getPendingWriteKind() {
-    return pendingWriteKind;
-  }
-  function subscribeInfoDialogChange(listener) {
-    listeners8.add(listener);
-    return () => {
-      listeners8.delete(listener);
-    };
-  }
-  function emitInfoDialogChange(kind, open) {
-    for (const listener of Array.from(listeners8)) {
-      try {
-        listener(kind, open);
-      } catch (e2) {
-      }
-    }
-  }
-  function clearDialogOnlyXTarget() {
-    if (window.__ecuDialogOnlyXTarget) {
-      window.__ecuDialogOnlyXTarget = false;
-      window.xtarget = null;
-    }
-  }
-  function clearDialogsTarget() {
-    try {
-      window.dialogs_target = null;
-    } catch (e2) {
-    }
-  }
-  function ensureCloseButton(dialog, kind, closeFn) {
-    if (!hasContent(dialog)) return;
-    if (dialog.querySelector("." + CLOSE_CLASS)) return;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = CLOSE_CLASS;
-    btn.title = "Close";
-    btn.setAttribute("aria-label", "Close");
-    btn.textContent = "\xD7";
-    btn.addEventListener("click", (ev) => {
-      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
-      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      closeFn(kind);
-    });
-    const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
-    if (panel) {
-      const pos = window.getComputedStyle(panel).position;
-      if (!pos || pos === "static") panel.style.position = "relative";
-      panel.appendChild(btn);
-    } else {
-      dialog.appendChild(btn);
-    }
-  }
-  var FN_ORIG = "__ecuInfoOrig";
-  function buildItemHtml(args) {
-    const w = window;
-    const renderItem = typeof w.render_item === "function" && w.render_item[FN_ORIG] || w.render_item;
-    if (typeof renderItem !== "function") return "";
-    try {
-      const html = renderItem.call(w, "html", args);
-      return typeof html === "string" ? html : "";
-    } catch (e2) {
-      return "";
-    }
-  }
-  function buildConditionHtml(name) {
-    const w = window;
-    const G = w.G;
-    if (!G || !G.conditions) return "";
-    let def = G.conditions[name];
-    let minutes = 0;
-    let condition;
-    const target = w.xtarget || w.ctarget;
-    if (target && target.s && target.s[name] && target.s[name].ms) {
-      minutes = target.s[name].ms / 6e3 / 10;
-    }
-    if (target && target.s && target.s[name]) {
-      const clone = typeof w.clone === "function" ? w.clone : null;
-      def = !def ? {} : clone ? clone(def) : { ...def };
-      condition = target.s[name];
-      const keys = Object.keys(condition);
-      for (let i = 0; i < keys.length; i++) {
-        def[keys[i]] = condition[keys[i]];
-      }
-    }
-    return buildItemHtml({
-      skin: condition && condition.skin || def && def.skin,
-      item: def,
-      prop: def,
-      minutes,
-      condition
-    });
-  }
-  var closeKindImpl = () => false;
-  function bindCloseImpl(fn) {
-    closeKindImpl = fn;
-  }
-  function writeInfoHtml(kind, html) {
-    const host2 = ensureAdoptedHost(kind);
-    host2.innerHTML = html || "";
-    if (hasContent(host2)) {
-      ensureCloseButton(host2, kind, (k) => {
-        closeKindImpl(k);
-      });
-      emitInfoDialogChange(kind, true);
-      return;
-    }
-    if (host2.innerHTML) host2.innerHTML = "";
-    emitInfoDialogChange(kind, false);
-  }
-  function clearInfoHost(kind) {
-    const el = dialogEl(kind);
-    if (!el) return false;
-    const had = hasContent(el) || !!String(el.innerHTML || "").trim();
-    if (!had) return false;
-    el.innerHTML = "";
-    if (kind === "buff") clearDialogOnlyXTarget();
-    clearDialogsTarget();
-    emitInfoDialogChange(kind, false);
-    return true;
-  }
-
   // src/ui/chrome/cooltip.ts
   var PAD = 8;
   var CURSOR = 14;
-  var STYLE_ID3 = "ecu-cooltip-css";
-  var HOST_ID = "ecu-cooltip";
+  var STYLE_ID4 = "ecu-cooltip-css";
+  var HOST_ID5 = "ecu-cooltip";
   var COOLTIP_ICON = 22;
   var COOLTIP_MONSTER_ICON = 40;
   var tipEl = null;
@@ -18459,7 +21055,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var tipOpts = {};
   var tipPinned = false;
   var pinDocHandler = null;
-  var cssInjected = false;
+  var cssInjected2 = false;
   var crossHideMeter = null;
   function bindCooltipCrossHide(hideMeter) {
     crossHideMeter = hideMeter;
@@ -18469,21 +21065,21 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function ensureCooltipCss() {
     if (typeof document === "undefined") return;
-    if (cssInjected && document.getElementById(STYLE_ID3)) return;
-    let el = document.getElementById(STYLE_ID3);
+    if (cssInjected2 && document.getElementById(STYLE_ID4)) return;
+    let el = document.getElementById(STYLE_ID4);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID3;
+      el.id = STYLE_ID4;
       document.head.appendChild(el);
     }
     el.textContent = COOLTIP_CSS;
-    cssInjected = true;
+    cssInjected2 = true;
   }
   function ensureHost() {
     ensureCooltipCss();
     if (tipEl && tipEl.isConnected) return tipEl;
     tipEl = document.createElement("div");
-    tipEl.id = HOST_ID;
+    tipEl.id = HOST_ID5;
     tipEl.className = "ecu-cooltip";
     tipEl.setAttribute("role", "tooltip");
     document.body.appendChild(tipEl);
@@ -18622,16 +21218,6 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function dismissItemCooltip(key) {
     dismissCooltip(key);
-  }
-
-  // src/ui/chrome/stripNativeTitles.ts
-  function stripNativeTitles(root) {
-    if (!root) return;
-    root.removeAttribute("title");
-    const titled = root.querySelectorAll("[title]");
-    for (let i = 0; i < titled.length; i++) {
-      titled[i].removeAttribute("title");
-    }
   }
 
   // src/ui/chrome/wrapIconHtml.ts
@@ -19569,2406 +22155,6 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       status: "Delete undone",
       statusKind: ""
     });
-  }
-
-  // src/host/mail/mailSubject.ts
-  var MAIL_SUBJECT_ITEM_TOKEN = "{item}";
-  var ITEM_TOKEN_RE = /\{item\}/gi;
-  function formatAttachSubject(fp) {
-    let s = fp.name;
-    if (fp.level != null) s += " +" + fp.level;
-    if (fp.q != null && fp.q > 1) s += " \xD7" + fp.q;
-    return s;
-  }
-  function applyItemToken(text, item) {
-    ITEM_TOKEN_RE.lastIndex = 0;
-    if (!ITEM_TOKEN_RE.test(text)) return text;
-    ITEM_TOKEN_RE.lastIndex = 0;
-    return text.replace(ITEM_TOKEN_RE, item);
-  }
-  function resolveMailSubject(base, fp, index, total) {
-    const trimmed = String(base || "").trim();
-    const item = fp ? formatAttachSubject(fp) : "";
-    ITEM_TOKEN_RE.lastIndex = 0;
-    if (ITEM_TOKEN_RE.test(trimmed)) {
-      return applyItemToken(trimmed, item);
-    }
-    if (!trimmed) {
-      if (item) return item;
-      return total > 1 ? "Mail (" + index + "/" + total + ")" : "";
-    }
-    if (total > 1 && item) return trimmed + " \xB7 " + item;
-    return trimmed;
-  }
-  function resolveMailBody(base, fp) {
-    const text = String(base || "");
-    const item = fp ? formatAttachSubject(fp) : "";
-    return applyItemToken(text, item);
-  }
-  function subjectPlaceholder(attaches) {
-    const list = attaches || [];
-    if (!list.length) return "Subject (optional)";
-    if (list.length === 1) {
-      return "e.g. Sending " + MAIL_SUBJECT_ITEM_TOKEN + " \u2192 " + formatAttachSubject(list[0]);
-    }
-    return "e.g. Loot: " + MAIL_SUBJECT_ITEM_TOKEN + " \u2192 " + formatAttachSubject(list[0]) + " \xB7 \u2026";
-  }
-
-  // src/host/mail/mailCaps.ts
-  var MAIL_ATTACH_CAP = 200;
-  var MAIL_ATTACH_SENDER_CAP = 20;
-  var MAIL_ATTACH_CAP_WARN = 160;
-  var MAIL_ATTACH_SENDER_CAP_WARN = 15;
-  function countsTowardAttachCap(m) {
-    if (!m.item) return false;
-    if (m.taken && !m.takenPending) return false;
-    return true;
-  }
-  function nameSet(names) {
-    const out = /* @__PURE__ */ new Set();
-    for (let i = 0; i < names.length; i++) {
-      const n = String(names[i] || "").trim().toLowerCase();
-      if (n) out.add(n);
-    }
-    return out;
-  }
-  function countAttachmentsByRecipient(mails, ownedNames) {
-    const owned = ownedNames && ownedNames.length ? nameSet(ownedNames) : null;
-    const buckets = /* @__PURE__ */ new Map();
-    for (let i = 0; i < mails.length; i++) {
-      const m = mails[i];
-      if (!countsTowardAttachCap(m)) continue;
-      if (m.canTake === false) continue;
-      const display = String(m.to || "").trim();
-      const key = display.toLowerCase();
-      if (!key) continue;
-      if (owned && !owned.has(key)) continue;
-      const prev = buckets.get(key);
-      if (prev) prev.count += 1;
-      else buckets.set(key, { name: display, count: 1 });
-    }
-    const out = [];
-    buckets.forEach((v) => {
-      out.push({
-        name: v.name,
-        count: v.count,
-        pressure: mailboxCapPressure(v.count)
-      });
-    });
-    out.sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
-    });
-    return out;
-  }
-  function countSenderAttachmentsTo(mails, fromNames, toName) {
-    const from = nameSet(fromNames);
-    const to = String(toName || "").trim().toLowerCase();
-    if (!from.size || !to) return 0;
-    let n = 0;
-    for (let i = 0; i < mails.length; i++) {
-      const m = mails[i];
-      if (!countsTowardAttachCap(m)) continue;
-      if (String(m.to || "").trim().toLowerCase() !== to) {
-        continue;
-      }
-      if (!from.has(
-        String(m.fro || "").trim().toLowerCase()
-      )) {
-        continue;
-      }
-      n += 1;
-    }
-    return n;
-  }
-  function mailboxCapPressure(count, incomplete) {
-    if (count >= MAIL_ATTACH_CAP) return "full";
-    if (!incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
-    if (incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
-    return "";
-  }
-  function senderCapPressure(count, queued = 0) {
-    const have = Math.max(0, count | 0);
-    const add = Math.max(0, queued | 0);
-    if (have >= MAIL_ATTACH_SENDER_CAP || have + add > MAIL_ATTACH_SENDER_CAP) {
-      return "full";
-    }
-    if (have + add >= MAIL_ATTACH_SENDER_CAP_WARN) return "warn";
-    return "";
-  }
-  function formatCapFraction(count, cap, incomplete) {
-    const n = Math.max(0, count | 0);
-    return n + (incomplete ? "+" : "") + "/" + cap;
-  }
-  function worstPressure(fills) {
-    let worst = "";
-    for (let i = 0; i < fills.length; i++) {
-      const p = fills[i].pressure;
-      if (p === "full") return "full";
-      if (p === "warn") worst = "warn";
-    }
-    return worst;
-  }
-  function formatMailboxCapsLine(fills, opts) {
-    const incomplete = !!(opts && opts.incomplete);
-    const maxNames = opts && opts.maxNames != null ? opts.maxNames : 2;
-    if (!fills.length) {
-      return "0/" + MAIL_ATTACH_CAP + " per char" + (incomplete ? "+" : "");
-    }
-    const prefer = String(opts && opts.preferName || "").trim().toLowerCase();
-    const shown = [];
-    const used = /* @__PURE__ */ new Set();
-    if (prefer) {
-      for (let i = 0; i < fills.length; i++) {
-        const key = fills[i].name.toLowerCase();
-        if (key !== prefer) continue;
-        shown.push(fills[i]);
-        used.add(key);
-        break;
-      }
-    }
-    for (let i = 0; i < fills.length && shown.length < maxNames; i++) {
-      const key = fills[i].name.toLowerCase();
-      if (used.has(key)) continue;
-      shown.push(fills[i]);
-      used.add(key);
-    }
-    const parts = [];
-    for (let i = 0; i < shown.length; i++) {
-      const f = shown[i];
-      parts.push(
-        f.name + " " + formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete)
-      );
-    }
-    const rest = fills.length - shown.length;
-    if (rest > 0) {
-      parts.push("+" + rest + " char" + (rest === 1 ? "" : "s"));
-    }
-    return parts.join(" \xB7 ");
-  }
-  function mailboxCapsTitle(fills, incomplete) {
-    const lines = [
-      "Server caps are per character: 200 uncollected attachments each, and at most 20 from one sending account. Pending claims count; take or delete before new item mail can land."
-    ];
-    if (!fills.length) {
-      lines.push("No untaken attachments in the cached inbox.");
-    } else {
-      const maxList = Math.min(fills.length, 12);
-      for (let i = 0; i < maxList; i++) {
-        const f = fills[i];
-        const frac = formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete);
-        let note = "";
-        if (f.pressure === "full") note = " \u2014 full (new item mail blocked)";
-        else if (f.pressure === "warn") note = " \u2014 nearly full";
-        lines.push(f.name + " " + frac + note);
-      }
-      if (fills.length > maxList) {
-        lines.push("\u2026and " + (fills.length - maxList) + " more characters");
-      }
-    }
-    if (incomplete) {
-      lines.push("Cache still loading older pages \u2014 counts may rise.");
-    }
-    return lines.join("\n");
-  }
-  function withFillPressure(fills, incomplete) {
-    const out = [];
-    for (let i = 0; i < fills.length; i++) {
-      const f = fills[i];
-      out.push({
-        name: f.name,
-        count: f.count,
-        pressure: mailboxCapPressure(f.count, incomplete)
-      });
-    }
-    return out;
-  }
-  function summarizeMailboxCaps(opts) {
-    const incomplete = !!opts.incomplete;
-    const withPressure = withFillPressure(opts.fills, incomplete);
-    return {
-      line: formatMailboxCapsLine(withPressure, {
-        incomplete,
-        preferName: opts.preferName
-      }),
-      pressure: worstPressure(withPressure),
-      title: mailboxCapsTitle(withPressure, incomplete)
-    };
-  }
-  function pickPrimaryFill(fills, preferName) {
-    if (!fills.length) return null;
-    const prefer = String(preferName || "").trim().toLowerCase();
-    if (prefer) {
-      for (let i = 0; i < fills.length; i++) {
-        if (fills[i].name.toLowerCase() === prefer) return fills[i];
-      }
-    }
-    for (let i = 0; i < fills.length; i++) {
-      if (fills[i].pressure === "full") return fills[i];
-    }
-    for (let i = 0; i < fills.length; i++) {
-      if (fills[i].pressure === "warn") return fills[i];
-    }
-    return fills[0];
-  }
-  function fillCapLabel(fill) {
-    if (fill.pressure === "full") {
-      return fill.count > MAIL_ATTACH_CAP ? "over cap" : "full";
-    }
-    if (fill.pressure === "warn") return "nearly full";
-    if (fill.count > 0) return "ok";
-    return "clear";
-  }
-  function fillCapPct(count) {
-    return Math.min(
-      100,
-      Math.round(100 * Math.max(0, count | 0) / MAIL_ATTACH_CAP)
-    );
-  }
-  function mergeOwnedMailboxFills(fills, ownedNames, incomplete) {
-    const byKey = /* @__PURE__ */ new Map();
-    for (let i = 0; i < fills.length; i++) {
-      const f = fills[i];
-      byKey.set(f.name.toLowerCase(), {
-        name: f.name,
-        count: f.count,
-        pressure: mailboxCapPressure(f.count, incomplete)
-      });
-    }
-    for (let i = 0; i < ownedNames.length; i++) {
-      const display = String(ownedNames[i] || "").trim();
-      if (!display) continue;
-      const key = display.toLowerCase();
-      if (byKey.has(key)) continue;
-      byKey.set(key, {
-        name: display,
-        count: 0,
-        pressure: ""
-      });
-    }
-    const out = [];
-    byKey.forEach((v) => out.push(v));
-    out.sort((a, b) => {
-      const ra = a.pressure === "full" ? 0 : a.pressure === "warn" ? 1 : a.count > 0 ? 2 : 3;
-      const rb = b.pressure === "full" ? 0 : b.pressure === "warn" ? 1 : b.count > 0 ? 2 : 3;
-      if (ra !== rb) return ra - rb;
-      if (b.count !== a.count) return b.count - a.count;
-      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
-    });
-    return out;
-  }
-  function formatCapsSummaryLine(fullCount, warnCount, holdingCount) {
-    const parts = [];
-    if (fullCount > 0) {
-      parts.push(fullCount + " full");
-    }
-    if (warnCount > 0) {
-      parts.push(warnCount + " near");
-    }
-    const quiet = Math.max(0, holdingCount - fullCount - warnCount);
-    if (quiet > 0) {
-      parts.push(quiet + " holding");
-    }
-    if (!parts.length) return "All clear";
-    return parts.join(" \xB7 ");
-  }
-  function buildMailboxCapsView(opts) {
-    const incomplete = !!opts.incomplete;
-    const owned = opts.ownedNames || [];
-    const fills = mergeOwnedMailboxFills(opts.fills, owned, incomplete);
-    const holding = fills.filter((f) => f.count > 0);
-    const primary = pickPrimaryFill(
-      holding.length ? holding : fills,
-      opts.preferName
-    );
-    let fullCount = 0;
-    let warnCount = 0;
-    for (let i = 0; i < holding.length; i++) {
-      if (holding[i].pressure === "full") fullCount += 1;
-      else if (holding[i].pressure === "warn") warnCount += 1;
-    }
-    const okCount = Math.max(0, holding.length - fullCount - warnCount);
-    return {
-      pressure: worstPressure(holding),
-      title: mailboxCapsTitle(holding, incomplete),
-      incomplete,
-      primary,
-      primaryPct: primary ? fillCapPct(primary.count) : 0,
-      primaryLabel: primary ? fillCapLabel(primary) : "clear",
-      summaryLine: formatCapsSummaryLine(
-        fullCount,
-        warnCount,
-        holding.length
-      ),
-      fullCount,
-      warnCount,
-      okCount,
-      holdingCount: holding.length,
-      fills
-    };
-  }
-  function worstCapPressure(a, b) {
-    if (a === "full" || b === "full") return "full";
-    if (a === "warn" || b === "warn") return "warn";
-    return "";
-  }
-  function buildOwnToCapFills(opts) {
-    const incomplete = !!opts.incomplete;
-    const mailboxFills = mergeOwnedMailboxFills(
-      countAttachmentsByRecipient(opts.mails, opts.selfNames),
-      opts.selfNames,
-      incomplete
-    );
-    const out = [];
-    for (let i = 0; i < mailboxFills.length; i++) {
-      const box = mailboxFills[i];
-      const fromYou = countSenderAttachmentsTo(
-        opts.mails,
-        opts.selfNames,
-        box.name
-      );
-      out.push({
-        name: box.name,
-        fromYou,
-        mailbox: box.count,
-        pressure: worstCapPressure(
-          senderCapPressure(fromYou),
-          mailboxCapPressure(box.count, incomplete)
-        )
-      });
-    }
-    return out;
-  }
-  function formatOwnToCapFraction(fill, incomplete) {
-    return formatCapFraction(fill.fromYou, MAIL_ATTACH_SENDER_CAP, incomplete);
-  }
-  function ownToCapTitle(fill, incomplete) {
-    const fromFrac = formatCapFraction(
-      fill.fromYou,
-      MAIL_ATTACH_SENDER_CAP,
-      incomplete
-    );
-    const boxFrac = formatCapFraction(
-      fill.mailbox,
-      MAIL_ATTACH_CAP,
-      incomplete
-    );
-    let note = fill.name + ": " + fromFrac + " uncollected from your account (sender limit) \xB7 mailbox " + boxFrac;
-    if (fill.pressure === "full") {
-      note += " \u2014 item mail may fail until they take or delete (20/account or 200/char)";
-    } else if (fill.pressure === "warn") {
-      note += " \u2014 nearing a send limit";
-    }
-    if (incomplete) note += ". Older pages may raise these counts.";
-    return note;
-  }
-  function canOwnCharReceiveAttach(fill, queued = 0) {
-    const extra = Math.max(0, queued | 0);
-    if (fill.mailbox + extra >= MAIL_ATTACH_CAP) return false;
-    if (senderCapPressure(fill.fromYou, extra + 1) === "full") return false;
-    return true;
-  }
-  function ownCharsWithFreeMailSpace(opts) {
-    const excl = nameSet(opts.exclude || []);
-    const queued = opts.queuedByTo || {};
-    const fills = buildOwnToCapFills({
-      mails: opts.mails,
-      selfNames: opts.selfNames,
-      incomplete: opts.incomplete
-    });
-    const out = [];
-    for (let i = 0; i < fills.length; i++) {
-      const f = fills[i];
-      const key = f.name.toLowerCase();
-      if (excl.has(key)) continue;
-      const q = queued[key] | 0;
-      if (!canOwnCharReceiveAttach(f, q)) continue;
-      out.push(f.name);
-    }
-    return out;
-  }
-  function buildComposeCapNotices(opts) {
-    const notices = [];
-    const incomplete = !!opts.hasMore;
-    const fills = countAttachmentsByRecipient(opts.mails, opts.selfNames);
-    const box = summarizeMailboxCaps({
-      fills,
-      incomplete,
-      preferName: opts.queued.length === 1 ? opts.queued[0].to : null
-    });
-    notices.push({
-      key: "mailbox",
-      text: "Per-char mailbox \xB7 " + box.line + " \xB7 max 20 from one account",
-      pressure: box.pressure,
-      title: box.title
-    });
-    const self = nameSet(opts.selfNames);
-    const queued = opts.queued.slice();
-    queued.sort(
-      (a, b) => String(a.to || "").localeCompare(String(b.to || ""), void 0, {
-        sensitivity: "base"
-      })
-    );
-    for (let i = 0; i < queued.length; i++) {
-      const display = String(queued[i].to || "").trim();
-      const queuedN = queued[i].count | 0;
-      if (!display || queuedN <= 0) continue;
-      const key = display.toLowerCase();
-      const have = countSenderAttachmentsTo(opts.mails, opts.selfNames, display);
-      const pressure = senderCapPressure(have, queuedN);
-      const frac = formatCapFraction(have, MAIL_ATTACH_SENDER_CAP, incomplete);
-      const selfHit = self.has(key);
-      notices.push({
-        key: "to:" + key,
-        text: (selfHit ? "Self-mail " : "To " + display + " ") + frac + " from you" + (queuedN > 1 ? " \xB7 +" + queuedN + " queued" : " \xB7 +1 queued"),
-        pressure,
-        title: "Per-account sender cap to this character (" + frac + "). New item mail is refused at 20 uncollected from your account." + (incomplete ? " Older cached pages may raise this count." : "")
-      });
-    }
-    return notices;
-  }
-
-  // src/host/mail/composeExperience.ts
-  function queuedByToFromAttaches(attaches) {
-    const out = {};
-    for (let i = 0; i < attaches.length; i++) {
-      const to = String(attaches[i].to || "").trim();
-      if (!to) continue;
-      const key = to.toLowerCase();
-      out[key] = (out[key] | 0) + 1;
-    }
-    return out;
-  }
-  function countWithTo(attaches) {
-    let n = 0;
-    for (let i = 0; i < attaches.length; i++) {
-      if (String(attaches[i].to || "").trim()) n += 1;
-    }
-    return n;
-  }
-  function mergeFingerprintsIntoAttaches(existing, fps) {
-    const bySlot = /* @__PURE__ */ new Map();
-    for (let i = 0; i < existing.length; i++) {
-      bySlot.set(existing[i].slot, existing[i]);
-    }
-    let added = 0;
-    for (let i = 0; i < fps.length; i++) {
-      const fp = fps[i];
-      const slot = Number(fp.slot) | 0;
-      const had = bySlot.has(slot);
-      const prev = bySlot.get(slot);
-      const keepTo = prev && String(prev.to || "").trim() ? String(prev.to).trim() : "";
-      bySlot.set(slot, makeComposeAttach(fp, keepTo));
-      if (!had) added += 1;
-    }
-    const attaches = [];
-    bySlot.forEach((a) => attaches.push(a));
-    attaches.sort((a, b) => (a.slot | 0) - (b.slot | 0));
-    return { attaches, added };
-  }
-  function buildMailMatchingToFreeOwnDraft(opts) {
-    const base = canonicalizeDraft(opts.draft);
-    const merged = mergeFingerprintsIntoAttaches(
-      base.attaches,
-      opts.fingerprints
-    );
-    const freeOwn = normalizeComposeTos(opts.freeOwnNames);
-    let next = canonicalizeDraft({
-      ...base,
-      to: freeOwn,
-      attaches: merged.attaches,
-      subject: String(base.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : base.subject
-    });
-    if (next.to.length && next.attaches.length) {
-      next = distributeAttachesAcrossTos(next);
-    }
-    const assigned = countWithTo(next.attaches);
-    const needTo = Math.max(0, next.attaches.length - assigned);
-    const parts = [];
-    parts.push(
-      merged.added === 1 ? "Queued 1" : "Queued " + Math.max(merged.added, opts.fingerprints.length)
-    );
-    parts.push(
-      freeOwn.length === 1 ? "1 free own" : freeOwn.length + " free own"
-    );
-    if (assigned > 0) {
-      parts.push("distributed " + assigned);
-    }
-    if (needTo > 0) {
-      parts.push(needTo + " still need To");
-    }
-    const statusKind = needTo > 0 || freeOwn.length === 0 ? "warn" : "";
-    return {
-      draft: next,
-      queued: next.attaches.length,
-      freeOwn: freeOwn.length,
-      assigned,
-      needTo,
-      status: parts.join(" \xB7 "),
-      statusKind
-    };
-  }
-  function buildComposeSummary(opts) {
-    const draft = canonicalizeDraft(opts.draft);
-    const queued = draft.attaches.length;
-    const withTo = countWithTo(draft.attaches);
-    const needTo = Math.max(0, queued - withTo);
-    const queuedByTo = queuedByToFromAttaches(draft.attaches);
-    const freeOwn = ownCharsWithFreeMailSpace({
-      mails: opts.mails,
-      selfNames: opts.selfNames,
-      incomplete: opts.incomplete,
-      exclude: draft.to,
-      queuedByTo
-    }).length;
-    const fills = buildOwnToCapFills({
-      mails: opts.mails,
-      selfNames: opts.selfNames,
-      incomplete: opts.incomplete
-    });
-    let pressure = "";
-    for (let i = 0; i < fills.length; i++) {
-      const f = fills[i];
-      const q = queuedByTo[f.name.toLowerCase()] | 0;
-      if (!canOwnCharReceiveAttach(f, q)) {
-        pressure = "full";
-        break;
-      }
-      if (pressure === "") {
-        if (f.pressure === "warn") pressure = "warn";
-      }
-    }
-    const parts = [];
-    if (queued > 0) {
-      parts.push(queued + " queued");
-      parts.push(withTo + " with To");
-      if (needTo > 0) parts.push(needTo + " need To");
-    } else {
-      parts.push(
-        draft.to.length ? draft.to.length === 1 ? "1 To \xB7 plain mail" : draft.to.length + " To \xB7 plain mail" : "No recipients yet"
-      );
-    }
-    if (opts.selfNames.length) {
-      parts.push(
-        freeOwn > 0 ? "Own free: " + freeOwn : draft.to.length ? "Own free: 0" : "Own free: 0 \u2014 all full or already listed"
-      );
-    }
-    return {
-      queued,
-      withTo,
-      needTo,
-      freeOwn,
-      toCount: draft.to.length,
-      pressure,
-      line: parts.join(" \xB7 ")
-    };
-  }
-  function composeSendBlockReason(opts) {
-    const draft = canonicalizeDraft(opts.draft);
-    if (opts.goldEnough === false) {
-      return { reason: "Not enough gold on the observed character", kind: "err" };
-    }
-    if (draft.attaches.length) {
-      if (!countWithTo(draft.attaches) || countWithTo(draft.attaches) < draft.attaches.length) {
-        const need = draft.attaches.length - countWithTo(draft.attaches);
-        return {
-          reason: need === 1 ? "1 attachment still needs a To" : need + " attachments still need a To",
-          kind: "warn"
-        };
-      }
-      const fills = buildOwnToCapFills({
-        mails: opts.mails,
-        selfNames: opts.selfNames,
-        incomplete: opts.incomplete
-      });
-      const byKey = /* @__PURE__ */ new Map();
-      for (let i = 0; i < fills.length; i++) {
-        byKey.set(fills[i].name.toLowerCase(), fills[i]);
-      }
-      const planned = {};
-      for (let i = 0; i < draft.attaches.length; i++) {
-        const to = String(draft.attaches[i].to || "").trim();
-        if (!to) continue;
-        const key = to.toLowerCase();
-        planned[key] = (planned[key] | 0) + 1;
-      }
-      const over = [];
-      const keys = Object.keys(planned);
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        const fill = byKey.get(key);
-        if (!fill) continue;
-        if (!canOwnCharReceiveAttach(fill, planned[key] - 1)) {
-          over.push(fill.name);
-        }
-      }
-      if (over.length) {
-        return {
-          reason: over.length === 1 ? over[0] + " is at the attach cap (20/account or 200/char)" : over.slice(0, 2).join(", ") + (over.length > 2 ? " +" + (over.length - 2) : "") + " at attach cap",
-          kind: "err"
-        };
-      }
-      return null;
-    }
-    if (!draft.to.length) {
-      return { reason: "Add a recipient", kind: "warn" };
-    }
-    return null;
-  }
-
-  // src/host/mail/mailCompose.ts
-  var draftHydrated = false;
-  function ensureComposeDraftHydrated() {
-    if (draftHydrated) return;
-    draftHydrated = true;
-    const draft = loadPersistedDraft();
-    commit({ sessionDraft: draft }, { silent: true });
-  }
-  function stickyLastTo() {
-    try {
-      const last = loadSettings().mailLastTo;
-      return Array.isArray(last) ? last.map(String).filter(Boolean) : [];
-    } catch (e2) {
-      return [];
-    }
-  }
-  function writeDraftSettings(draft) {
-    try {
-      saveSettings({ mailDraft: JSON.stringify(draft) });
-    } catch (e2) {
-    }
-  }
-  function commitCompose(mutator, opts) {
-    ensureComposeDraftHydrated();
-    const cur = getActiveComposeDraft();
-    const next = canonicalizeDraft(mutator(cur));
-    const patch = {
-      view: { kind: "compose", draft: next },
-      sessionDraft: next
-    };
-    if (opts && opts.status != null) {
-      patch.status = opts.status;
-      patch.statusKind = opts.statusKind || "";
-    }
-    commit(patch);
-    writeDraftSettings(next);
-    return next;
-  }
-  function persistDraft(draft) {
-    const next = canonicalizeDraft(draft);
-    commit({ sessionDraft: next }, { silent: true });
-    writeDraftSettings(next);
-  }
-  function loadPersistedDraft() {
-    try {
-      const raw = loadSettings().mailDraft;
-      if (!raw || typeof raw !== "string") return emptyDraft();
-      const parsed = JSON.parse(raw);
-      const tos = normalizeComposeTos(
-        Array.isArray(parsed.to) ? parsed.to.map(String) : []
-      );
-      const fallback = tos[0] || "";
-      const hasAttaches = Array.isArray(parsed.attaches) && parsed.attaches.length > 0;
-      const rawList = hasAttaches ? parsed.attaches : parsed.attach ? [parsed.attach] : [];
-      const attaches = [];
-      for (let i = 0; i < rawList.length; i++) {
-        attaches.push(migrateComposeAttach(rawList[i], fallback));
-      }
-      const draft = canonicalizeDraft({
-        to: tos,
-        subject: String(parsed.subject || ""),
-        body: String(parsed.body || ""),
-        attaches
-      });
-      if (!hasAttaches && parsed.attach) {
-        writeDraftSettings(draft);
-      }
-      return draft;
-    } catch (e2) {
-      return emptyDraft();
-    }
-  }
-  function openCompose(partial) {
-    ensureComposeDraftHydrated();
-    const draft = resolveComposeOpen({
-      session: getActiveComposeDraft(),
-      stickyTo: stickyLastTo(),
-      partial
-    });
-    commit({
-      view: { kind: "compose", draft },
-      sessionDraft: draft
-    });
-    writeDraftSettings(draft);
-  }
-  function queueMailAttach(fp) {
-    ensureComposeDraftHydrated();
-    if (getView().kind !== "compose") openCompose();
-    const cur = getActiveComposeDraft();
-    const to = pickToForNewAttach(cur);
-    const nextLen = cur.attaches.filter((a) => a.slot !== fp.slot).length + 1;
-    commitCompose(
-      (d) => {
-        const list = d.attaches.filter((a) => a.slot !== fp.slot);
-        list.push(makeComposeAttach(fp, to));
-        const subject = String(d.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : d.subject;
-        return { ...d, subject, attaches: list };
-      },
-      {
-        status: to ? nextLen === 1 ? "Attached " + fp.name + " \u2192 " + to : "Queued " + nextLen + " items \xB7 " + fp.name + " \u2192 " + to : nextLen === 1 ? "Attached " + fp.name + " \xB7 add To to send" : "Queued " + nextLen + " items \xB7 " + fp.name + " \xB7 add To to send"
-      }
-    );
-  }
-  function queueMailAttaches(fps) {
-    ensureComposeDraftHydrated();
-    if (!fps.length) return 0;
-    if (getView().kind !== "compose") openCompose();
-    let added = 0;
-    commitCompose(
-      (d) => {
-        const bySlot = /* @__PURE__ */ new Map();
-        for (let i = 0; i < d.attaches.length; i++) {
-          bySlot.set(d.attaches[i].slot, d.attaches[i]);
-        }
-        let rr = 0;
-        const pool = d.to.slice();
-        for (let i = 0; i < fps.length; i++) {
-          const fp = fps[i];
-          const slot = Number(fp.slot) | 0;
-          const had = bySlot.has(slot);
-          const prev = bySlot.get(slot);
-          let to = prev && String(prev.to || "").trim() ? String(prev.to) : "";
-          if (!to && pool.length) {
-            to = pool[rr % pool.length];
-            rr += 1;
-          }
-          bySlot.set(slot, makeComposeAttach(fp, to));
-          if (!had) added += 1;
-        }
-        const list = [];
-        bySlot.forEach((a) => list.push(a));
-        list.sort((a, b) => (a.slot | 0) - (b.slot | 0));
-        const subject = String(d.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : d.subject;
-        return { ...d, subject, attaches: list };
-      },
-      {
-        status: added <= 0 ? "Matching items already queued" : added === 1 ? "Queued 1 matching item" : "Queued " + added + " matching items"
-      }
-    );
-    return added;
-  }
-  function patchComposeDraft(partial) {
-    if (getView().kind !== "compose") return;
-    commitCompose((d) => {
-      const to = partial.to ? normalizeComposeTos(partial.to) : d.to;
-      const subject = partial.subject != null ? partial.subject : d.subject;
-      const body = partial.body != null ? partial.body : d.body;
-      let attaches = d.attaches;
-      if (partial.attaches) {
-        attaches = [];
-        for (let i = 0; i < partial.attaches.length; i++) {
-          const a = partial.attaches[i];
-          attaches.push(
-            makeComposeAttach(a, String(a.to || "").trim())
-          );
-        }
-      } else if (partial.to) {
-        attaches = rebindAttachesToPool(d.attaches, to);
-      }
-      return { to, subject, body, attaches };
-    });
-  }
-  function setMailAttachTo(index, to) {
-    if (getView().kind !== "compose") return;
-    const name = String(to || "").trim();
-    if (!name) return;
-    commitCompose((d) => {
-      if (index < 0 || index >= d.attaches.length) return d;
-      const list = d.attaches.slice();
-      list[index] = { ...list[index], to: name };
-      return {
-        ...d,
-        to: normalizeComposeTos(d.to.concat([name])),
-        attaches: list
-      };
-    });
-  }
-  function distributeMailAttaches() {
-    if (getView().kind !== "compose") return;
-    commitCompose((d) => distributeAttachesAcrossTos(d), {
-      status: "Distributed items across To recipients"
-    });
-  }
-  function mailMatchingToFreeOwn(opts) {
-    ensureComposeDraftHydrated();
-    if (getView().kind !== "compose") openCompose();
-    const cur = getActiveComposeDraft();
-    const freeOwn = ownCharsWithFreeMailSpace({
-      mails: opts.mails,
-      selfNames: opts.selfNames,
-      incomplete: opts.incomplete,
-      exclude: []
-    });
-    const planned = buildMailMatchingToFreeOwnDraft({
-      draft: cur,
-      fingerprints: opts.fingerprints,
-      freeOwnNames: freeOwn
-    });
-    commitCompose(() => planned.draft, {
-      status: planned.status,
-      statusKind: planned.statusKind
-    });
-    return {
-      queued: planned.queued,
-      freeOwn: planned.freeOwn,
-      assigned: planned.assigned,
-      needTo: planned.needTo
-    };
-  }
-  function clearComposeAndClose() {
-    ensureComposeDraftHydrated();
-    commitCompose(() => emptyDraft(), { status: "Compose cleared" });
-    try {
-      saveSettings({ mailLastTo: [] });
-    } catch (e2) {
-    }
-    setMailView({ kind: "list" });
-  }
-  function clearComposeDraft() {
-    if (getView().kind !== "compose") return;
-    commitCompose(() => emptyDraft(), { status: "Compose cleared" });
-    try {
-      saveSettings({ mailLastTo: [] });
-    } catch (e2) {
-    }
-  }
-  function addOwnCharsWithFreeMailSpace(names) {
-    if (getView().kind !== "compose") return 0;
-    const add = normalizeComposeTos(names);
-    if (!add.length) return 0;
-    let added = 0;
-    commitCompose(
-      (d) => {
-        const before = d.to.length;
-        const to = normalizeComposeTos(d.to.concat(add));
-        added = Math.max(0, to.length - before);
-        return {
-          ...d,
-          to,
-          attaches: rebindAttachesToPool(d.attaches, to)
-        };
-      },
-      {
-        status: added <= 0 ? "No own characters with free attach space" : added === 1 ? "Added 1 own character with free space" : "Added " + added + " own characters with free space",
-        statusKind: added <= 0 ? "warn" : ""
-      }
-    );
-    return added;
-  }
-  function removeMailAttachAt(index) {
-    if (getView().kind !== "compose") return;
-    commitCompose((d) => {
-      if (index < 0 || index >= d.attaches.length) return d;
-      const list = d.attaches.slice();
-      list.splice(index, 1);
-      return { ...d, attaches: list };
-    });
-  }
-  function replyToMail(mail) {
-    openCompose({
-      to: mail.fro ? [mail.fro] : [],
-      subject: mail.subject ? mail.subject.indexOf("Re:") === 0 ? mail.subject : "Re: " + mail.subject : "Re:",
-      body: "",
-      attaches: []
-    });
-  }
-  function forwardMail(mail) {
-    const quoted = "\n\n---------- Forwarded message ----------\nFrom: " + (mail.fro || "?") + "\nTo: " + (mail.to || "?") + "\nSubject: " + (mail.subject || "") + "\n\n" + (mail.message || "");
-    openCompose({
-      to: [],
-      subject: mail.subject ? mail.subject.indexOf("Fwd:") === 0 ? mail.subject : "Fwd: " + mail.subject : "Fwd:",
-      body: quoted,
-      attaches: []
-    });
-  }
-
-  // src/host/mail/itemFingerprint.ts
-  function titleKey(p) {
-    return p != null && String(p).trim() !== "" ? String(p) : "";
-  }
-  function dataKey(data) {
-    var _a;
-    return (_a = getItemData({ data })) != null ? _a : "";
-  }
-  function levelKey(level) {
-    if (level == null || level === "") return null;
-    const n = Number(level);
-    return Number.isFinite(n) ? n : null;
-  }
-  function itemMatchesQueueIdentity(item, expected) {
-    if (!item || !item.name || item.name === "placeholder") return false;
-    if (String(item.name) !== String(expected.name || "")) return false;
-    if (titleKey(item.p) !== titleKey(expected.p)) return false;
-    if (levelKey(item.level) !== levelKey(expected.level)) return false;
-    if (dataKey(item.data) !== dataKey(expected.data)) return false;
-    return true;
-  }
-  function itemMatchesFingerprint(item, expected) {
-    if (!item || !item.name) return false;
-    if (item.name !== expected.name) return false;
-    if (expected.level != null) {
-      if (item.level !== expected.level) return false;
-    }
-    if (expected.q != null) {
-      if (item.q !== expected.q) return false;
-    }
-    if (expected.p != null) {
-      if (item.p !== expected.p) return false;
-    }
-    if (expected.data != null) {
-      if (dataKey(item.data) !== dataKey(expected.data)) return false;
-    }
-    return true;
-  }
-  function listBagFingerprintsMatchingIdentity(items, template) {
-    if (!items || !items.length) return [];
-    const out = [];
-    for (let i = 0; i < items.length; i++) {
-      if (!itemMatchesQueueIdentity(items[i], template)) continue;
-      const fp = fingerprintFromSlot(i, items[i]);
-      if (fp) out.push(fp);
-    }
-    return out;
-  }
-  function fingerprintFromSlot(slot, item) {
-    if (!item || !item.name || item.name === "placeholder") return null;
-    const fp = { slot, name: String(item.name) };
-    if (item.level != null) fp.level = Number(item.level);
-    if (item.q != null) fp.q = Number(item.q);
-    if (item.p != null) fp.p = String(item.p);
-    const data = getItemData(item);
-    if (data) fp.data = data;
-    return fp;
-  }
-  function findFingerprintSlot(items, expected, usedSlots) {
-    if (!items || !items.length) return -1;
-    const prefer = Number(expected.slot) | 0;
-    if (prefer >= 0 && prefer < items.length && !(usedSlots && usedSlots.has(prefer)) && itemMatchesFingerprint(items[prefer], expected)) {
-      return prefer;
-    }
-    for (let i = 0; i < items.length; i++) {
-      if (usedSlots && usedSlots.has(i)) continue;
-      if (itemMatchesFingerprint(items[i], expected)) return i;
-    }
-    return -1;
-  }
-
-  // src/lib/tradeHelpers.ts
-  var TRADE_RANGE_SQ = 200 * 200;
-  function formatTradeGold(n) {
-    if (n == null || !Number.isFinite(n)) return "?";
-    return formatCompactNumber(n);
-  }
-  function isInTradeRange(target, observer) {
-    var _a, _b, _c, _d;
-    if (!target || !observer) return false;
-    if (target.id != null && observer.id != null && target.id === observer.id) {
-      return true;
-    }
-    const tx = (_a = target.real_x) != null ? _a : target.x;
-    const ty = (_b = target.real_y) != null ? _b : target.y;
-    const ox = (_c = observer.real_x) != null ? _c : observer.x;
-    const oy = (_d = observer.real_y) != null ? _d : observer.y;
-    if (tx == null || ty == null || ox == null || oy == null) return false;
-    const dx = tx - ox;
-    const dy = ty - oy;
-    return dx * dx + dy * dy <= TRADE_RANGE_SQ;
-  }
-  function findBagMatchForBuyOrder(listing, items) {
-    if (!listing.name || !items) return null;
-    const wantLevel = listing.level != null ? listing.level : void 0;
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (!it || !it.name || it.name !== listing.name) continue;
-      if (wantLevel != null && (it.level || 0) !== wantLevel) continue;
-      const q = it.q != null && it.q > 0 ? it.q : 1;
-      return { slot: i, q };
-    }
-    return null;
-  }
-  function canAffordListing(listing, quantity, gold) {
-    if (listing.price == null || gold == null) return false;
-    const q = quantity > 0 ? quantity : 1;
-    return gold >= listing.price * q;
-  }
-  function confirmTradePurchase(itemName, unitPrice, quantity) {
-    const total = unitPrice * quantity;
-    return window.confirm(
-      `Buy ${quantity}\xD7 ${itemName} for ${formatTradeGold(total)} gold (${formatTradeGold(unitPrice)} each)?`
-    );
-  }
-  function confirmTradeFulfill(itemName, unitPrice, quantity) {
-    const total = unitPrice * quantity;
-    return window.confirm(
-      `Sell ${quantity}\xD7 ${itemName} to fulfill buy order for ${formatTradeGold(total)} gold (${formatTradeGold(unitPrice)} each)?`
-    );
-  }
-  function isGiveawayListing(slot) {
-    return !!(slot && (slot.giveaway || slot.registry));
-  }
-  function isTradeOfferListing(slot) {
-    if (!slot || slot.b || isGiveawayListing(slot)) return false;
-    if (slot.want == null) return false;
-    if (typeof slot.want === "string") return !!slot.want.trim();
-    return !!(slot.want && slot.want.name);
-  }
-  function tradeWantMatches(want, item) {
-    if (!want || !item || item.name !== want.name) return false;
-    if (want.level != null && (item.level || 0) < want.level) return false;
-    if (want.p && item.p !== want.p) return false;
-    if ((item.q || 1) < (want.q || 1)) return false;
-    return true;
-  }
-  function findBagMatchForTradeWant(want, items) {
-    if (!items) return null;
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (!it || !tradeWantMatches(want, it)) continue;
-      return { slot: i, q: it.q != null && it.q > 0 ? it.q | 0 : 1, item: it };
-    }
-    return null;
-  }
-  function formatTradeWantLabel(want) {
-    if (!want || !want.name) return "";
-    const G = typeof window !== "undefined" ? window.G : void 0;
-    const def = G && G.items && G.items[want.name];
-    let label = def && typeof def.name === "string" && def.name ? String(def.name) : want.name;
-    if (want.p && G && G.titles && G.titles[want.p] && G.titles[want.p].title) {
-      label = String(G.titles[want.p].title) + " " + label;
-    }
-    if (want.level != null) label += " +" + want.level;
-    if (want.q != null && want.q > 1) label = want.q + "\xD7 " + label;
-    return label;
-  }
-  function positiveGcd(a, b) {
-    let x = Math.abs(a | 0);
-    let y = Math.abs(b | 0);
-    if (!x || !y) return 1;
-    while (y) {
-      const t = y;
-      y = x % y;
-      x = t;
-    }
-    return x || 1;
-  }
-  function tradeOfferRatioParts(wantQ, offerQ) {
-    const give = wantQ != null && wantQ > 0 ? wantQ | 0 : 0;
-    const get = offerQ != null && offerQ > 0 ? offerQ | 0 : 0;
-    if (!(give > 0) || !(get > 0)) return null;
-    const g = positiveGcd(give, get);
-    return { give: give / g, get: get / g };
-  }
-  function formatTradeOfferRatio(wantQ, offerQ) {
-    const parts = tradeOfferRatioParts(wantQ, offerQ);
-    if (!parts) return "";
-    return parts.give + "\u2236" + parts.get;
-  }
-  function giveawayMinutesLeft(minutes, lastRefreshedAt, now = Date.now()) {
-    if (minutes == null || !Number.isFinite(minutes)) return null;
-    let left = Math.floor(minutes);
-    if (lastRefreshedAt != null && lastRefreshedAt > 0) {
-      const elapsed = Math.floor((now - lastRefreshedAt) / 6e4);
-      if (elapsed > 0) left = Math.max(0, left - elapsed);
-    }
-    return left < 0 ? 0 : left;
-  }
-  function formatGiveawayTimeLeft(minutes, lastRefreshedAt, now = Date.now()) {
-    const left = giveawayMinutesLeft(minutes, lastRefreshedAt, now);
-    if (left == null) return "";
-    if (left <= 0) return "<1m";
-    if (left < 60) return left + "m";
-    const h = Math.floor(left / 60);
-    const m = left % 60;
-    return m ? h + "h " + m + "m" : h + "h";
-  }
-  function buyOrderItemKey(name, level, p) {
-    return `${name}|${level != null ? level : ""}|${p != null ? p : ""}`;
-  }
-  function nearbyBuyOrdersRevision(entities, observer) {
-    if (!observer) return 0;
-    let n = 0;
-    for (let ei = 0; ei < entities.length; ei++) {
-      const ent = entities[ei];
-      if (!ent || !ent.slots) continue;
-      if (!isInTradeRange(ent, observer)) continue;
-      const slotKeys = Object.keys(ent.slots);
-      for (let si = 0; si < slotKeys.length; si++) {
-        const listing = ent.slots[slotKeys[si]];
-        if (listing && listing.b && listing.name && listing.price != null) n++;
-      }
-    }
-    return n;
-  }
-  function indexNearbyBuyOrders(entities, observer) {
-    const obsId = observer && observer.id != null ? String(observer.id) : "";
-    const byKey = /* @__PURE__ */ new Map();
-    for (let ei = 0; ei < entities.length; ei++) {
-      const ent = entities[ei];
-      if (!ent || !ent.slots) continue;
-      if (obsId && ent.id != null && String(ent.id) === obsId) continue;
-      if (!isInTradeRange(ent, observer)) continue;
-      const entId = ent.id != null ? String(ent.id) : "";
-      const entName = ent.name != null ? String(ent.name) : entId;
-      if (!entId) continue;
-      const slotKeys = Object.keys(ent.slots);
-      for (let si = 0; si < slotKeys.length; si++) {
-        const tradeSlot = slotKeys[si];
-        if (tradeSlot.indexOf("trade") !== 0) continue;
-        const listing = ent.slots[tradeSlot];
-        if (!listing || !listing.b || !listing.name || listing.price == null) {
-          continue;
-        }
-        if (!listing.rid) continue;
-        const key = buyOrderItemKey(
-          listing.name,
-          listing.level,
-          listing.p
-        );
-        const match = {
-          entityId: entId,
-          entityName: entName,
-          tradeSlot,
-          listing: {
-            name: listing.name,
-            price: listing.price,
-            rid: String(listing.rid),
-            q: listing.q,
-            level: listing.level,
-            p: listing.p
-          }
-        };
-        const bucket = byKey.get(key);
-        if (bucket) bucket.push(match);
-        else byKey.set(key, [match]);
-      }
-    }
-    for (const bucket of byKey.values()) {
-      bucket.sort((a, b) => {
-        if (b.listing.price !== a.listing.price) {
-          return b.listing.price - a.listing.price;
-        }
-        return a.entityName.localeCompare(b.entityName);
-      });
-    }
-    return byKey;
-  }
-  function scanBuyOrdersForBagItem(fp, entities, observer) {
-    if (!observer) return [];
-    const want = { slot: -1, name: fp.name };
-    if (fp.level != null) want.level = fp.level;
-    if (fp.p != null) want.p = fp.p;
-    const key = buyOrderItemKey(fp.name, fp.level, fp.p);
-    const indexed = indexNearbyBuyOrders(entities, observer).get(key);
-    if (!indexed) return [];
-    const matches = [];
-    for (let i = 0; i < indexed.length; i++) {
-      const m = indexed[i];
-      if (itemMatchesFingerprint(m.listing, want)) matches.push(m);
-    }
-    return matches;
-  }
-  function isJoinedGiveaway(slot, observer) {
-    if (!slot || !slot.registry || !observer) return false;
-    const id = observer.id != null ? String(observer.id) : "";
-    const name = observer.name != null ? String(observer.name) : "";
-    if (id && Object.prototype.hasOwnProperty.call(slot.registry, id)) {
-      return true;
-    }
-    if (name) {
-      const vals = Object.values(slot.registry);
-      for (let i = 0; i < vals.length; i++) {
-        if (vals[i] === name) return true;
-      }
-    }
-    return false;
-  }
-
-  // src/ui/bag/bagBuyOrderIndicator.ts
-  var HOST_ID2 = "bottomleftcorner";
-  var BADGE_CLASS = "ecu-bag-buy-badge";
-  var MARK_CLASS = "ecu-bag-buy-order";
-  var BAG_BUY_ORDER_CSS = `
-#${HOST_ID2} [data-cnum].${MARK_CLASS} {
-  position: relative;
-}
-#${HOST_ID2} .${BADGE_CLASS} {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  z-index: 2;
-  min-width: 13px;
-  height: 13px;
-  padding: 0 2px;
-  box-sizing: border-box;
-  background: #1a3a4a;
-  border: 1px solid #8fd4ff;
-  color: #fff;
-  font-size: 9px;
-  line-height: 11px;
-  font-family: "Press Start 2P", monospace;
-  text-align: center;
-  pointer-events: none;
-}
-`;
-  var cssInjected2 = false;
-  function ensureCss() {
-    if (cssInjected2) return;
-    cssInjected2 = true;
-    const el = document.createElement("style");
-    el.setAttribute("data-ecu-bag-buy-css", "1");
-    el.textContent = BAG_BUY_ORDER_CSS;
-    document.head.appendChild(el);
-  }
-  function clearBuyOrderChrome(node) {
-    node.classList.remove(MARK_CLASS);
-    const badge = node.querySelector(`.${BADGE_CLASS}`);
-    if (badge) badge.remove();
-  }
-  function refreshBagBuyOrderIndicators() {
-    if (!window.inventory) return;
-    const host2 = document.getElementById(HOST_ID2);
-    if (!host2) return;
-    const obs = window.observing;
-    const items = obs && Array.isArray(obs.items) ? obs.items : null;
-    if (!obs || !items) return;
-    ensureCss();
-    const index = indexNearbyBuyOrders(getEntitiesList(), obs);
-    const nodes = host2.querySelectorAll("[data-cnum]");
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      clearBuyOrderChrome(node);
-      const raw = node.getAttribute("data-cnum");
-      if (raw == null || raw === "") continue;
-      const num = parseInt(raw, 10);
-      if (!Number.isFinite(num) || num < 0 || num >= items.length) continue;
-      const item = items[num];
-      const fp = fingerprintFromSlot(num, item);
-      if (!fp) continue;
-      const key = buyOrderItemKey(fp.name, fp.level, fp.p);
-      const matches = index.get(key);
-      if (!matches || !matches.length) continue;
-      const best = matches[0];
-      const priceLabel = formatTradeGold(best.listing.price);
-      const tip = `Nearby buy order \u2014 ${best.entityName} ${priceLabel}g \xB7 right-click \u2192 Sell to buy order\u2026`;
-      node.classList.add(MARK_CLASS);
-      const badge = document.createElement("span");
-      badge.className = BADGE_CLASS;
-      badge.textContent = "B";
-      badge.title = tip;
-      node.appendChild(badge);
-      const existing = node.getAttribute("title") || "";
-      if (existing.indexOf("Nearby buy order") < 0) {
-        node.setAttribute("title", existing ? `${existing} \xB7 ${tip}` : tip);
-      }
-      const inner = node.querySelector(".rclick");
-      if (inner) {
-        const innerTip = inner.getAttribute("title") || existing;
-        if (innerTip.indexOf("Nearby buy order") < 0) {
-          inner.setAttribute(
-            "title",
-            innerTip ? `${innerTip} \xB7 ${tip}` : tip
-          );
-        }
-      }
-    }
-  }
-
-  // src/ui/bag/composeBagHighlight.ts
-  var HOST_ID3 = "bottomleftcorner";
-  var COMPOSE_BAG_QUEUE_CLASS = "is-ecu-compose-queue";
-  var activeSlots = [];
-  var installed2 = false;
-  function uniqueSlots(slots) {
-    const seen = /* @__PURE__ */ new Set();
-    const out = [];
-    for (let i = 0; i < slots.length; i++) {
-      const n = Number(slots[i]);
-      if (!Number.isFinite(n) || n < 0) continue;
-      const slot = n | 0;
-      if (seen.has(slot)) continue;
-      seen.add(slot);
-      out.push(slot);
-    }
-    return out;
-  }
-  function slotsFromComposeAttaches(attaches) {
-    const slots = [];
-    for (let i = 0; i < attaches.length; i++) {
-      slots.push(attaches[i].slot);
-    }
-    return uniqueSlots(slots);
-  }
-  function applyComposeBagHighlights() {
-    const host2 = document.getElementById(HOST_ID3);
-    if (!host2) return;
-    const want = new Set(activeSlots);
-    const nodes = host2.querySelectorAll("[data-cnum]");
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      const raw = node.getAttribute("data-cnum");
-      if (raw == null || raw === "") {
-        node.classList.remove(COMPOSE_BAG_QUEUE_CLASS);
-        continue;
-      }
-      const num = parseInt(raw, 10);
-      if (want.has(num)) node.classList.add(COMPOSE_BAG_QUEUE_CLASS);
-      else node.classList.remove(COMPOSE_BAG_QUEUE_CLASS);
-    }
-  }
-  function setComposeBagHighlights(slots) {
-    activeSlots = uniqueSlots(slots);
-    applyComposeBagHighlights();
-  }
-  function clearComposeBagHighlights() {
-    activeSlots = [];
-    applyComposeBagHighlights();
-  }
-  function syncComposeBagHighlightsFromDraft() {
-    const draft = getActiveComposeDraft();
-    setComposeBagHighlights(slotsFromComposeAttaches(draft.attaches));
-  }
-  function installComposeBagHighlight() {
-    if (installed2) return () => {
-    };
-    installed2 = true;
-    ensureComposeDraftHydrated();
-    syncComposeBagHighlightsFromDraft();
-    const unsub2 = subscribeMailStore(syncComposeBagHighlightsFromDraft);
-    return () => {
-      unsub2();
-      installed2 = false;
-      clearComposeBagHighlights();
-    };
-  }
-
-  // src/lib/luckyUpgradePrefs.ts
-  var STORAGE_KEY = "al-comm-ui-lucky-upgrade-v1";
-  var LUCKY_SLOT_MAX_DEFAULT = 41;
-  function normalizeLuckySlot(raw, maxSlot = LUCKY_SLOT_MAX_DEFAULT) {
-    const n = typeof raw === "number" ? raw : Number(raw);
-    if (!Number.isFinite(n)) return 0;
-    const slot = Math.floor(n);
-    if (slot < 0) return 0;
-    const max = Math.max(0, maxSlot | 0);
-    return slot > max ? max : slot;
-  }
-  function normalizeLuckyUpgradePref(raw) {
-    if (!raw || typeof raw !== "object") {
-      return { enabled: false, slot: 0 };
-    }
-    const o = raw;
-    return {
-      enabled: !!o.enabled,
-      slot: normalizeLuckySlot(o.slot)
-    };
-  }
-  function luckyUpgradeCharKey() {
-    try {
-      const obs = window.observing;
-      const obsName = obs && obs.name != null ? String(obs.name).trim() : "";
-      if (obsName) return obsName;
-      const ch = window.character;
-      const chName = ch && ch.name != null ? String(ch.name).trim() : "";
-      return chName || null;
-    } catch (e2) {
-      return null;
-    }
-  }
-  function readStore() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return /* @__PURE__ */ Object.create(null);
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        return /* @__PURE__ */ Object.create(null);
-      }
-      const out = /* @__PURE__ */ Object.create(null);
-      const keys = Object.keys(parsed);
-      for (let i = 0; i < keys.length; i++) {
-        const k = keys[i];
-        out[k] = normalizeLuckyUpgradePref(
-          parsed[k]
-        );
-      }
-      return out;
-    } catch (e2) {
-      return /* @__PURE__ */ Object.create(null);
-    }
-  }
-  function writeStore(store) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-    } catch (e2) {
-    }
-  }
-  function getLuckyUpgradePref(charKey) {
-    const key = charKey != null && String(charKey).trim() ? String(charKey).trim() : luckyUpgradeCharKey();
-    if (!key) return { enabled: false, slot: 0 };
-    const store = readStore();
-    return store[key] ? normalizeLuckyUpgradePref(store[key]) : { enabled: false, slot: 0 };
-  }
-  function setLuckyUpgradePref(partial, charKey) {
-    const key = charKey != null && String(charKey).trim() ? String(charKey).trim() : luckyUpgradeCharKey();
-    if (!key) {
-      return normalizeLuckyUpgradePref({
-        enabled: !!partial.enabled,
-        slot: partial.slot
-      });
-    }
-    const prev = getLuckyUpgradePref(key);
-    const next = normalizeLuckyUpgradePref({
-      enabled: partial.enabled != null ? partial.enabled : prev.enabled,
-      slot: partial.slot != null ? partial.slot : prev.slot
-    });
-    const store = readStore();
-    store[key] = next;
-    writeStore(store);
-    return next;
-  }
-  function resolveLuckySlotForShrine(charKey) {
-    const pref = getLuckyUpgradePref(charKey);
-    if (!pref.enabled) return null;
-    return normalizeLuckySlot(pref.slot);
-  }
-
-  // src/ui/bag/shrineBagHighlight.ts
-  var HOST_ID4 = "bottomleftcorner";
-  var SHRINE_BAG_PICK_CLASS = "is-ecu-shrine-pick";
-  var SHRINE_BAG_LUCKY_CLASS = "is-ecu-shrine-lucky";
-  var SHRINE_BAG_LUCKY_EMPTY_CLASS = "is-ecu-shrine-lucky-empty";
-  var activeSlots2 = [];
-  var luckyOverride = void 0;
-  function bagSlotIsEmpty(slot) {
-    try {
-      const obs = window.observing;
-      const items = obs && Array.isArray(obs.items) ? obs.items : null;
-      if (!items || slot < 0 || slot >= items.length) return true;
-      const it = items[slot];
-      return !it || !it.name || it.name === "placeholder";
-    } catch (e2) {
-      return true;
-    }
-  }
-  function uniqueSlots2(slots) {
-    const seen = /* @__PURE__ */ new Set();
-    const out = [];
-    for (let i = 0; i < slots.length; i++) {
-      const n = Number(slots[i]);
-      if (!Number.isFinite(n) || n < 0) continue;
-      const slot = n | 0;
-      if (seen.has(slot)) continue;
-      seen.add(slot);
-      out.push(slot);
-    }
-    return out;
-  }
-  function resolvedLuckySlot() {
-    if (luckyOverride !== void 0) {
-      if (luckyOverride == null || !Number.isFinite(luckyOverride) || luckyOverride < 0) {
-        return null;
-      }
-      return luckyOverride | 0;
-    }
-    return resolveLuckySlotForShrine();
-  }
-  function applyShrineBagHighlights() {
-    const host2 = document.getElementById(HOST_ID4);
-    if (!host2) return;
-    const want = new Set(activeSlots2);
-    const luckySlot = resolvedLuckySlot();
-    const nodes = host2.querySelectorAll("[data-cnum]");
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      const raw = node.getAttribute("data-cnum");
-      if (raw == null || raw === "") {
-        node.classList.remove(SHRINE_BAG_PICK_CLASS);
-        node.classList.remove(SHRINE_BAG_LUCKY_CLASS);
-        node.classList.remove(SHRINE_BAG_LUCKY_EMPTY_CLASS);
-        continue;
-      }
-      const num = parseInt(raw, 10);
-      if (want.has(num)) node.classList.add(SHRINE_BAG_PICK_CLASS);
-      else node.classList.remove(SHRINE_BAG_PICK_CLASS);
-      if (luckySlot != null && num === luckySlot) {
-        node.classList.add(SHRINE_BAG_LUCKY_CLASS);
-        if (bagSlotIsEmpty(num)) node.classList.add(SHRINE_BAG_LUCKY_EMPTY_CLASS);
-        else node.classList.remove(SHRINE_BAG_LUCKY_EMPTY_CLASS);
-      } else {
-        node.classList.remove(SHRINE_BAG_LUCKY_CLASS);
-        node.classList.remove(SHRINE_BAG_LUCKY_EMPTY_CLASS);
-      }
-    }
-  }
-  function setShrineBagHighlights(slots) {
-    activeSlots2 = uniqueSlots2(slots);
-    applyShrineBagHighlights();
-  }
-  function setShrineLuckySlotHighlight(slot) {
-    if (slot == null || !Number.isFinite(slot) || slot < 0) {
-      luckyOverride = null;
-    } else {
-      luckyOverride = slot | 0;
-    }
-    applyShrineBagHighlights();
-  }
-  function clearShrineBagHighlights() {
-    activeSlots2 = [];
-    luckyOverride = void 0;
-    applyShrineBagHighlights();
-  }
-
-  // src/host/infoDialog/bindings.ts
-  var openItemFn = null;
-  var openConditionFn = null;
-  function bindOpenHandlers(openItem2, openCondition2) {
-    openItemFn = openItem2;
-    openConditionFn = openCondition2;
-  }
-  function callOpenItem(entity, slotName, slotOverride) {
-    if (openItemFn) openItemFn(entity, slotName, slotOverride);
-  }
-  function callOpenCondition(entity, conditionName) {
-    if (openConditionFn) openConditionFn(entity, conditionName);
-  }
-
-  // src/host/infoDialog/dismiss.ts
-  var HANDLER = "__ecuDialogDismissHandler";
-  var layoutEditing = false;
-  function setInfoDialogLayoutEditing(editing) {
-    layoutEditing = !!editing;
-  }
-  function isOpen(kind) {
-    return hasContent(dialogEl(kind));
-  }
-  function isInfoDialogChrome(el) {
-    if (!el.closest) return false;
-    return !!(el.closest("#" + BUFF_DIALOG_ID) || el.closest("#" + ITEM_DIALOG_ID) || el.closest('[data-panel="buffInfo"]') || el.closest('[data-panel="itemInfo"]'));
-  }
-  function isInfoSource(el) {
-    if (!el.closest) return false;
-    return !!el.closest("[" + INFO_SOURCE_ATTR + "]");
-  }
-  function isTourChrome(el) {
-    if (!el.closest) return false;
-    return !!(el.closest("[data-ecu-tour-portal]") || el.closest(".ecu-tour-root") || el.closest(".ecu-tour-card"));
-  }
-  function onDialogDismissPointerDown(ev) {
-    if (layoutEditing) return;
-    if (!isOpen("buff") && !isOpen("item")) return;
-    const t = ev.target;
-    if (!t) return;
-    const el = t;
-    if (isInfoDialogChrome(el) || isInfoSource(el) || isTourChrome(el)) {
-      return;
-    }
-    clearInfoHost("buff");
-    clearInfoHost("item");
-  }
-  function installDialogDismiss() {
-    const prev = window[HANDLER];
-    if (prev) {
-      document.removeEventListener("pointerdown", prev, true);
-    }
-    window[HANDLER] = onDialogDismissPointerDown;
-    document.addEventListener("pointerdown", onDialogDismissPointerDown, true);
-  }
-
-  // src/host/infoDialog/patches.ts
-  var PATCHED = "__ecuDialogRendersPatched";
-  var FN_MARK = "__ecuInfoPatched";
-  var FN_ORIG2 = "__ecuInfoOrig";
-  function markPatched(patched, orig) {
-    patched[FN_MARK] = true;
-    patched[FN_ORIG2] = orig;
-    return patched;
-  }
-  function isOurPatch(fn) {
-    return !!(fn && fn[FN_MARK]);
-  }
-  function isStockOrEcuSelector(selector) {
-    return selector === STOCK_SEL || selector === STOCK_DIALOG_ID || selector === BUFF_SEL || selector === ITEM_SEL || selector === "#" + STOCK_DIALOG_ID;
-  }
-  function kindFromSelector(selector) {
-    if (selector === BUFF_SEL) return "buff";
-    if (selector === ITEM_SEL) return "item";
-    return getPendingWriteKind();
-  }
-  function installRenderPatches() {
-    const w = window;
-    const done = w[PATCHED] || (w[PATCHED] = {});
-    if (typeof w.render_condition === "function" && !isOurPatch(w.render_condition)) {
-      const orig = w.render_condition[FN_ORIG2] || w.render_condition;
-      w.render_condition = markPatched(function(selector, name) {
-        setPendingWriteKind("buff");
-        return orig.call(this, selector, name);
-      }, orig);
-      done.condition = true;
-    }
-    if (typeof w.render_skill === "function" && !isOurPatch(w.render_skill)) {
-      const orig = w.render_skill[FN_ORIG2] || w.render_skill;
-      w.render_skill = markPatched(function(selector, skill, args) {
-        setPendingWriteKind("buff");
-        return orig.call(this, selector, skill, args);
-      }, orig);
-      done.skill = true;
-    }
-    if (typeof w.render_item === "function" && !isOurPatch(w.render_item)) {
-      const orig = w.render_item[FN_ORIG2] || w.render_item;
-      w.render_item = markPatched(function(selector, args) {
-        if (selector === "html") {
-          return orig.call(this, "html", args);
-        }
-        if (isStockOrEcuSelector(selector)) {
-          const kind = kindFromSelector(selector);
-          setPendingWriteKind(kind);
-          const html = orig.call(this, "html", args);
-          if (typeof html === "string") writeInfoHtml(kind, html);
-          return html;
-        }
-        return orig.call(this, selector, args);
-      }, orig);
-      done.item = true;
-    }
-    if (typeof w.slot_click === "function" && !isOurPatch(w.slot_click)) {
-      const origSlot = w.slot_click[FN_ORIG2] || w.slot_click;
-      w.slot_click = markPatched(function(name) {
-        const target = w.xtarget || w.ctarget;
-        if (target) callOpenItem(target, name);
-      }, origSlot);
-      done.slot = true;
-    }
-    if (typeof w.condition_click === "function" && !isOurPatch(w.condition_click)) {
-      const origCond = w.condition_click[FN_ORIG2] || w.condition_click;
-      w.condition_click = markPatched(function(name) {
-        const target = w.xtarget || w.ctarget;
-        if (target) callOpenCondition(target, name);
-        else origCond.call(this, name);
-      }, origCond);
-      done.conditionClick = true;
-    }
-  }
-  function installInfoDialogLifecycle() {
-    ensureDialogElements();
-    installRenderPatches();
-    installDialogDismiss();
-    if (!window.__ecuDialogPatchRetry) {
-      window.__ecuDialogPatchRetry = true;
-      let tries = 0;
-      const timer = window.setInterval(() => {
-        tries += 1;
-        installRenderPatches();
-        const w = window;
-        const ready = isOurPatch(w.render_condition) && isOurPatch(w.render_item) && isOurPatch(w.slot_click) && isOurPatch(w.render_skill);
-        if (ready || tries >= 80) {
-          window.clearInterval(timer);
-        }
-      }, 250);
-    }
-  }
-
-  // src/host/infoDialog/api.ts
-  var lastConditionId = "";
-  var lastSlotName = "";
-  function resolvePaperdollEntity(entity) {
-    if (!entity) return entity;
-    const id = entity.id;
-    if (id == null || id === "") return entity;
-    const tid = String(id);
-    const raw = window.entities;
-    if (!raw) return entity;
-    if (!Array.isArray(raw)) {
-      const byKey = raw[tid] || raw[id];
-      if (byKey && byKey.slots) return byKey;
-    }
-    const list = Array.isArray(raw) ? raw : Object.values(raw);
-    for (let i = 0; i < list.length; i++) {
-      const ent = list[i];
-      if (ent && String(ent.id) === tid && ent.slots) return ent;
-    }
-    return entity;
-  }
-  function setDialogOnlyXTarget(entity) {
-    window.xtarget = entity || null;
-    window.__ecuDialogOnlyXTarget = !!entity;
-  }
-  function setSelectionXTarget(entity) {
-    window.xtarget = entity || null;
-    window.__ecuDialogOnlyXTarget = false;
-  }
-  function isBuffDialogOpen() {
-    return hasContent(dialogEl("buff"));
-  }
-  function isItemDialogOpen() {
-    return hasContent(dialogEl("item"));
-  }
-  function isTopLeftDialogOpen() {
-    return isBuffDialogOpen() || isItemDialogOpen();
-  }
-  function closeBuffDialog() {
-    lastConditionId = "";
-    return clearInfoHost("buff");
-  }
-  function closeItemDialog() {
-    lastSlotName = "";
-    return clearInfoHost("item");
-  }
-  function closeInfo(kind) {
-    if (kind === "buff") return closeBuffDialog();
-    if (kind === "item") return closeItemDialog();
-    if (closeBuffDialog()) return true;
-    return closeItemDialog();
-  }
-  function closeTopLeftDialog() {
-    return closeInfo();
-  }
-  function closeAllInfoDialogs() {
-    const a = closeBuffDialog();
-    const b = closeItemDialog();
-    return a || b;
-  }
-  bindCloseImpl((kind) => closeInfo(kind));
-  function openItem(entity, slotName, slotOverride, opts) {
-    if (!entity || !slotName) return;
-    installInfoDialogLifecycle();
-    const target = resolvePaperdollEntity(entity);
-    const slot = slotOverride && slotOverride.name ? slotOverride : target && target.slots && target.slots[slotName];
-    if (!slot || !slot.name) return;
-    const w = window;
-    const itemHost = ensureAdoptedHost("item");
-    if (lastSlotName === slotName && String(itemHost.innerHTML || "").trim()) {
-      closeItemDialog();
-      w.last_sclick = "";
-      return;
-    }
-    const G = w.G;
-    const def = G && G.items && G.items[slot.name];
-    if (!def) return;
-    setPendingWriteKind("item");
-    lastSlotName = slotName;
-    w.last_sclick = slotName;
-    w.dialogs_target = target;
-    if (opts && opts.dialogOnly) {
-      setDialogOnlyXTarget(target);
-    } else {
-      setSelectionXTarget(target);
-    }
-    const html = buildItemHtml({
-      id: "item" + slotName,
-      item: def,
-      name: slot.name,
-      actual: slot,
-      slot: slotName,
-      from_player: target.id
-    });
-    writeInfoHtml("item", html);
-  }
-  function openCondition(entity, conditionName) {
-    if (!entity || !conditionName) return;
-    installInfoDialogLifecycle();
-    const host2 = ensureAdoptedHost("buff");
-    if (lastConditionId === conditionName && hasContent(host2)) {
-      closeBuffDialog();
-      return;
-    }
-    const w = window;
-    setPendingWriteKind("buff");
-    lastConditionId = conditionName;
-    w.dialogs_target = entity;
-    setDialogOnlyXTarget(entity);
-    const html = buildConditionHtml(conditionName);
-    writeInfoHtml("buff", html);
-  }
-  bindOpenHandlers(openItem, openCondition);
-  function adoptInfoDialog2(kind, slot) {
-    installInfoDialogLifecycle();
-    return adoptInfoDialog(kind, slot);
-  }
-  function ensureDialogHost() {
-    ensureDialogElements();
-    installInfoDialogLifecycle();
-    installRenderPatches();
-    installDialogDismiss();
-  }
-  var info = {
-    openItem,
-    openBuff: openCondition,
-    openCondition,
-    close: closeInfo,
-    closeAll: closeAllInfoDialogs,
-    isOpen: (kind) => {
-      if (kind === "buff") return isBuffDialogOpen();
-      if (kind === "item") return isItemDialogOpen();
-      return isTopLeftDialogOpen();
-    },
-    adopt: adoptInfoDialog2,
-    ensure: ensureDialogHost,
-    subscribe: subscribeInfoDialogChange,
-    setLayoutEditing: setInfoDialogLayoutEditing,
-    sourceAttr: INFO_SOURCE_ATTR
-  };
-
-  // src/host/inventory.ts
-  var HOST_ID5 = "bottomleftcorner";
-  var STYLE_ID4 = "comm-ui-inventory-host-css";
-  var MOUNT_ID = "comm-bag-mount";
-  var SAVED_CHAR = "__ecuInvSavedChar";
-  var HOLD_CHAR = "__ecuInvHoldChar";
-  var BAG_SYNC_STAMP_KEY = "__ecuBagSyncedAt";
-  var listeners9 = [];
-  var syncListeners = [];
-  var bagSyncedAt = null;
-  var bagSyncedForName = null;
-  var bagRenderedForName = null;
-  var bagRefreshing = false;
-  var refreshPendingName = null;
-  var refreshPollTimer = null;
-  var bagSyncSocketId = null;
-  var bagSyncSocketPoll = null;
-  var bagRefreshKind = null;
-  function injectHostCss() {
-    if (document.getElementById(STYLE_ID4)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID4;
-    style.textContent = `
-#${HOST_ID5} {
-  position: relative;
-  left: auto;
-  bottom: auto;
-  z-index: auto;
-  pointer-events: auto;
-  /* 7\xD7~54px float grid needs ~385px \u2014 shrinking below that wraps slots 6+1. */
-  min-width: 385px;
-  width: max-content;
-  max-width: 420px;
-  max-height: min(70vh, calc(100vh - 72px));
-  overflow: auto;
-  box-sizing: border-box;
-}
-html.ecu-phone-dock-on #${HOST_ID5} {
-  max-height: none;
-}
-#${HOST_ID5} .theinventory {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-}
-.imodal .theinventory {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-}
-#${HOST_ID5}.is-trade-delist-target {
-  outline: 2px solid #6ab04c;
-  outline-offset: 2px;
-}
-#${HOST_ID5} [data-cnum].is-bag-swap-target {
-  outline: 2px solid #6ab04c;
-  outline-offset: 1px;
-}
-#${HOST_ID5} [data-cnum].is-ecu-shrine-pick {
-  outline: 2px solid #e8c96a;
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.45), inset 0 0 10px rgba(232, 201, 106, 0.12);
-}
-#${HOST_ID5} [data-cnum].is-ecu-shrine-lucky {
-  position: relative;
-  outline: 2px solid #3dba5f;
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(61, 186, 95, 0.55), inset 0 0 10px rgba(61, 186, 95, 0.18);
-}
-/* Occupied: small clover tucked top-left over the item. */
-#${HOST_ID5} [data-cnum].is-ecu-shrine-lucky::after {
-  content: "\u{1F340}";
-  position: absolute;
-  left: 0;
-  top: -1px;
-  z-index: 2;
-  font-size: 11px;
-  line-height: 1;
-  pointer-events: none;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(0, 0, 0, 0.75);
-  opacity: 0.95;
-}
-/* Empty: large clover centered in the cell. */
-#${HOST_ID5} [data-cnum].is-ecu-shrine-lucky.is-ecu-shrine-lucky-empty::after {
-  left: 50%;
-  top: 50%;
-  right: auto;
-  bottom: auto;
-  transform: translate(-50%, -50%);
-  font-size: 22px;
-  opacity: 0.88;
-  text-shadow: 0 0 3px rgba(0, 0, 0, 0.85);
-}
-#${HOST_ID5} [data-cnum].is-ecu-shrine-pick.is-ecu-shrine-lucky {
-  outline: 2px solid #4fd06a;
-  box-shadow: 0 0 0 1px rgba(79, 208, 106, 0.65), inset 0 0 12px rgba(232, 201, 106, 0.16);
-}
-#${HOST_ID5} [data-cnum].is-ecu-compose-queue {
-  outline: 2px solid #6a9ae8;
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(106, 154, 232, 0.5), inset 0 0 10px rgba(106, 154, 232, 0.14);
-}
-#${MOUNT_ID} {
-  pointer-events: auto;
-}
-`;
-    document.head.append(style);
-  }
-  function notifyInventory(open) {
-    for (let i = 0; i < listeners9.length; i++) {
-      try {
-        listeners9[i](open);
-      } catch (e2) {
-      }
-    }
-  }
-  function notifyBagSync() {
-    clearObserverCommandPending();
-    for (let i = 0; i < syncListeners.length; i++) {
-      try {
-        syncListeners[i]();
-      } catch (e2) {
-      }
-    }
-  }
-  function observingSnapshotName(obs = window.observing) {
-    if (!obs || obs.name == null) return null;
-    return String(obs.name);
-  }
-  function hasItemsSnapshot(obs = window.observing) {
-    return !!(obs && Array.isArray(obs.items));
-  }
-  function setBagSyncedAt(ts, name) {
-    bagSyncedAt = ts;
-    if (ts == null) bagSyncedForName = null;
-    else if (name !== void 0) bagSyncedForName = name;
-    notifyBagSync();
-  }
-  function setBagRefreshing(next) {
-    if (bagRefreshing === next) return;
-    bagRefreshing = next;
-    notifyBagSync();
-  }
-  function clearRefreshPoll() {
-    if (refreshPollTimer != null) {
-      window.clearInterval(refreshPollTimer);
-      refreshPollTimer = null;
-    }
-  }
-  function onObserveWelcome(data) {
-    if (data && data.character) {
-      const ts = Date.now();
-      data.character[BAG_SYNC_STAMP_KEY] = ts;
-      const name = data.character.name != null ? String(data.character.name) : null;
-      setBagSyncedAt(ts, name);
-      return;
-    }
-    if (bagSyncedAt != null) setBagSyncedAt(null);
-  }
-  function backfillBagSyncedAt() {
-    if (bagSyncedAt != null) return;
-    const obs = window.observing;
-    if (!hasItemsSnapshot(obs)) return;
-    stampBagSyncedFromObserving(obs);
-  }
-  function syncBagStateForSocket() {
-    const socket = window.socket;
-    if (!socket || !socket.id || typeof socket.on !== "function") return;
-    const socketChanged = socket.id !== bagSyncSocketId;
-    if (socketChanged) {
-      bagSyncSocketId = socket.id;
-      socket.on("welcome", onObserveWelcome);
-    }
-    const obs = window.observing;
-    if (hasItemsSnapshot(obs)) {
-      if (socketChanged || bagSyncedAt == null) {
-        stampBagSyncedFromObserving(obs);
-      }
-      const name = observingSnapshotName(obs);
-      if (window.inventory && name != null && name !== bagRenderedForName) {
-        repaintObservedInventoryFromSnapshot();
-      }
-    } else if (socketChanged && bagSyncedAt != null) {
-      setBagSyncedAt(null);
-    }
-  }
-  function installBagSyncSocketWatch() {
-    syncBagStateForSocket();
-    if (bagSyncSocketPoll != null) return;
-    bagSyncSocketPoll = window.setInterval(syncBagStateForSocket, 500);
-  }
-  function subscribeInventory(listener) {
-    listeners9.push(listener);
-    return () => {
-      const idx = listeners9.indexOf(listener);
-      if (idx >= 0) listeners9.splice(idx, 1);
-    };
-  }
-  function subscribeBagSync(listener) {
-    syncListeners.push(listener);
-    return () => {
-      const idx = syncListeners.indexOf(listener);
-      if (idx >= 0) syncListeners.splice(idx, 1);
-    };
-  }
-  function isInventoryOpen() {
-    return !!window.inventory;
-  }
-  function getBagSyncedAt() {
-    return bagSyncedAt;
-  }
-  function getBagSyncedName() {
-    return bagSyncedForName;
-  }
-  function isBagGridStale() {
-    if (!window.inventory) return false;
-    const name = observingSnapshotName();
-    if (!name || bagRenderedForName == null) return false;
-    return name !== bagRenderedForName;
-  }
-  function isBagRefreshing() {
-    return bagRefreshing;
-  }
-  function getBagRefreshKind() {
-    return bagRefreshKind;
-  }
-  function hasObservingInventorySnapshot() {
-    return hasItemsSnapshot();
-  }
-  function stampBagSyncedFromObserving(obs) {
-    if (!obs) return;
-    const name = observingSnapshotName(obs);
-    const stamped = obs[BAG_SYNC_STAMP_KEY];
-    if (typeof stamped === "number" && stamped > 0) {
-      setBagSyncedAt(stamped, name);
-      return;
-    }
-    const ts = Date.now();
-    obs[BAG_SYNC_STAMP_KEY] = ts;
-    setBagSyncedAt(ts, name);
-  }
-  function findObserveSecret(name) {
-    const chars = window.X && window.X.characters || [];
-    for (let i = 0; i < chars.length; i++) {
-      const ch = chars[i];
-      if (ch && ch.name === name && ch.secret) return String(ch.secret);
-    }
-    return null;
-  }
-  function closeInventory() {
-    closeInventoryHost();
-  }
-  function closeInventoryHost() {
-    const host2 = document.getElementById(HOST_ID5);
-    if (host2) host2.innerHTML = "";
-    window.inventory = false;
-    bagRenderedForName = null;
-    restoreCharacter();
-    notifyInventory(false);
-    notifyBagSync();
-  }
-  function repaintObservedInventoryFromSnapshot() {
-    bagRefreshKind = "local";
-    callThroughDraw(() => {
-      if (typeof window.render_inventory !== "function") return;
-      if (window.inventory) {
-        window.render_inventory(true);
-        bagRenderedForName = observingSnapshotName();
-        notifyBagSync();
-      } else {
-        window.render_inventory();
-      }
-    });
-  }
-  function refreshObservedInventory() {
-    const obs = window.observing;
-    const name = obs && obs.name != null ? String(obs.name) : "";
-    const secret = name ? findObserveSecret(name) : null;
-    if (!name || !secret || typeof window.init_socket !== "function") {
-      repaintObservedInventoryFromSnapshot();
-      return;
-    }
-    clearRefreshPoll();
-    bagRefreshKind = null;
-    refreshPendingName = name;
-    setBagRefreshing(true);
-    if (window.inventory) closeInventoryHost();
-    saveSettings({ bagOpenPreferred: true });
-    const initSocket = window.init_socket;
-    if (typeof initSocket !== "function") {
-      setBagRefreshing(false);
-      refreshPendingName = null;
-      repaintObservedInventoryFromSnapshot();
-      return;
-    }
-    initSocket({ secret });
-    let attempts = 0;
-    refreshPollTimer = window.setInterval(() => {
-      attempts += 1;
-      const next = window.observing;
-      if (next && next.name === refreshPendingName && next.items) {
-        clearRefreshPoll();
-        bagRefreshKind = "server";
-        refreshPendingName = null;
-        backfillBagSyncedAt();
-        if (bagSyncedAt == null) stampBagSyncedFromObserving(next);
-        openInventory();
-        setBagRefreshing(false);
-        return;
-      }
-      if (attempts > 40) {
-        clearRefreshPoll();
-        refreshPendingName = null;
-        if (window.observing) {
-          bagRefreshKind = "server";
-          backfillBagSyncedAt();
-          if (bagSyncedAt == null) stampBagSyncedFromObserving(window.observing);
-          openInventory();
-        } else {
-          bagRefreshKind = "local";
-        }
-        setBagRefreshing(false);
-      }
-    }, 250);
-  }
-  function applyBagLayoutPos(pos) {
-    const host2 = document.getElementById(HOST_ID5);
-    if (!host2) return;
-    if (host2.parentElement && host2.parentElement.id === MOUNT_ID) {
-      host2.style.position = "relative";
-      host2.style.left = "";
-      host2.style.top = "";
-      host2.style.transform = "";
-      host2.style.zIndex = "";
-      return;
-    }
-    const layout = mergeLayout(getSettings().panelLayout);
-    const p = pos || layout.bag;
-    const style = panelStyle(p, false);
-    host2.style.position = "fixed";
-    host2.style.left = String(style.left);
-    host2.style.top = String(style.top);
-    host2.style.transform = String(style.transform);
-    host2.style.zIndex = "240";
-    host2.style.pointerEvents = "auto";
-    host2.style.maxWidth = "min(96vw, 420px)";
-    host2.style.maxHeight = "min(70vh, calc(100vh - 72px))";
-    host2.style.overflow = "auto";
-  }
-  function ensureInventoryHost() {
-    injectHostCss();
-    let el = document.getElementById(HOST_ID5);
-    if (!el) {
-      el = document.createElement("div");
-      el.id = HOST_ID5;
-      el.className = "bpclicks enableclicks";
-      document.body.append(el);
-    }
-    applyBagLayoutPos();
-    return el;
-  }
-  function attachInventoryToMount(mount) {
-    if (!mount) return;
-    mount.id = MOUNT_ID;
-    const host2 = ensureInventoryHost();
-    if (host2.parentElement !== mount) {
-      mount.append(host2);
-    }
-    applyBagLayoutPos();
-  }
-  function callThroughDraw(fn) {
-    if (typeof window.draw_trigger === "function") {
-      window.draw_trigger(fn);
-    } else {
-      fn();
-    }
-  }
-  function restoreCharacter() {
-    if (!window[HOLD_CHAR]) return;
-    window.character = window[SAVED_CHAR];
-    delete window[SAVED_CHAR];
-    window[HOLD_CHAR] = false;
-  }
-  function stripObservedBagNativeDropHandlers() {
-    if (!window.is_comm || !window.observing) return;
-    const host2 = document.getElementById(HOST_ID5);
-    if (!host2) return;
-    const nodes = host2.querySelectorAll("[data-cnum]");
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      node.removeAttribute("ondrop");
-      node.removeAttribute("ondragover");
-    }
-  }
-  function refreshInventoryItemTitles() {
-    if (!window.inventory) return;
-    const host2 = document.getElementById(HOST_ID5);
-    if (!host2) return;
-    const obs = window.observing;
-    const items = obs && Array.isArray(obs.items) ? obs.items : null;
-    if (!items) return;
-    const nodes = host2.querySelectorAll("[data-cnum]");
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      const raw = node.getAttribute("data-cnum");
-      if (raw == null || raw === "") continue;
-      const num = parseInt(raw, 10);
-      if (!Number.isFinite(num) || num < 0 || num >= items.length) continue;
-      const item = items[num];
-      stripNativeTitles(node);
-      if (!item || !item.name || item.name === "placeholder") continue;
-      const p = typeof item.p === "string" ? item.p : void 0;
-      if (shouldShowTitleBorder(p)) stampNativeItemTitleBorder(node, p);
-    }
-    stripObservedBagNativeDropHandlers();
-    refreshBagBuyOrderIndicators();
-    applyShrineBagHighlights();
-    applyComposeBagHighlights();
-  }
-  function prepareObservingCharacter() {
-    const obs = window.observing;
-    if (!window[HOLD_CHAR]) {
-      window[SAVED_CHAR] = window.character;
-      window[HOLD_CHAR] = true;
-    }
-    if (obs) {
-      window.character = obs;
-    }
-    const ch = window.character;
-    if (!ch) return false;
-    if (!ch.items) ch.items = [];
-    if (ch.isize == null) ch.isize = 42;
-    if (!ch.q) ch.q = {};
-    return true;
-  }
-  function openInventory() {
-    callThroughDraw(() => {
-      if (typeof window.render_inventory === "function") {
-        window.render_inventory();
-      }
-    });
-  }
-  function syncInventoryToBagPanel(wantOpen) {
-    if (wantOpen === isInventoryOpen()) return;
-    openInventory();
-  }
-  function restorePreferredBagOpen() {
-    const preferOpen = !!getSettings().bagOpenPreferred;
-    if (!preferOpen) return;
-    if (isInventoryOpen()) return;
-    window.setTimeout(() => {
-      if (isInventoryOpen()) return;
-      if (typeof window.render_inventory === "function") {
-        openInventory();
-      }
-    }, 600);
-  }
-  function installInventoryClickBridge() {
-    if (window.__ecuInvClickPatched) return;
-    const tryPatch = () => {
-      const original = window.inventory_click;
-      if (typeof original !== "function") return false;
-      if (window.__ecuInvClickPatched) return true;
-      window.__ecuInvClickPatched = true;
-      window.inventory_click = function patchedInventoryClick(num, event) {
-        if (window.is_comm) {
-          if (event && typeof window.stpr === "function") window.stpr(event);
-          const obs = window.observing;
-          const item = obs && Array.isArray(obs.items) ? obs.items[num] : null;
-          if (!item || !item.name || item.name === "placeholder") return;
-          openItem(obs, `inv${num}`, item, { dialogOnly: true });
-          return;
-        }
-        return original.call(this, num, event);
-      };
-      return true;
-    };
-    if (tryPatch()) return;
-    let attempts = 0;
-    const timer = window.setInterval(() => {
-      attempts += 1;
-      if (tryPatch() || attempts > 40) window.clearInterval(timer);
-    }, 250);
-  }
-  function installInventoryFix() {
-    installInventoryClickBridge();
-    installBagSyncSocketWatch();
-    if (window.__ecuInventoryPatched) return;
-    const tryPatch = () => {
-      const original = window.render_inventory;
-      if (typeof original !== "function") return false;
-      if (window.__ecuInventoryPatched) return true;
-      window.__ecuInventoryPatched = true;
-      ensureInventoryHost();
-      window.render_inventory = function patchedRenderInventory(reset) {
-        ensureInventoryHost();
-        if (window.inventory && !reset) {
-          const host2 = document.getElementById(HOST_ID5);
-          if (host2) host2.innerHTML = "";
-          window.inventory = false;
-          bagRenderedForName = null;
-          restoreCharacter();
-          notifyInventory(false);
-          notifyBagSync();
-          return;
-        }
-        const savedComm = window.is_comm;
-        if (!prepareObservingCharacter()) {
-          restoreCharacter();
-          return;
-        }
-        window.is_comm = false;
-        let opened = false;
-        try {
-          if (typeof window.hide_modal === "function") {
-            try {
-              window.hide_modal();
-            } catch (e2) {
-            }
-          }
-          const result = original.call(this, reset);
-          opened = !!window.inventory;
-          return result;
-        } finally {
-          window.is_comm = savedComm;
-          restoreCharacter();
-          if (opened) {
-            bagRenderedForName = observingSnapshotName();
-            backfillBagSyncedAt();
-            applyBagLayoutPos();
-            refreshInventoryItemTitles();
-            window.requestAnimationFrame(() => refreshInventoryItemTitles());
-            notifyInventory(true);
-            notifyBagSync();
-          } else if (!window.inventory) {
-            bagRenderedForName = null;
-            notifyInventory(false);
-          }
-        }
-      };
-      restorePreferredBagOpen();
-      return true;
-    };
-    if (tryPatch()) return;
-    let attempts = 0;
-    const timer = window.setInterval(() => {
-      attempts += 1;
-      if (tryPatch() || attempts > 40) {
-        window.clearInterval(timer);
-      }
-    }, 250);
-  }
-  if (typeof window !== "undefined") {
-    installBagSyncSocketWatch();
   }
 
   // src/host/mail/commands.ts
@@ -27841,13 +28027,12 @@ html.ecu-phone-dock-on #${HOST_ID5} {
     ev.preventDefault();
     ev.stopPropagation();
     if (!gateObservedBagOpen()) return;
-    const render = window.render_inventory;
-    if (typeof render !== "function") return;
-    if (typeof window.draw_trigger === "function") {
-      window.draw_trigger(() => render());
-    } else {
-      render();
+    if (isInventoryOpen() && !panelActuallyOpen("bag")) {
+      closeInventory();
+      openInventory();
+      return;
     }
+    toggleInventory();
   }
   function onCommandClick(ev) {
     ev.preventDefault();
@@ -29450,7 +29635,7 @@ html.ecu-phone-dock-on #${HOST_ID5} {
       if (shortcut === "toggle_inventory") {
         ev.preventDefault();
         if (!gateObservedBagOpen()) return;
-        openInventory();
+        toggleInventory();
         return;
       }
       if (shortcut === "toggle_character") {
@@ -32038,7 +32223,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-05T18:23:54.069Z" : "unknown";
+    const builtAt = true ? "2026-11-06T09:09:03.237Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -37661,7 +37846,7 @@ button.comm-mail__stack-u {
   function preferredBootFov() {
     const saved = getSettings().worldFov;
     if (typeof saved === "number") return clampWorldFov(saved);
-    return detectViewportProfile() === "phone" ? 1.5 : WORLD_FOV_DEFAULT;
+    return WORLD_FOV_DEFAULT;
   }
   function gameLoaded() {
     return !!window.game_loaded;
@@ -37691,11 +37876,32 @@ button.comm-mail__stack-u {
     w.__ecuOnResize = hooked;
     w.on_resize = hooked;
   }
+  function installDesktopPhoneChromeWatchdog() {
+    window.setInterval(() => {
+      var _a;
+      try {
+        const comm = document.getElementById("comm-ui");
+        const vp = comm && comm.getAttribute("data-viewport");
+        if (vp !== "desktop" && vp !== "tablet") return;
+        const dockOn = document.documentElement.classList.contains(
+          "ecu-phone-dock-on"
+        );
+        const view = (_a = window.renderer) == null ? void 0 : _a.view;
+        const st = view && view.style;
+        const coverLeaked = !!st && (st.position === "fixed" || typeof st.transform === "string" && st.transform.indexOf("scale(") !== -1 || typeof view.getAttribute === "function" && view.getAttribute("data-ecu-phone-cover") === "1");
+        if (!dockOn && !coverLeaked) return;
+        const { w, h } = readWindowCssSize();
+        applyPhoneWorldCover(w, h);
+      } catch (e2) {
+      }
+    }, 2e3);
+  }
   function installWorldFov() {
     if (installed6) return;
     installed6 = true;
     installResizeHook();
     installViewportRefit();
+    installDesktopPhoneChromeWatchdog();
     if (tryApplySaved()) return;
     const started2 = Date.now();
     const poll = window.setInterval(() => {
@@ -37742,8 +37948,7 @@ button.comm-mail__stack-u {
     const map = window.map;
     if (!map || !gameLoaded2()) return false;
     const savedRaw = getSettings().worldZoom;
-    const phoneDefault = detectViewportProfile() === "phone" ? WORLD_ZOOM_MIN : WORLD_ZOOM_DEFAULT;
-    const preferred = typeof savedRaw === "number" ? clampWorldZoom(savedRaw) : phoneDefault;
+    const preferred = typeof savedRaw === "number" ? clampWorldZoom(savedRaw) : WORLD_ZOOM_DEFAULT;
     healFractionalScaleCookie(
       typeof savedRaw === "number" ? preferred : readHostWorldZoom()
     );
@@ -55037,28 +55242,52 @@ ${parts.map(cssSlice).join("\n")}
     }
     style.textContent = `
 .ecu-cam-chrome {
-  /* Clear the home pager strip (Players \u203A / dots) so FOV never stacks on it. */
+  /* Thumb stack: modes \u2192 FOV \u2192 stick. */
   position: fixed;
-  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 48px);
+  bottom: calc(var(--ecu-phone-dock-h, 48px) + 14px);
   z-index: 236;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   pointer-events: none;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 .ecu-cam-chrome.is-left {
-  left: max(10px, env(safe-area-inset-left, 0px));
+  left: max(12px, env(safe-area-inset-left, 0px));
   right: auto;
 }
 .ecu-cam-chrome.is-right {
-  right: max(10px, env(safe-area-inset-right, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px));
   left: auto;
 }
 .ecu-cam-chrome > * {
+  pointer-events: auto;
+}
+.ecu-cam-chrome-rail {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  z-index: 236;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ecu-cam-chrome-rail.is-left {
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: auto;
+}
+.ecu-cam-chrome-rail.is-right {
+  right: max(10px, env(safe-area-inset-right, 0px));
+  left: auto;
+}
+.ecu-cam-chrome-rail > * {
   pointer-events: auto;
 }
 .ecu-cam-stick {
@@ -55085,8 +55314,12 @@ ${parts.map(cssSlice).join("\n")}
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 0 0 0 1px rgba(0, 0, 0, 0.28),
     0 2px 10px rgba(0, 0, 0, 0.28);
-  opacity: 0.9;
+  opacity: 0.48;
   transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+.ecu-cam-stick.is-active .ecu-cam-stick__base,
+.ecu-cam-stick:active .ecu-cam-stick__base {
+  opacity: 0.92;
 }
 .ecu-cam-stick__knob {
   position: absolute;
@@ -55109,11 +55342,11 @@ ${parts.map(cssSlice).join("\n")}
     0 2px 8px rgba(0, 0, 0, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
   pointer-events: none;
-  opacity: 0.95;
+  opacity: 0.65;
   transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 .ecu-cam-stick.is-active .ecu-cam-stick__base {
-  opacity: 1;
+  opacity: 0.95;
   border-color: rgba(157, 212, 236, 0.45);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
@@ -55131,26 +55364,26 @@ ${parts.map(cssSlice).join("\n")}
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0;
+  gap: 2px;
   width: ${JOYSTICK_RADIUS_PX * 2 + 8}px;
-  min-height: 26px;
-  padding: 0 2px;
-  border-radius: 13px;
-  border: 1px solid rgba(230, 225, 229, 0.2);
-  background: rgba(28, 27, 31, 0.78);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
-  opacity: 0.94;
+  min-height: 34px;
+  padding: 2px;
+  border-radius: 12px;
+  border: 1px solid rgba(157, 212, 236, 0.45);
+  background: rgba(18, 17, 22, 0.8);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  opacity: 1;
 }
 .ecu-cam-chrome__fov-btn {
-  min-width: 30px;
-  min-height: 26px;
+  min-width: 34px;
+  min-height: 34px;
   margin: 0;
-  padding: 0 6px;
+  padding: 0;
   border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: rgba(230, 225, 229, 0.9);
-  font: 600 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  border-radius: 12px;
+  background: rgba(157, 212, 236, 0.1);
+  color: #e8f6fc;
+  font: 700 20px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -55165,14 +55398,14 @@ ${parts.map(cssSlice).join("\n")}
 .ecu-cam-chrome__fov-label {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 26px;
+  min-height: 30px;
   margin: 0;
   padding: 0 2px;
   border: none;
   border-radius: 10px;
   background: transparent;
-  color: rgba(157, 212, 236, 0.95);
-  font: 600 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  color: #9dd4ec;
+  font: 700 12px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -55183,27 +55416,28 @@ ${parts.map(cssSlice).join("\n")}
 }
 .ecu-cam-chrome__track {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: 3px;
-  width: ${JOYSTICK_RADIUS_PX * 2 + 8}px;
+  gap: 8px;
 }
 .ecu-cam-chrome__icon-btn {
   flex: 0 0 auto;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  min-height: 30px;
+  gap: 0;
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
   margin: 0;
-  padding: 0;
-  border-radius: 9px;
-  border: 1px solid rgba(230, 225, 229, 0.2);
-  background: rgba(28, 27, 31, 0.72);
-  color: rgba(230, 225, 229, 0.92);
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(230, 225, 229, 0.34);
+  background: rgba(18, 17, 22, 0.82);
+  color: rgba(245, 242, 248, 0.98);
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   -webkit-tap-highlight-color: transparent;
 }
 .ecu-cam-chrome__icon-btn:active {
@@ -55211,36 +55445,44 @@ ${parts.map(cssSlice).join("\n")}
   color: #9dd4ec;
 }
 .ecu-cam-chrome__icon-btn.is-on {
-  border-color: rgba(157, 212, 236, 0.7);
-  background: rgba(28, 27, 31, 0.88);
+  border-color: rgba(157, 212, 236, 0.75);
+  background: rgba(28, 27, 31, 0.9);
   color: #9dd4ec;
-  box-shadow: 0 0 0 1px rgba(157, 212, 236, 0.28);
+  box-shadow: 0 0 0 1px rgba(157, 212, 236, 0.32);
+}
+.ecu-cam-chrome__icon-lbl {
+  /* Icon-only cam modes \u2014 labels stay for a11y via aria-label. */
+  display: none;
 }
 .ecu-cam-chrome__ico {
   display: block;
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   pointer-events: none;
 }
 .ecu-cam-chrome__side {
   flex: 0 0 auto;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  min-height: 30px;
+  gap: 0;
+  width: 48px;
+  min-width: 48px;
+  min-height: 48px;
   margin: 0;
-  padding: 0;
-  border-radius: 9px;
-  border: 1px solid rgba(230, 225, 229, 0.18);
-  background: rgba(28, 27, 31, 0.55);
-  color: rgba(230, 225, 229, 0.78);
-  font: 600 12px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(230, 225, 229, 0.34);
+  background: rgba(18, 17, 22, 0.82);
+  color: rgba(245, 242, 248, 0.98);
+  font: 600 14px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
   -webkit-tap-highlight-color: transparent;
 }
 .ecu-cam-chrome__side:active {
+  background: rgba(157, 212, 236, 0.16);
   color: #9dd4ec;
   border-color: rgba(157, 212, 236, 0.45);
 }
@@ -55344,123 +55586,137 @@ ${parts.map(cssSlice).join("\n")}
       patchSettings({ cameraJoystickSide: next });
     };
     return e(
-      "div",
-      {
-        className: "ecu-cam-chrome is-" + side,
-        "aria-label": "Camera controls"
-      },
+      React.Fragment,
+      null,
       e(
         "div",
         {
-          className: "ecu-cam-chrome__track",
-          role: "group",
-          "aria-label": "Camera track"
+          className: "ecu-cam-chrome-rail is-" + side,
+          "aria-label": "Camera modes"
         },
         e(
-          "button",
+          "div",
           {
-            type: "button",
-            className: "ecu-cam-chrome__icon-btn",
-            title: "Center on observed character",
-            "aria-label": "Center",
-            onClick: (ev) => {
-              stopBtn(ev);
-              centerOnObservedCamera();
-            }
+            className: "ecu-cam-chrome__fov",
+            title: "Camera FOV \u2014 out sees more, in sees less. Pinch the map also works."
           },
-          wrapIconHtml(ICON_CENTER)
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-cam-chrome__fov-btn",
+              disabled: fov >= WORLD_FOV_MAX,
+              title: "Widen FOV (see more)",
+              "aria-label": "Widen FOV",
+              onClick: (ev) => {
+                stopBtn(ev);
+                setFov(zoomFovOut());
+              }
+            },
+            "\u2212"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-cam-chrome__fov-label",
+              disabled: fov === WORLD_FOV_DEFAULT,
+              title: "Reset FOV to 1\xD7",
+              "aria-label": "FOV " + formatWorldFov(fov) + "\xD7",
+              onClick: (ev) => {
+                stopBtn(ev);
+                setFov(setWorldFov(WORLD_FOV_DEFAULT));
+              }
+            },
+            formatWorldFov(fov) + "\xD7"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-cam-chrome__fov-btn",
+              disabled: fov <= WORLD_FOV_MIN,
+              title: "Tighten FOV (see less)",
+              "aria-label": "Tighten FOV",
+              onClick: (ev) => {
+                stopBtn(ev);
+                setFov(zoomFovIn());
+              }
+            },
+            "+"
+          )
         ),
         e(
-          "button",
+          "div",
           {
-            type: "button",
-            className: "ecu-cam-chrome__icon-btn" + (following ? " is-on" : ""),
-            title: following ? "Following observed \u2014 tap to free camera" : "Follow observed character",
-            "aria-label": "Follow",
-            "aria-pressed": following ? "true" : "false",
-            onClick: (ev) => {
-              stopBtn(ev);
-              setFollowCamera(!isFollowCamera());
-            }
+            className: "ecu-cam-chrome__track",
+            role: "group",
+            "aria-label": "Camera track"
           },
-          wrapIconHtml(ICON_FOLLOW)
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-cam-chrome__side",
-            title: side === "right" ? "Joystick on right \u2014 tap to move left" : "Joystick on left \u2014 tap to move right",
-            "aria-label": side === "right" ? "Move joystick left" : "Move joystick right",
-            onClick: (ev) => {
-              stopBtn(ev);
-              flipSide();
-            }
-          },
-          side === "right" ? "\u2190" : "\u2192"
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-cam-chrome__icon-btn",
+              title: "Center on observed character",
+              "aria-label": "Center",
+              onClick: (ev) => {
+                stopBtn(ev);
+                centerOnObservedCamera();
+              }
+            },
+            wrapIconHtml(ICON_CENTER),
+            e("span", { className: "ecu-cam-chrome__icon-lbl" }, "Ctr")
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-cam-chrome__icon-btn" + (following ? " is-on" : ""),
+              title: following ? "Following observed \u2014 tap to free camera" : "Follow observed character",
+              "aria-label": "Follow",
+              "aria-pressed": following ? "true" : "false",
+              onClick: (ev) => {
+                stopBtn(ev);
+                setFollowCamera(!isFollowCamera());
+              }
+            },
+            wrapIconHtml(ICON_FOLLOW),
+            e("span", { className: "ecu-cam-chrome__icon-lbl" }, "Fol")
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-cam-chrome__side",
+              title: side === "right" ? "Joystick on right \u2014 tap to move left" : "Joystick on left \u2014 tap to move right",
+              "aria-label": side === "right" ? "Move joystick left" : "Move joystick right",
+              onClick: (ev) => {
+                stopBtn(ev);
+                flipSide();
+              }
+            },
+            side === "right" ? "\u2190" : "\u2192",
+            e("span", { className: "ecu-cam-chrome__icon-lbl" }, "Hand")
+          )
         )
       ),
       e(
         "div",
         {
-          className: "ecu-cam-chrome__fov",
-          title: "Camera FOV \u2014 out sees more, in sees less. Pinch the map also works."
+          className: "ecu-cam-chrome is-" + side,
+          "aria-label": "Camera pan"
         },
         e(
-          "button",
+          "div",
           {
-            type: "button",
-            className: "ecu-cam-chrome__fov-btn",
-            disabled: fov >= WORLD_FOV_MAX,
-            title: "Widen FOV (see more)",
-            "aria-label": "Widen FOV",
-            onClick: (ev) => {
-              stopBtn(ev);
-              setFov(zoomFovOut());
-            }
+            className: "ecu-cam-stick",
+            ref: rootRef,
+            "aria-label": "Camera pan joystick"
           },
-          "out"
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-cam-chrome__fov-label",
-            disabled: fov === WORLD_FOV_DEFAULT,
-            title: "Reset FOV to 1\xD7",
-            "aria-label": "FOV " + formatWorldFov(fov) + "\xD7",
-            onClick: (ev) => {
-              stopBtn(ev);
-              setFov(setWorldFov(WORLD_FOV_DEFAULT));
-            }
-          },
-          formatWorldFov(fov) + "\xD7"
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-cam-chrome__fov-btn",
-            disabled: fov <= WORLD_FOV_MIN,
-            title: "Tighten FOV (see less)",
-            "aria-label": "Tighten FOV",
-            onClick: (ev) => {
-              stopBtn(ev);
-              setFov(zoomFovIn());
-            }
-          },
-          "in"
+          e("div", { className: "ecu-cam-stick__base" }),
+          e("div", { className: "ecu-cam-stick__knob", ref: knobRef })
         )
-      ),
-      e(
-        "div",
-        {
-          className: "ecu-cam-stick",
-          ref: rootRef,
-          "aria-label": "Camera pan joystick"
-        },
-        e("div", { className: "ecu-cam-stick__base" }),
-        e("div", { className: "ecu-cam-stick__knob", ref: knobRef })
       )
     );
   }
@@ -55893,6 +56149,13 @@ ${parts.map(cssSlice).join("\n")}
   // src/ui/frames/comm/phoneNavCss.ts
   var STYLE_ID9 = "ecu-phone-nav-css";
   var CSS9 = `
+html.ecu-phone-dock-on,
+html.ecu-phone-dock-on body {
+  overflow: hidden;
+  /* Fixed PIXI view escapes overflow:hidden; clip-path keeps cover-scale in-frame. */
+  clip-path: inset(0);
+  background: #0a0a0c;
+}
 .ecu-phone-dock {
   position: fixed;
   left: 0;
@@ -55901,6 +56164,17 @@ ${parts.map(cssSlice).join("\n")}
   z-index: 240;
   pointer-events: none;
   font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* Soft fade into the bar \u2014 no hard chrome shelf over the floor. */
+  background: linear-gradient(
+    180deg,
+    rgba(10, 10, 12, 0) 0%,
+    rgba(10, 10, 12, 0.28) 40%,
+    rgba(10, 10, 12, 0.55) 100%
+  );
+  padding-top: 16px;
 }
 .ecu-phone-dock__bar {
   pointer-events: auto;
@@ -55909,24 +56183,18 @@ ${parts.map(cssSlice).join("\n")}
   justify-content: space-around;
   flex-wrap: wrap;
   gap: 0;
-  min-height: 44px;
-  padding: 10px 2px calc(2px + env(safe-area-inset-bottom, 0px));
-  background: #1c1b1f;
-  border-top: 1px solid rgba(230, 225, 229, 0.12);
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.45);
+  min-height: 34px;
+  padding: 2px 2px calc(2px + env(safe-area-inset-bottom, 0px));
+  background: rgba(18, 17, 22, 0.5);
+  border-top: 1px solid rgba(230, 225, 229, 0.1);
+  box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   touch-action: pan-y;
   position: relative;
 }
 .ecu-phone-dock__nub {
-  position: absolute;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(230, 225, 229, 0.35);
-  pointer-events: none;
+  display: none;
 }
 .ecu-phone-dock__btn {
   position: relative;
@@ -55980,10 +56248,10 @@ ${parts.map(cssSlice).join("\n")}
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  min-height: 44px;
+  min-height: 36px;
   min-width: 0;
   margin: 0 2px;
-  padding: 6px 10px;
+  padding: 4px 6px;
   border: none;
   border-radius: 14px;
   background: rgba(232, 222, 248, 0.04);
@@ -56022,12 +56290,7 @@ ${parts.map(cssSlice).join("\n")}
   font-weight: 500;
 }
 .ecu-phone-dock__eyebrow {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #938f99;
-  line-height: 1.2;
+  display: none;
 }
 .ecu-phone-dock__status.is-on .ecu-phone-dock__eyebrow {
   color: #9dd4ec;
@@ -56035,9 +56298,11 @@ ${parts.map(cssSlice).join("\n")}
 .ecu-phone-dock__status-title {
   display: block;
   width: 100%;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.92);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -56046,10 +56311,10 @@ ${parts.map(cssSlice).join("\n")}
   display: block;
   width: 100%;
   min-width: 0;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.2;
-  color: #938f99;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: #f0ebf0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -56116,33 +56381,35 @@ ${parts.map(cssSlice).join("\n")}
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 22px;
-  border-radius: 8px;
-  font-size: 14px;
+  width: 32px;
+  height: 26px;
+  border-radius: 9px;
+  font-size: 15px;
   line-height: 1;
-  background: rgba(232, 222, 248, 0.08);
+  background: rgba(232, 222, 248, 0.12);
+  box-shadow: 0 0 0 1px rgba(230, 225, 229, 0.12);
 }
 .ecu-phone-dock__apps.is-on .ecu-phone-dock__apps-glyph {
   background: rgba(157, 212, 236, 0.16);
 }
 .ecu-phone-dock__mail-badge {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 18px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
+  top: -4px;
+  right: -2px;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
   background: #d33;
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
-  line-height: 16px;
+  line-height: 14px;
   text-align: center;
   box-shadow: 0 0 0 1px #1a1a1a;
   pointer-events: none;
+  z-index: 2;
 }
 .ecu-phone-pick__banner {
   display: flex;
@@ -56593,38 +56860,51 @@ ${parts.map(cssSlice).join("\n")}
   transform: translateX(-50%) translateY(8px);
 }
 .ecu-phone-home-dots {
-  /* Strip itself does not steal stick hits \u2014 sides + dots do. */
   pointer-events: none;
-  position: fixed;
-  left: 0;
-  right: 0;
-  /* Sit just above the Material dock (chrome stack is hidden on phone). */
-  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 2px);
-  z-index: 235;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: 1;
+  transform: none;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 2px 6px;
-  /* Leave room for the camera stick on either thumb side. */
-  padding: 2px max(88px, env(safe-area-inset-right, 0px)) 4px
-    max(88px, env(safe-area-inset-left, 0px));
+  gap: 3px;
+  width: 100%;
+  max-width: none;
+  padding: 4px 96px 2px;
+  box-sizing: border-box;
+}
+.ecu-phone-home-dots.is-stack {
+  /* Lives in the dock column so Home + dock read as one bottom system. */
+}
+.ecu-phone-home-dots__links {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
 }
 .ecu-phone-home-dots__side {
   pointer-events: auto;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  width: auto;
   min-width: 0;
-  min-height: 32px;
-  max-width: min(36vw, 112px);
+  min-height: 34px;
   margin: 0;
-  padding: 3px 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  padding: 4px 12px;
+  border: 1px solid rgba(230, 225, 229, 0.16);
+  border-radius: 10px;
   background: rgba(28, 27, 31, 0.72);
-  color: #cac4d0;
+  color: #e6e1e5;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
@@ -56633,17 +56913,24 @@ ${parts.map(cssSlice).join("\n")}
   -webkit-appearance: none;
 }
 .ecu-phone-home-dots__side.is-prev {
-  justify-self: start;
   justify-content: flex-start;
 }
 .ecu-phone-home-dots__side.is-next {
-  justify-self: end;
   justify-content: flex-end;
 }
 .ecu-phone-home-dots__side:disabled,
 .ecu-phone-home-dots__side.is-empty {
-  opacity: 0.28;
+  opacity: 0.55;
+  color: #cac4d0;
+  border-color: rgba(230, 225, 229, 0.1);
+  background: rgba(28, 27, 31, 0.45);
   cursor: default;
+}
+.ecu-phone-home-dots__side.is-spacer {
+  visibility: hidden;
+  pointer-events: none;
+  border: none;
+  background: transparent;
 }
 .ecu-phone-home-dots__side-label {
   min-width: 0;
@@ -56660,36 +56947,32 @@ ${parts.map(cssSlice).join("\n")}
   padding: 0 4px;
 }
 .ecu-phone-home-dots__current {
-  /* Keep for a11y; visual weight is the dots \u2014 label was eating map. */
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  display: none;
 }
 .ecu-phone-home-dots__track {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-height: 28px;
 }
 .ecu-phone-home-dots__dot {
-  /* Visual stays the original 8px pill; ::after only expands the tap target. */
+  /* Visual 10px pill; ::after expands the tap target to ~44px. */
   pointer-events: auto;
   position: relative;
   box-sizing: border-box;
   flex: 0 0 auto;
-  width: 8px !important;
-  height: 8px !important;
-  min-width: 8px !important;
-  min-height: 8px !important;
-  max-width: 8px !important;
-  max-height: 8px !important;
+  width: 10px !important;
+  height: 10px !important;
+  min-width: 10px !important;
+  min-height: 10px !important;
+  max-width: 10px !important;
+  max-height: 10px !important;
   padding: 0 !important;
   margin: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.5);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -56707,7 +56990,7 @@ ${parts.map(cssSlice).join("\n")}
 }
 .ecu-phone-home-dots__dot.is-on {
   background: #ffffff;
-  transform: scale(1.25);
+  transform: scale(1.35);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .ecu-phone-shade-scrim {
@@ -58439,19 +58722,21 @@ ${parts.map(cssSlice).join("\n")}
     const [status, setStatus2] = React.useState(
       () => readPhoneDockStatus()
     );
-    const barRef = React.useRef(null);
+    const dockRef = React.useRef(null);
     React.useEffect(() => {
       const measure = () => {
-        const el = barRef.current;
+        const el = dockRef.current;
         const h = el ? el.offsetHeight : 0;
         applyPhoneDockChrome(h > 0 ? h : 48);
         window.requestAnimationFrame(() => refreshPhoneHudBottomInset());
       };
       measure();
       const id = window.requestAnimationFrame(measure);
+      const t = window.setTimeout(measure, 80);
       window.addEventListener("resize", measure);
       return () => {
         window.cancelAnimationFrame(id);
+        window.clearTimeout(t);
         window.removeEventListener("resize", measure);
         clearPhoneDockChrome();
       };
@@ -58766,69 +59051,17 @@ ${parts.map(cssSlice).join("\n")}
     }
     return e(
       "div",
-      { className: "ecu-phone-dock", "data-ecu-phone-dock": "1" },
-      pages.length > 1 ? e(
-        "div",
-        {
-          className: "ecu-phone-home-dots",
-          role: "navigation",
-          "aria-label": "Home screens",
-          "data-ecu-home-dots": "1"
-        },
-        e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-phone-home-dots__side is-prev" + (homePrevIdx < 0 ? " is-empty" : ""),
-            disabled: homePrevIdx < 0,
-            "aria-label": homePrevLabel ? "Previous home: " + homePrevLabel : "No previous home page",
-            onClick: () => {
-              if (homePrevIdx < 0) return;
-              props.setPhoneHomePage(homePrevIdx);
-              storePhoneHomePage(homePrevIdx);
-            }
-          },
-          e("span", { "aria-hidden": true }, "\u2039"),
-          e("span", { className: "ecu-phone-home-dots__side-label" }, homePrevLabel)
-        ),
-        e(
-          "div",
-          { className: "ecu-phone-home-dots__center" },
-          e(
-            "div",
-            {
-              className: "ecu-phone-home-dots__current",
-              "aria-live": "polite"
-            },
-            homeLabel
-          ),
-          e(
-            "div",
-            { className: "ecu-phone-home-dots__track", role: "tablist" },
-            ...dotKids
-          )
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-phone-home-dots__side is-next" + (homeNextIdx < 0 ? " is-empty" : ""),
-            disabled: homeNextIdx < 0,
-            "aria-label": homeNextLabel ? "Next home: " + homeNextLabel : "No next home page",
-            onClick: () => {
-              if (homeNextIdx < 0) return;
-              props.setPhoneHomePage(homeNextIdx);
-              storePhoneHomePage(homeNextIdx);
-            }
-          },
-          e("span", { className: "ecu-phone-home-dots__side-label" }, homeNextLabel),
-          e("span", { "aria-hidden": true }, "\u203A")
-        )
-      ) : null,
+      {
+        className: "ecu-phone-dock",
+        "data-ecu-phone-dock": "1",
+        ref: dockRef
+      },
+      // Pager chrome removed from Home — swipe still changes pages; Apps owns
+      // screen editing. Keeps the dock as the only bottom-center CTA.
+      null,
       e(
         "nav",
         {
-          ref: barRef,
           className: "ecu-phone-dock__bar",
           role: "navigation",
           "aria-label": "ECU phone"
@@ -99702,6 +99935,20 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/lib/ensurePanelShellOpen.ts
+  function ensurePanelShellOpen(id, stateOpen, setVisible, onOpen) {
+    if (stateOpen && !panelActuallyOpen(id)) {
+      setVisible(id, false);
+      window.setTimeout(() => {
+        setVisible(id, true);
+        onOpen();
+      }, 0);
+      return;
+    }
+    setVisible(id, true);
+    onOpen();
+  }
+
   // src/ui/frames/CommUI.ts
   var SETTINGS_PANEL_POS_KEY = "ecu-settings-panel-pos";
   var DEFAULT_SETTINGS_POS = {
@@ -100005,14 +100252,18 @@ ${ESTIMATE_HINT}`,
           windowActionsRef.current.raiseWindow("command");
           return;
         }
-        if (commandOpenRef.current) {
+        if (commandOpenRef.current && panelActuallyOpen("command")) {
           setVisible("command", false);
           return;
         }
         setCommandSeed(null);
         setCommandOpenSeq((n) => n + 1);
-        setVisible("command", true);
-        windowActionsRef.current.raiseWindow("command");
+        ensurePanelShellOpen(
+          "command",
+          commandOpenRef.current,
+          setVisible,
+          () => windowActionsRef.current.raiseWindow("command")
+        );
       });
     }, [setVisible]);
     const chatOpenRef = React.useRef(false);
@@ -100024,7 +100275,7 @@ ${ESTIMATE_HINT}`,
     React.useEffect(() => {
       return subscribeChatOpen((payload) => {
         const hasPrefill = typeof payload.draft === "string" || typeof payload.whisperTo === "string";
-        if (payload.toggle && chatOpenRef.current && !hasPrefill) {
+        if (payload.toggle && chatOpenRef.current && !hasPrefill && panelActuallyOpen("chat")) {
           setVisible("chat", false);
           return;
         }
@@ -100036,8 +100287,12 @@ ${ESTIMATE_HINT}`,
           setChatWhisperTo(null);
         }
         setChatOpenSeq((n) => n + 1);
-        setVisible("chat", true);
-        windowActionsRef.current.raiseWindow("chat");
+        ensurePanelShellOpen(
+          "chat",
+          chatOpenRef.current,
+          setVisible,
+          () => windowActionsRef.current.raiseWindow("chat")
+        );
       });
     }, [setVisible]);
     const mailVisible = visible("mail");
@@ -100049,12 +100304,16 @@ ${ESTIMATE_HINT}`,
     React.useEffect(() => {
       return subscribeMailOpen((payload) => {
         const wantsCompose = !!(payload.compose || payload.attach || payload.draft);
-        if (payload.toggle && !wantsCompose && !payload.focusNewestUnread && mailOpenRef.current) {
+        if (payload.toggle && !wantsCompose && !payload.focusNewestUnread && mailOpenRef.current && panelActuallyOpen("mail")) {
           setVisible("mail", false);
           return;
         }
-        setVisible("mail", true);
-        windowActionsRef.current.raiseWindow("mail");
+        ensurePanelShellOpen(
+          "mail",
+          mailOpenRef.current,
+          setVisible,
+          () => windowActionsRef.current.raiseWindow("mail")
+        );
         if (payload.focusNewestUnread) {
           void openNewestUnread();
           return;
@@ -100074,7 +100333,7 @@ ${ESTIMATE_HINT}`,
     marketOpenRef.current = marketVisible;
     React.useEffect(() => {
       return subscribeMarketOpen((payload) => {
-        if (payload.toggle && marketOpenRef.current && !payload.merchantName) {
+        if (payload.toggle && marketOpenRef.current && !payload.merchantName && panelActuallyOpen("market")) {
           setVisible("market", false);
           return;
         }
@@ -100085,8 +100344,12 @@ ${ESTIMATE_HINT}`,
           setMarketDesk(payload.desk);
         }
         setMarketOpenSeq((n) => n + 1);
-        setVisible("market", true);
-        windowActionsRef.current.raiseWindow("market");
+        ensurePanelShellOpen(
+          "market",
+          marketOpenRef.current,
+          setVisible,
+          () => windowActionsRef.current.raiseWindow("market")
+        );
       });
     }, [setVisible]);
     const bankVisible = visible("bank");
@@ -100097,12 +100360,16 @@ ${ESTIMATE_HINT}`,
     bankOpenRef.current = bankVisible;
     React.useEffect(() => {
       return subscribeBankOpen((payload) => {
-        if (payload.toggle && bankOpenRef.current) {
+        if (payload.toggle && bankOpenRef.current && panelActuallyOpen("bank")) {
           setVisible("bank", false);
           return;
         }
-        setVisible("bank", true);
-        windowActionsRef.current.raiseWindow("bank");
+        ensurePanelShellOpen(
+          "bank",
+          bankOpenRef.current,
+          setVisible,
+          () => windowActionsRef.current.raiseWindow("bank")
+        );
       });
     }, [setVisible]);
     React.useEffect(() => {
@@ -100112,6 +100379,9 @@ ${ESTIMATE_HINT}`,
       root.classList.toggle("comm-ui-touch", isTouchishProfile(viewportProfile));
       root.classList.toggle("ecu-phone-home", viewportProfile === "phone");
       root.classList.toggle("ecu-phone-layout-edit", !!layoutEdit);
+      if (viewportProfile !== "phone") {
+        clearPhoneDockChrome();
+      }
       return () => {
         root.classList.remove("ecu-phone-home");
         root.classList.remove("ecu-phone-layout-edit");
@@ -100442,7 +100712,8 @@ ${ESTIMATE_HINT}`,
     const h = (r << 16 | g << 8 | b).toString(16).padStart(6, "0");
     return "#" + h;
   }
-  var NAMEPLATE_GHOST_ALPHA_BASE = 0.52;
+  var NAMEPLATE_GHOST_ALPHA_BASE = 0.34;
+  var NAMEPLATE_PHONE_GHOST_ALPHA = 0;
   function luminanceToNameplateBand(L) {
     if (!(typeof L === "number") || !Number.isFinite(L)) return "mid";
     if (L >= 0.42) return "bright";
@@ -100450,9 +100721,9 @@ ${ESTIMATE_HINT}`,
     return "mid";
   }
   function ghostAlphaForLuminanceBand(band, base = NAMEPLATE_GHOST_ALPHA_BASE) {
-    const b = typeof base === "number" && Number.isFinite(base) ? Math.max(0.28, Math.min(0.75, base)) : NAMEPLATE_GHOST_ALPHA_BASE;
+    const b = typeof base === "number" && Number.isFinite(base) ? Math.max(0, Math.min(0.75, base)) : NAMEPLATE_GHOST_ALPHA_BASE;
     if (band === "bright") return Math.min(0.78, b + 0.2);
-    if (band === "dark") return Math.max(0.34, b - 0.1);
+    if (band === "dark") return Math.max(0.22, b - 0.1);
     return b;
   }
   function srgbLuminance(r, g, b) {
@@ -100465,28 +100736,35 @@ ${ESTIMATE_HINT}`,
   function ghostPlateForClassColor(classHex) {
     const raw = String(classHex || "").trim() || "#ffffff";
     const key = raw.charAt(0) === "#" ? raw : "#" + raw;
+    const phone = typeof window !== "undefined" && detectViewportProfile() === "phone";
+    const alpha = phone ? NAMEPLATE_PHONE_GHOST_ALPHA : NAMEPLATE_GHOST_ALPHA_BASE;
     if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
-      return { color: 526864, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
+      return { color: 526864, alpha };
     }
     const L = hexLuminance(key);
     const darken = L > 0.4 ? 0.58 : L > 0.3 ? 0.4 : L > 0.2 ? 0.28 : 0.18;
     const mixed = mixHexTowardBlack(key, darken);
     const n = parseInt(mixed.slice(1), 16);
-    return { color: n >>> 0, alpha: NAMEPLATE_GHOST_ALPHA_BASE };
+    return { color: n >>> 0, alpha };
   }
   function ghostPlateRimForClassColor(classHex) {
     const raw = String(classHex || "").trim() || "#ffffff";
     const key = raw.charAt(0) === "#" ? raw : "#" + raw;
     if (key.toLowerCase() === "#ffffff" || hexLuminance(key) > 0.85) {
-      return { color: 131844, alpha: 0.55 };
+      return { color: 131844, alpha: 0.42 };
     }
     const mixed = mixHexTowardBlack(key, 0.72);
     const n = parseInt(mixed.slice(1), 16);
-    return { color: n >>> 0, alpha: 0.58 };
+    return { color: n >>> 0, alpha: 0.44 };
   }
   function softPlateFill(stockColor, classHex) {
     const c = stockColor >>> 0;
-    if (c === STOCK_NAME_BORDER) return ghostPlateRimForClassColor(classHex);
+    if (c === STOCK_NAME_BORDER) {
+      if (detectViewportProfile() === "phone") {
+        return { color: 0, alpha: 0 };
+      }
+      return ghostPlateRimForClassColor(classHex);
+    }
     if (c === STOCK_NAME_FILL) return ghostPlateForClassColor(classHex);
     return null;
   }
@@ -100509,13 +100787,13 @@ ${ESTIMATE_HINT}`,
         fontFamily: resolveNameplateFontFamily("phone"),
         fill: fillColor || "#ffffff",
         stroke: "#000000",
-        // Pixel face — stroke just muddies the bitmap.
-        strokeThickness: 0,
-        dropShadow: false,
+        // Stroke-first + shadow for pale sand (no ghost plate).
+        strokeThickness: 5,
+        dropShadow: true,
         dropShadowColor: "#000000",
-        dropShadowDistance: 0,
+        dropShadowDistance: 1,
         dropShadowBlur: 0,
-        dropShadowAlpha: 0,
+        dropShadowAlpha: 0.9,
         dropShadowAngle: Math.PI / 4
       };
     }
@@ -100581,7 +100859,7 @@ ${ESTIMATE_HINT}`,
   function setNameBandFillAlpha(gfx, alpha) {
     const data = getGraphicsData(gfx);
     if (!data) return 0;
-    const a = Math.max(0.2, Math.min(0.82, alpha));
+    const a = Math.max(0, Math.min(0.82, alpha));
     let changed = 0;
     for (let i = 0; i < data.length; i++) {
       const d = data[i];
@@ -100604,7 +100882,7 @@ ${ESTIMATE_HINT}`,
   function ensureNameBandAlphaFloor(gfx, floor = NAMEPLATE_GHOST_ALPHA_BASE) {
     const data = getGraphicsData(gfx);
     if (!data) return 0;
-    const a = Math.max(0.2, Math.min(0.82, floor));
+    const a = Math.max(0, Math.min(0.82, floor));
     let changed = 0;
     for (let i = 0; i < data.length; i++) {
       const d = data[i];
@@ -100624,10 +100902,31 @@ ${ESTIMATE_HINT}`,
     if (changed) bumpGraphicsDirty(gfx);
     return changed;
   }
-  function softenNameBandGraphics(gfx, classHex) {
+  function hidePhoneNameplateMeterBars(gfx) {
+    if (detectViewportProfile() !== "phone") return 0;
     const data = getGraphicsData(gfx);
     if (!data) return 0;
     let changed = 0;
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i];
+      if (!d.shape) continue;
+      if (typeof d.lineAlpha === "number" && d.lineAlpha > 0) {
+        d.lineAlpha = 0;
+        changed++;
+      }
+      if (readFillColor(d) == null) continue;
+      const prev = readFillAlpha(d);
+      if (prev != null && prev <= 0.01) continue;
+      writeFill(d, { color: 0, alpha: 0 });
+      changed++;
+    }
+    if (changed) bumpGraphicsDirty(gfx);
+    return changed;
+  }
+  function softenNameBandGraphics(gfx, classHex) {
+    const data = getGraphicsData(gfx);
+    if (!data) return 0;
+    let changed = hidePhoneNameplateMeterBars(gfx);
     for (let i = 0; i < data.length; i++) {
       const d = data[i];
       const shape = d.shape;
@@ -100688,7 +100987,7 @@ ${ESTIMATE_HINT}`,
     const n = node;
     return !!(n.graphicsData && n.graphicsData.length || n.geometry && n.geometry.graphicsData && n.geometry.graphicsData.length);
   }
-  var NAMEPLATE_BAND_PAD = 1.5;
+  var NAMEPLATE_BAND_PAD = 1;
   var NAMEPLATE_BAND_GROW_MAX = 4;
   function nameBandGrowUp(fillH, textH, pad3 = NAMEPLATE_BAND_PAD) {
     const need = textH + 2 * pad3;
@@ -100813,10 +101112,13 @@ ${ESTIMATE_HINT}`,
       if (!node) return;
       if (looksLikeGraphics(node)) {
         if (!plateDone) softenNameBandGraphics(node, plateClass);
-        else ensureNameBandAlphaFloor(node);
+        else {
+          const phoneFloor = detectViewportProfile() === "phone" ? NAMEPLATE_PHONE_GHOST_ALPHA : NAMEPLATE_GHOST_ALPHA_BASE;
+          ensureNameBandAlphaFloor(node, phoneFloor);
+        }
       }
       if (looksLikeText(node)) applySoftTextStyle(node, textFill);
-      if (looksLikeGraphics(node)) {
+      if (looksLikeGraphics(node) && detectViewportProfile() !== "phone") {
         fitNameTextInGhostBand(node);
       }
       const kids = node.children;
@@ -100864,7 +101166,8 @@ ${ESTIMATE_HINT}`,
   }
   function applyBandToPlate(root, band) {
     if (root.__ecuNameplateLumBand === band) return;
-    const alpha = ghostAlphaForLuminanceBand(band);
+    const base = detectViewportProfile() === "phone" ? NAMEPLATE_PHONE_GHOST_ALPHA : NAMEPLATE_GHOST_ALPHA_BASE;
+    const alpha = ghostAlphaForLuminanceBand(band, base);
     let touched = 0;
     const visit = (node) => {
       if (!node) return;
@@ -100950,6 +101253,7 @@ ${ESTIMATE_HINT}`,
   }
   function tickNameplateContrast(opts) {
     if (sampleDisabled) return;
+    if (detectViewportProfile() === "phone") return;
     const view = opts && opts.view !== void 0 ? opts.view : rendererView2();
     if (!view) return;
     const ctx = opts && opts.ctx ? opts.ctx : ensureTiny();
@@ -101076,8 +101380,12 @@ ${ESTIMATE_HINT}`,
   var NAMEPLATE_DESKTOP_MAX_SCALE = 4;
   var NAMEPLATE_STOCK_FONT_SIZE = 64;
   var NAMEPLATE_STOCK_TEXT_SCALE = 0.125;
-  function snapNameplateScreenScale(raw) {
+  function snapNameplateScreenScale(raw, profile) {
     if (!(typeof raw === "number") || !Number.isFinite(raw)) return 1;
+    const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+    if (p === "phone") {
+      return Math.max(1, Math.min(8, Math.round(raw)));
+    }
     return Math.max(1, Math.min(8, Math.round(raw)));
   }
   function nameplateScreenScale(fov, profile) {
@@ -101085,16 +101393,20 @@ ${ESTIMATE_HINT}`,
     const p = profile || (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
     const boost = nameplatePhoneBoost(p);
     if (f < 1) {
-      const grow = snapNameplateScreenScale(1 / f);
+      const grow = snapNameplateScreenScale(1 / f, p);
       if (p === "phone") {
-        return Math.min(3, Math.max(NAMEPLATE_PHONE_MIN_SCALE, grow));
+        return 1;
       }
       return Math.min(3, Math.max(1, grow));
     }
     const eased = f <= 2 ? f : 2 + (f - 2) * 0.55;
-    let s = snapNameplateScreenScale(Math.max(1 / 3, Math.min(8, eased * boost)));
+    let s = snapNameplateScreenScale(
+      Math.max(1 / 3, Math.min(8, eased * boost)),
+      p
+    );
     if (p === "phone") {
       s = Math.max(NAMEPLATE_PHONE_MIN_SCALE, s);
+      if (f <= 2) s = Math.min(NAMEPLATE_PHONE_MIN_SCALE, s);
       return Math.min(NAMEPLATE_PHONE_MAX_SCALE, s);
     }
     if (p === "tablet") {
@@ -101133,6 +101445,26 @@ ${ESTIMATE_HINT}`,
       x: bounds.x + bounds.width / 2,
       y: bounds.y + bounds.height
     };
+  }
+  var PHONE_PLATE_ORDER = ["Preview", "Brick", "Ember"];
+  function phonePlateIndex(ownerId) {
+    if (!ownerId) return 0;
+    const i = PHONE_PLATE_ORDER.indexOf(ownerId);
+    if (i >= 0) return i;
+    let h = 0;
+    for (let n = 0; n < ownerId.length; n++) {
+      h = (h + ownerId.charCodeAt(n) * (n + 1)) % 3;
+    }
+    return h;
+  }
+  function nameplatePhoneStaggerY(ownerId) {
+    const i = phonePlateIndex(ownerId);
+    if (i === 0) return -18;
+    if (i === 1) return 0;
+    return 6;
+  }
+  function nameplatePhoneStaggerX(_ownerId) {
+    return 0;
   }
   function nameplatePivotPosition(stockX, stockY, attachX, attachY) {
     return { x: stockX + attachX, y: stockY + attachY };
@@ -101193,7 +101525,14 @@ ${ESTIMATE_HINT}`,
     setNodePivot(root, 0, 0);
     root.x = stockX;
     root.y = stockY;
-    if (screen === 1) return true;
+    const phone = typeof window !== "undefined" && detectViewportProfile() === "phone";
+    const staggerY = phone ? nameplatePhoneStaggerY(root.__ecuNameplateOwnerId) : 0;
+    const staggerX = phone ? nameplatePhoneStaggerX(root.__ecuNameplateOwnerId) : 0;
+    if (screen === 1) {
+      root.x = stockX + staggerX;
+      root.y = stockY + staggerY;
+      return true;
+    }
     const bounds = readLocalBounds(root);
     if (!bounds) {
       return false;
@@ -101201,8 +101540,8 @@ ${ESTIMATE_HINT}`,
     const attach = nameplateAttachPoint(bounds);
     const pos = nameplatePivotPosition(stockX, stockY, attach.x, attach.y);
     setNodePivot(root, attach.x, attach.y);
-    root.x = pos.x;
-    root.y = pos.y;
+    root.x = pos.x + staggerX;
+    root.y = pos.y + staggerY;
     setNodeScale(root, screen, screen);
     return true;
   }
@@ -101215,12 +101554,12 @@ ${ESTIMATE_HINT}`,
     if (ctype != null && String(ctype).trim()) {
       root.__ecuNameplateCtype = String(ctype);
     }
-    if (root.__ecuNameplateFov !== appliedFov2 || screen !== 1) {
+    const profile = detectViewportProfile();
+    const phonePixel = profile === "phone";
+    if (phonePixel || root.__ecuNameplateFov !== appliedFov2 || screen !== 1) {
       const ok = applyNameplateScreenScale(root, screen);
       if (ok) root.__ecuNameplateFov = appliedFov2;
     }
-    const profile = detectViewportProfile();
-    const phonePixel = profile === "phone";
     const visit = (node) => {
       if (!node) return;
       const isText = looksLikePixiText(node);
@@ -101312,6 +101651,8 @@ ${ESTIMATE_HINT}`,
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov();
     const touch = (ent) => {
       if (!ent || !ent.name_tag) return;
+      const oid = ent.id != null && String(ent.id) ? String(ent.id) : ent.name != null && String(ent.name) ? String(ent.name) : void 0;
+      if (oid) ent.name_tag.__ecuNameplateOwnerId = oid;
       sharpenNameTagTextures(ent.name_tag, f, resolveNameplateCtype(ent));
     };
     const w = window;
@@ -101339,6 +101680,8 @@ ${ESTIMATE_HINT}`,
         if (sz) sz.font = prevFont;
       }
       if (element && element.name_tag) {
+        const oid = element.id != null && String(element.id) ? String(element.id) : element.name != null && String(element.name) ? String(element.name) : void 0;
+        if (oid) element.name_tag.__ecuNameplateOwnerId = oid;
         sharpenNameTagTextures(
           element.name_tag,
           void 0,

@@ -609,8 +609,22 @@ function prepareObservingCharacter(): boolean {
   return true;
 }
 
-/** Open/toggle observed inventory using the patched host renderer. */
+/**
+ * Open observed inventory via the patched host renderer.
+ * Idempotent across draw_trigger: a late callback no-ops if already open
+ * (raw render_inventory toggles — queued sync used to blink-close the bag).
+ */
 export function openInventory(): void {
+  callThroughDraw(() => {
+    if (isInventoryOpen()) return;
+    if (typeof window.render_inventory === "function") {
+      window.render_inventory();
+    }
+  });
+}
+
+/** Toggle observed inventory (chrome Bag button). */
+export function toggleInventory(): void {
   callThroughDraw(() => {
     if (typeof window.render_inventory === "function") {
       window.render_inventory();
@@ -622,9 +636,16 @@ export function openInventory(): void {
  * Keep stock `window.inventory` aligned with bag panel visibility.
  * Phone dock / Apps only flip panelVisible — without this, BagPanel never
  * mounts (CommPanelLayout gates on bagOpen from the inventory bridge).
+ *
+ * Must not toggle: sync(true) queues draw_trigger; an immediate open then
+ * leaves the callback to toggle-close (blink-then-gone until F5).
  */
 export function syncInventoryToBagPanel(wantOpen: boolean): void {
   if (wantOpen === isInventoryOpen()) return;
+  if (!wantOpen) {
+    closeInventory();
+    return;
+  }
   openInventory();
 }
 

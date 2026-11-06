@@ -9,6 +9,13 @@ import {
   subscribeFreeCamera,
   syncLockFromMapAfterObserveClear,
 } from "../cameraPan";
+import {
+  closeInventory,
+  isInventoryOpen,
+  openInventory,
+  toggleInventory,
+} from "../inventory";
+import { panelActuallyOpen } from "../../lib/panelActuallyOpen";
 import { syncMailBadge } from "../mail/mailUnread";
 import { openMail } from "../mail/mailSession";
 import { openMarket } from "../market";
@@ -199,13 +206,14 @@ function onBagClick(ev: Event): void {
   ev.preventDefault();
   ev.stopPropagation();
   if (!gateObservedBagOpen()) return;
-  const render = window.render_inventory;
-  if (typeof render !== "function") return;
-  if (typeof window.draw_trigger === "function") {
-    window.draw_trigger(() => render());
-  } else {
-    render();
+  // Stuck open: inventory flag true but grid gone — clear then ensure-open
+  // (idempotent openInventory). Do not raw-toggle: queued sync can race.
+  if (isInventoryOpen() && !panelActuallyOpen("bag")) {
+    closeInventory();
+    openInventory();
+    return;
   }
+  toggleInventory();
 }
 
 function onCommandClick(ev: Event): void {

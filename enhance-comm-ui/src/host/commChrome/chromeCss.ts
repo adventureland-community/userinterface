@@ -8,7 +8,11 @@ const STYLE_ID = "comm-ui-chrome-css";
 export const STOCK_BOTTOM_TOGGLE_HIDE =
   "#bottom > .gamebutton:not(.disconnected)";
 
-/** Below #comm-ui (220) so panels/modals win hit-testing over empty chrome. */
+/**
+ * Below #comm-ui (220) so panels/modals (bag, Layout toggles) paint and win
+ * hits over empty chrome. Interactive targets keep pointer-events:auto.
+ * Phone dock (240) and modal portals sit above both.
+ */
 export const BOTTOM_CHROME_Z_INDEX = 201;
 
 /** Interactive chrome controls — containers stay pointer-events: none. */
@@ -30,8 +34,8 @@ export function injectChromeCss(): void {
     style.id = STYLE_ID;
     document.head.append(style);
   }
-  // #bottom below #comm-ui (220): transparent overlay passes clicks to chrome;
-  // panels/modals inside comm-ui sit above the strip (fixes "Got it" / buffs).
+  // #bottom below #comm-ui (220): panels win over the strip; empty #bottom is
+  // pointer-events:none so chrome buttons still receive hits in their boxes.
   style.textContent = `
 /* Hide stock observe gamebuttons — never restyle .gamebutton.block into the strip */
 #observeui {

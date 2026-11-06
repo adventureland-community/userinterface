@@ -3,6 +3,8 @@
  * Character/server live on the dock; stock #bottom chrome stack is hidden.
  */
 
+import { applyPhoneWorldCover, readWindowCssSize } from "./worldFov";
+
 export const PHONE_DOCK_FALLBACK_PX = 48;
 export const PHONE_DOCK_CSS_VAR = "--ecu-phone-dock-h";
 /** Dock + #bottom chrome — free-floating panels/meters must clear this. */
@@ -17,6 +19,14 @@ let appliedHudBottomPx = 0;
 /** Apply dock height so character strip / action keys sit above the bar. */
 export function applyPhoneDockChrome(dockHeightPx: number): void {
   if (typeof document === "undefined") return;
+  // Never stamp phone-dock chrome while Comm UI is desktop/tablet — the class
+  // hides `.ecu-actions` and cover-scale tanks follow on a full desktop buffer.
+  const comm = document.getElementById("comm-ui");
+  const vp = comm && comm.getAttribute("data-viewport");
+  if (vp === "desktop" || vp === "tablet") {
+    clearPhoneDockChrome();
+    return;
+  }
   const px = Math.max(
     0,
     Math.round(Number.isFinite(dockHeightPx) ? dockHeightPx : 0),
@@ -29,6 +39,20 @@ export function applyPhoneDockChrome(dockHeightPx: number): void {
   document.documentElement.classList.add(PHONE_DOCK_BODY_CLASS);
   document.body.classList.add(PHONE_DOCK_BODY_CLASS);
   refreshPhoneHudBottomInset();
+  // FOV may have applied before the dock mounted — re-cover now.
+  try {
+    const { w, h } = readWindowCssSize();
+    applyPhoneWorldCover(w, h);
+  } catch {
+    /* ignore */
+  }
+  try {
+    const bust = (window as Window & { __ecuBustNameTags?: () => void })
+      .__ecuBustNameTags;
+    if (typeof bust === "function") bust();
+  } catch {
+    /* ignore */
+  }
 }
 
 export function clearPhoneDockChrome(): void {
@@ -39,6 +63,12 @@ export function clearPhoneDockChrome(): void {
   document.documentElement.style.setProperty(PHONE_HUD_BOTTOM_CSS_VAR, "0px");
   document.documentElement.classList.remove(PHONE_DOCK_BODY_CLASS);
   document.body.classList.remove(PHONE_DOCK_BODY_CLASS);
+  try {
+    const { w, h } = readWindowCssSize();
+    applyPhoneWorldCover(w, h);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function phoneDockHeightPx(): number {

@@ -17,9 +17,11 @@ const chromeCssSrc = readFileSync(
 );
 
 describe("bottom chrome pointer-events", () => {
-  it("keeps #bottom below #comm-ui for hit testing", () => {
+  it("keeps #bottom below #comm-ui so bag/toggles paint above chrome", () => {
     assert.equal(BOTTOM_CHROME_Z_INDEX, 201);
     assert.ok(BOTTOM_CHROME_Z_INDEX < 220);
+    // Phone Material dock must stay above the strip.
+    assert.ok(BOTTOM_CHROME_Z_INDEX < 240);
   });
 
   it("lists interactive chrome controls for pointer-events:auto", () => {

@@ -82,6 +82,9 @@ import {
   renderCommTogglesPanel,
 } from "./comm/CommPanelLayout";
 import { SnapGuideLine } from "../chrome/SnapGuideLine";
+import { clearPhoneDockChrome } from "../../lib/phoneChrome";
+import { panelActuallyOpen } from "../../lib/panelActuallyOpen";
+import { ensurePanelShellOpen } from "../../lib/ensurePanelShellOpen";
 import { isTouchishProfile } from "../../lib/viewport";
 import {
   activePhoneHomeScreen,
@@ -457,14 +460,20 @@ export function CommUI(props: CommUIProps): any {
         windowActionsRef.current.raiseWindow("command");
         return;
       }
-      if (commandOpenRef.current) {
+      // Only toggle-close when the shell is actually on screen — stuck
+      // panelVisible=true with no DOM used to make chrome clicks no-op.
+      if (commandOpenRef.current && panelActuallyOpen("command")) {
         setVisible("command", false);
         return;
       }
       setCommandSeed(null);
       setCommandOpenSeq((n: number) => n + 1);
-      setVisible("command", true);
-      windowActionsRef.current.raiseWindow("command");
+      ensurePanelShellOpen(
+        "command",
+        commandOpenRef.current,
+        setVisible,
+        () => windowActionsRef.current.raiseWindow("command"),
+      );
     });
   }, [setVisible]);
 
@@ -481,7 +490,12 @@ export function CommUI(props: CommUIProps): any {
       const hasPrefill =
         typeof payload.draft === "string" ||
         typeof payload.whisperTo === "string";
-      if (payload.toggle && chatOpenRef.current && !hasPrefill) {
+      if (
+        payload.toggle &&
+        chatOpenRef.current &&
+        !hasPrefill &&
+        panelActuallyOpen("chat")
+      ) {
         setVisible("chat", false);
         return;
       }
@@ -493,8 +507,12 @@ export function CommUI(props: CommUIProps): any {
         setChatWhisperTo(null);
       }
       setChatOpenSeq((n: number) => n + 1);
-      setVisible("chat", true);
-      windowActionsRef.current.raiseWindow("chat");
+      ensurePanelShellOpen(
+        "chat",
+        chatOpenRef.current,
+        setVisible,
+        () => windowActionsRef.current.raiseWindow("chat"),
+      );
     });
   }, [setVisible]);
 
@@ -517,13 +535,18 @@ export function CommUI(props: CommUIProps): any {
         payload.toggle &&
         !wantsCompose &&
         !payload.focusNewestUnread &&
-        mailOpenRef.current
+        mailOpenRef.current &&
+        panelActuallyOpen("mail")
       ) {
         setVisible("mail", false);
         return;
       }
-      setVisible("mail", true);
-      windowActionsRef.current.raiseWindow("mail");
+      ensurePanelShellOpen(
+        "mail",
+        mailOpenRef.current,
+        setVisible,
+        () => windowActionsRef.current.raiseWindow("mail"),
+      );
       if (payload.focusNewestUnread) {
         void openNewestUnread();
         return;
@@ -546,7 +569,12 @@ export function CommUI(props: CommUIProps): any {
 
   React.useEffect(() => {
     return subscribeMarketOpen((payload) => {
-      if (payload.toggle && marketOpenRef.current && !payload.merchantName) {
+      if (
+        payload.toggle &&
+        marketOpenRef.current &&
+        !payload.merchantName &&
+        panelActuallyOpen("market")
+      ) {
         setVisible("market", false);
         return;
       }
@@ -557,8 +585,12 @@ export function CommUI(props: CommUIProps): any {
         setMarketDesk(payload.desk);
       }
       setMarketOpenSeq((n: number) => n + 1);
-      setVisible("market", true);
-      windowActionsRef.current.raiseWindow("market");
+      ensurePanelShellOpen(
+        "market",
+        marketOpenRef.current,
+        setVisible,
+        () => windowActionsRef.current.raiseWindow("market"),
+      );
     });
   }, [setVisible]);
 
@@ -572,12 +604,16 @@ export function CommUI(props: CommUIProps): any {
 
   React.useEffect(() => {
     return subscribeBankOpen((payload) => {
-      if (payload.toggle && bankOpenRef.current) {
+      if (payload.toggle && bankOpenRef.current && panelActuallyOpen("bank")) {
         setVisible("bank", false);
         return;
       }
-      setVisible("bank", true);
-      windowActionsRef.current.raiseWindow("bank");
+      ensurePanelShellOpen(
+        "bank",
+        bankOpenRef.current,
+        setVisible,
+        () => windowActionsRef.current.raiseWindow("bank"),
+      );
     });
   }, [setVisible]);
 
@@ -588,6 +624,10 @@ export function CommUI(props: CommUIProps): any {
     root.classList.toggle("comm-ui-touch", isTouchishProfile(viewportProfile));
     root.classList.toggle("ecu-phone-home", viewportProfile === "phone");
     root.classList.toggle("ecu-phone-layout-edit", !!layoutEdit);
+    // Phone→desktop: dock unmount cleanup can race; force-clear cover/chrome.
+    if (viewportProfile !== "phone") {
+      clearPhoneDockChrome();
+    }
     return () => {
       root.classList.remove("ecu-phone-home");
       root.classList.remove("ecu-phone-layout-edit");

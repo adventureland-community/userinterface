@@ -1,6 +1,6 @@
 import { closeTopLeftDialog, isTopLeftDialogOpen } from "./dialogHost";
 import { closeServerDd, isServerDdOpen } from "./commChrome/serverDropdown";
-import { openInventory } from "./inventory";
+import { toggleInventory } from "./inventory";
 import { openChat } from "./chat";
 import { openMail } from "./mail";
 import { gateObservedBagOpen } from "./bagOpenGate";
@@ -146,7 +146,7 @@ export function installCommKeyboardPolicy(
     if (shortcut === "toggle_inventory") {
       ev.preventDefault();
       if (!gateObservedBagOpen()) return;
-      openInventory();
+      toggleInventory();
       return;
     }
 

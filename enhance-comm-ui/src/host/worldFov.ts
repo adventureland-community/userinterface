@@ -9,6 +9,7 @@ import {
   WORLD_FOV_MAX,
   WORLD_FOV_MIN,
   WORLD_FOV_STEP,
+  applyPhoneWorldCover,
   applyWorldFov,
   cameraRealAfterFovTowardCursor,
   clampWorldFov,
@@ -150,9 +151,9 @@ export function zoomFovIn(): number {
 function preferredBootFov(): number {
   const saved = getSettings().worldFov;
   if (typeof saved === "number") return clampWorldFov(saved);
-  // Phone: slightly wider FOV so more map fits without lowering sprite scale.
-  // Nameplates stay sharp via nameplateSharpness (NEAREST + resolution×FOV).
-  return detectViewportProfile() === "phone" ? 1.5 : WORLD_FOV_DEFAULT;
+  // Phone: start at 1× (not 1.5× wider) so sprites fill the tall frame;
+  // cover CSS still crops gutters. Nameplates stay sharp via sharpness pass.
+  return WORLD_FOV_DEFAULT;
 }
 
 function gameLoaded(): boolean {
@@ -190,12 +191,48 @@ function installResizeHook(): void {
   w.on_resize = hooked;
 }
 
+/**
+ * Phone→desktop races can leave `ecu-phone-dock-on` / cover scale after the
+ * dock unmounts. Re-scrub cheaply while Comm UI is desktop/tablet.
+ */
+function installDesktopPhoneChromeWatchdog(): void {
+  window.setInterval(() => {
+    try {
+      const comm = document.getElementById("comm-ui");
+      const vp = comm && comm.getAttribute("data-viewport");
+      if (vp !== "desktop" && vp !== "tablet") return;
+      const dockOn = document.documentElement.classList.contains(
+        "ecu-phone-dock-on",
+      );
+      const view = (
+        window as Window & {
+          renderer?: { view?: HTMLElement | null };
+        }
+      ).renderer?.view;
+      const st = view && view.style;
+      const coverLeaked =
+        !!st &&
+        (st.position === "fixed" ||
+          (typeof st.transform === "string" &&
+            st.transform.indexOf("scale(") !== -1) ||
+          (typeof view.getAttribute === "function" &&
+            view.getAttribute("data-ecu-phone-cover") === "1"));
+      if (!dockOn && !coverLeaked) return;
+      const { w, h } = readWindowCssSize();
+      applyPhoneWorldCover(w, h);
+    } catch {
+      /* ignore */
+    }
+  }, 2000);
+}
+
 /** Apply saved FOV once the game finished loading; safe to call repeatedly. */
 export function installWorldFov(): void {
   if (installed) return;
   installed = true;
   installResizeHook();
   installViewportRefit();
+  installDesktopPhoneChromeWatchdog();
 
   if (tryApplySaved()) return;
 
