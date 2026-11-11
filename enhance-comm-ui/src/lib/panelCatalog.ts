@@ -75,7 +75,7 @@ export const PANEL_CATALOG: Record<PanelId, PanelDef> = {
   paperdoll: { label: "Paperdoll" },
   buffInfo: { label: "Buff info", autoSize: "default-on" },
   itemInfo: { label: "Item info", autoSize: "default-on" },
-  kills: { label: "Kills", closable: true, autoSize: "default-on" },
+  kills: { label: "Farm", closable: true, autoSize: "default-on" },
   playerFrame: { label: "Player frame", closable: true, autoSize: "opt-in" },
   targetFrame: { label: "Target frame", closable: true, autoSize: "opt-in" },
   bossBar: {

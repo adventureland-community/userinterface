@@ -10,7 +10,11 @@ import { startSocketHub } from "./sockets/hub";
 import { startInstanceTracker } from "./instance/tracker";
 import { startMeterEngine, updateMeterContext } from "./meters/meterEngine";
 import { isMeterInCombat } from "./meters/meterSession";
-import { startSessionKills, updateKillContext } from "./kpi/sessionKills";
+import {
+  installFarmPreviewSeedHook,
+  startFarmSession,
+  updateFarmContext,
+} from "./kpi/farmSession";
 import { installCommanderHook } from "./host/commander";
 import { installUpdateNotesHooks } from "./host/updateNotes";
 import { installCommChrome } from "./host/commChrome";
@@ -170,7 +174,7 @@ function Root(): any {
     let lastKey = "";
     const stopTick = startTick((s) => {
       updateMeterContext(s.entities);
-      updateKillContext(s.entities);
+      updateFarmContext(s.entities);
       const combat = isMeterInCombat() ? 1 : 0;
       // Cheap numeric gate — skip full HUD string when roster HP/ids idle.
       const coarse = snapshotUiCoarseHash(s) * 2 + combat;
@@ -209,7 +213,7 @@ function onLoad(): void {
   startSocketHub();
   startInstanceTracker();
   startMeterEngine();
-  startSessionKills();
+  startFarmSession();
   startWorldOverlay();
   installWorldZoom();
   installNameplateSharpness();
@@ -217,6 +221,7 @@ function onLoad(): void {
   installGameFpsCap();
   installGameRenderScale();
   seedPhoneOverlayFixtures();
+  installFarmPreviewSeedHook();
 
   let domContainer = document.querySelector("#comm-ui") as HTMLElement | null;
   if (!domContainer) {

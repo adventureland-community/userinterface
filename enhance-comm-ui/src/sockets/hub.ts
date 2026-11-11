@@ -68,6 +68,22 @@ export type GameResponseEvent = {
   raw?: any;
 };
 
+/** Chest open / party loot (`loot` socket). */
+export type LootEvent = {
+  id?: string;
+  opener?: string;
+  gold: number;
+  party: boolean;
+  items: Array<{
+    name: string;
+    q: number;
+    level?: number;
+    looter?: string | null;
+  }>;
+  at: number;
+  raw?: any;
+};
+
 /**
  * Nearby `ui` packet from `xy_emit`. Combat skills that skip `action`
  * (stomp, mluck, warcry, …) show up here; merchants/FX use other `type`s.
@@ -106,6 +122,7 @@ const damageCh = createChannel<DamageEvent>();
 const actionCh = createChannel<ActionEvent>();
 const evalCh = createChannel<EvalEvent>();
 const gameResponseCh = createChannel<GameResponseEvent>();
+const lootCh = createChannel<LootEvent>();
 const uiCh = createChannel<UiEvent>();
 
 let lastSocketId: string | null = null;
@@ -233,6 +250,31 @@ function onGameResponse(data: any): void {
   gameResponseCh.emit({ response, at: Date.now(), raw: data });
 }
 
+function onLoot(data: any): void {
+  if (!data) return;
+  const itemsIn = Array.isArray(data.items) ? data.items : [];
+  const items: LootEvent["items"] = [];
+  for (let i = 0; i < itemsIn.length; i++) {
+    const it = itemsIn[i];
+    if (!it || it.name == null) continue;
+    items.push({
+      name: String(it.name),
+      q: typeof it.q === "number" && it.q > 0 ? it.q : 1,
+      level: typeof it.level === "number" ? it.level : undefined,
+      looter: it.looter != null ? String(it.looter) : null,
+    });
+  }
+  lootCh.emit({
+    id: data.id != null ? String(data.id) : undefined,
+    opener: data.opener != null ? String(data.opener) : undefined,
+    gold: typeof data.gold === "number" ? data.gold : 0,
+    party: !!data.party,
+    items,
+    at: Date.now(),
+    raw: data,
+  });
+}
+
 function hintString(v: unknown): string | undefined {
   if (v == null || v === "") return undefined;
   return String(v);
@@ -310,6 +352,7 @@ function maybeResubscribe(): void {
   socket.on("action", onAction);
   socket.on("eval", onEval);
   socket.on("game_response", onGameResponse);
+  socket.on("loot", onLoot);
   socket.on("ui", onUi);
   socket.on("chat_log", onChatLog);
   socket.on("game_chat_log", onGameChatLog);
@@ -323,6 +366,7 @@ export const onDamage = damageCh.subscribe;
 export const onActionSubscribe = actionCh.subscribe;
 export const onEvalSubscribe = evalCh.subscribe;
 export const onGameResponseSubscribe = gameResponseCh.subscribe;
+export const onLootSubscribe = lootCh.subscribe;
 export const onUiSubscribe = uiCh.subscribe;
 
 /** Boot once; tracks socket.id reconnect and fans out typed events. */

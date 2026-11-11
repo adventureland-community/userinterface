@@ -218,8 +218,8 @@ const INTRO_TOUR: GuidedTourDef = {
     },
     {
       section: "Overlay",
-      title: "Kill counter",
-      body: "Session kill KPI in a compact strip. Change scope in the panel header.",
+      title: "Farm",
+      body: "Nearby kill pace chips plus session gold. Open Details for kills, gold, and chest loot.",
       target: ".comm-pos-panel.comm-pos-kills",
       targetKind: "panel",
       enter: { closeBag: true, closeCommand: true, closePhoneChrome: true },

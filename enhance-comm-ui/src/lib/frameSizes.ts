@@ -385,12 +385,12 @@ export function clampMeterFrame(
   };
 }
 
-/** Kill KPI panel. */
+/** Farm glance / details panel (layout id `kills`). */
 export const KILLS_PANEL_STYLE: Record<string, any> = {
   width: "fit-content",
-  maxWidth: "min(280px, 90vw)",
-  minWidth: "180px",
-  minHeight: "80px",
+  maxWidth: "min(360px, 92vw)",
+  minWidth: 0,
+  minHeight: 0,
   boxSizing: "border-box",
   // Keep above-frame arrange chrome (hide × / drag) unclipped.
   overflow: "visible",

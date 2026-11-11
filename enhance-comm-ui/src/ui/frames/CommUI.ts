@@ -1,7 +1,7 @@
 import { getReact, e } from "../../host/react";
 import type { GameSnapshot } from "../../tick";
 import { updateMeterContext } from "../../meters/meterEngine";
-import { updateKillContext } from "../../kpi/sessionKills";
+import { updateFarmContext } from "../../kpi/farmSession";
 import { getSettings, patchSettings } from "../../lib/settings";
 import { subscribeCommanderOpen } from "../../host/commander";
 import { setChatPanelOpen, subscribeChatOpen } from "../../host/chat";
@@ -399,7 +399,7 @@ export function CommUI(props: CommUIProps): any {
   };
 
   React.useEffect(() => {
-    updateKillContext(snap.entities);
+    updateFarmContext(snap.entities);
     updateMeterContext(snap.entities);
   }, [snap.entities]);
 

@@ -5,7 +5,11 @@ import {
   isPhoneViewport,
   type HudDensity,
 } from "../../../lib/perfPrefs";
-import { getSettings, patchSettings } from "../../../lib/settings";
+import {
+  getSettings,
+  patchSettings,
+  type FarmGlanceGrow,
+} from "../../../lib/settings";
 import {
   overlayToggleSectionsForPane,
   type OverlayToggleDef,
@@ -30,10 +34,18 @@ export type CommHudSettingsPaneProps = {
   setHudDensity?: (mode: HudDensity) => void;
 };
 
+const FARM_GLANCE_GROWS: readonly FarmGlanceGrow[] = [
+  "right",
+  "down",
+  "left",
+  "up",
+];
+
 function buildCommHudSubsections(): readonly SettingsSubsection[] {
   const out: SettingsSubsection[] = [
     { id: settingsSectionId("HUD density"), label: "HUD density" },
     { id: settingsSectionId("Meters"), label: "Meters" },
+    { id: settingsSectionId("Farm glance"), label: "Farm glance" },
   ];
   const sections = overlayToggleSectionsForPane("commHud");
   for (let i = 0; i < sections.length; i++) {
@@ -87,6 +99,13 @@ function metersMatches(query: string): boolean {
   return matchesQuery("meters hide dps hps combat skada", query);
 }
 
+function farmGlanceMatches(query: string): boolean {
+  return matchesQuery(
+    "farm glance chips kills gold loot grow columns rows grid nearby",
+    query,
+  );
+}
+
 function phoneCameraControlsMatch(query: string): boolean {
   if (!isPhoneViewport()) return false;
   const q = query.trim().toLowerCase();
@@ -101,6 +120,7 @@ export function countCommHudSettingsMatches(query: string): number {
   if (phoneCameraControlsMatch(query)) total += 1;
   if (hudDensityMatches(query)) total += 1;
   if (metersMatches(query)) total += 1;
+  if (farmGlanceMatches(query)) total += 1;
   for (let s = 0; s < sections.length; s++) {
     const defs = sections[s].defs;
     for (let i = 0; i < defs.length; i++) {
@@ -234,6 +254,100 @@ export function CommHudSettingsPane(props: CommHudSettingsPaneProps): any {
       ),
     );
   }
+
+  if (farmGlanceMatches(query)) {
+    rowCount += 1;
+    kids.push(settingsSection("Farm glance"));
+    kids.push(
+      e(
+        "p",
+        { key: "farm-help", className: "ecu-settings-help" },
+        "Chip grid on the Farm panel (Windows → Farm). Grow sets fill direction; rows 0 means no row cap.",
+      ),
+    );
+    const grow = settings.farmGlanceGrow || "right";
+    const cols = settings.farmGlanceCols || 2;
+    const rows =
+      typeof settings.farmGlanceRows === "number" ? settings.farmGlanceRows : 2;
+    const growOpts: any[] = [];
+    for (let i = 0; i < FARM_GLANCE_GROWS.length; i++) {
+      const g = FARM_GLANCE_GROWS[i];
+      growOpts.push(e("option", { key: g, value: g }, g));
+    }
+    kids.push(
+      e(
+        "label",
+        {
+          key: "farm-grow",
+          className: "ecu-settings-row",
+          style: { display: "flex", gap: "10px", alignItems: "center" },
+        },
+        e("span", { className: "ecu-settings-row-label" }, "Grow"),
+        e(
+          "select",
+          {
+            value: grow,
+            onChange: (ev: { target: { value: string } }) => {
+              patchSettings({
+                farmGlanceGrow: ev.target.value as FarmGlanceGrow,
+              });
+              setTick((n: number) => n + 1);
+            },
+          },
+          ...growOpts,
+        ),
+      ),
+      e(
+        "label",
+        {
+          key: "farm-cols",
+          className: "ecu-settings-row",
+          style: { display: "flex", gap: "10px", alignItems: "center" },
+        },
+        e("span", { className: "ecu-settings-row-label" }, "Columns"),
+        e("input", {
+          type: "number",
+          min: 1,
+          max: 4,
+          value: cols,
+          style: { width: "4em" },
+          onChange: (ev: { target: { value: string } }) => {
+            const n = Number(ev.target.value);
+            if (!Number.isFinite(n)) return;
+            patchSettings({
+              farmGlanceCols: Math.max(1, Math.min(4, Math.floor(n))),
+            });
+            setTick((n: number) => n + 1);
+          },
+        }),
+      ),
+      e(
+        "label",
+        {
+          key: "farm-rows",
+          className: "ecu-settings-row",
+          style: { display: "flex", gap: "10px", alignItems: "center" },
+        },
+        e("span", { className: "ecu-settings-row-label" }, "Rows"),
+        e("input", {
+          type: "number",
+          min: 0,
+          max: 8,
+          value: rows,
+          style: { width: "4em" },
+          onChange: (ev: { target: { value: string } }) => {
+            const n = Number(ev.target.value);
+            if (!Number.isFinite(n)) return;
+            patchSettings({
+              farmGlanceRows: Math.max(0, Math.min(8, Math.floor(n))),
+            });
+            setTick((n: number) => n + 1);
+          },
+        }),
+      ),
+    );
+  }
+
   if (!rowCount) {
     kids.push(
       e(

@@ -1180,6 +1180,7 @@ var EnhanceCommUI = (() => {
   var actionCh = createChannel();
   var evalCh = createChannel();
   var gameResponseCh = createChannel();
+  var lootCh = createChannel();
   var uiCh = createChannel();
   var lastSocketId = null;
   var hubStarted = false;
@@ -1268,6 +1269,30 @@ var EnhanceCommUI = (() => {
     if (!response) return;
     gameResponseCh.emit({ response, at: Date.now(), raw: data });
   }
+  function onLoot(data) {
+    if (!data) return;
+    const itemsIn = Array.isArray(data.items) ? data.items : [];
+    const items = [];
+    for (let i = 0; i < itemsIn.length; i++) {
+      const it = itemsIn[i];
+      if (!it || it.name == null) continue;
+      items.push({
+        name: String(it.name),
+        q: typeof it.q === "number" && it.q > 0 ? it.q : 1,
+        level: typeof it.level === "number" ? it.level : void 0,
+        looter: it.looter != null ? String(it.looter) : null
+      });
+    }
+    lootCh.emit({
+      id: data.id != null ? String(data.id) : void 0,
+      opener: data.opener != null ? String(data.opener) : void 0,
+      gold: typeof data.gold === "number" ? data.gold : 0,
+      party: !!data.party,
+      items,
+      at: Date.now(),
+      raw: data
+    });
+  }
   function hintString(v) {
     if (v == null || v === "") return void 0;
     return String(v);
@@ -1332,6 +1357,7 @@ var EnhanceCommUI = (() => {
     socket.on("action", onAction);
     socket.on("eval", onEval);
     socket.on("game_response", onGameResponse);
+    socket.on("loot", onLoot);
     socket.on("ui", onUi);
     socket.on("chat_log", onChatLog);
     socket.on("game_chat_log", onGameChatLog);
@@ -1344,6 +1370,7 @@ var EnhanceCommUI = (() => {
   var onActionSubscribe = actionCh.subscribe;
   var onEvalSubscribe = evalCh.subscribe;
   var onGameResponseSubscribe = gameResponseCh.subscribe;
+  var onLootSubscribe = lootCh.subscribe;
   var onUiSubscribe = uiCh.subscribe;
   function startSocketHub() {
     if (hubStarted) {
@@ -3685,9 +3712,9 @@ var EnhanceCommUI = (() => {
   }
   var KILLS_PANEL_STYLE = {
     width: "fit-content",
-    maxWidth: "min(280px, 90vw)",
-    minWidth: "180px",
-    minHeight: "80px",
+    maxWidth: "min(360px, 92vw)",
+    minWidth: 0,
+    minHeight: 0,
     boxSizing: "border-box",
     // Keep above-frame arrange chrome (hide × / drag) unclipped.
     overflow: "visible"
@@ -3739,11 +3766,11 @@ var EnhanceCommUI = (() => {
       autoSize: true
     },
     kills: {
-      x: 27,
-      y: 99.2,
-      anchor: "br",
-      frameW: 280,
-      frameH: 180,
+      x: 1.2,
+      y: 78,
+      anchor: "bl",
+      frameW: 200,
+      frameH: 140,
       autoSize: true
     },
     playerFrame: {
@@ -4104,7 +4131,7 @@ var EnhanceCommUI = (() => {
     paperdoll: { label: "Paperdoll" },
     buffInfo: { label: "Buff info", autoSize: "default-on" },
     itemInfo: { label: "Item info", autoSize: "default-on" },
-    kills: { label: "Kills", closable: true, autoSize: "default-on" },
+    kills: { label: "Farm", closable: true, autoSize: "default-on" },
     playerFrame: { label: "Player frame", closable: true, autoSize: "opt-in" },
     targetFrame: { label: "Target frame", closable: true, autoSize: "opt-in" },
     bossBar: {
@@ -9586,6 +9613,11 @@ ${fightHoverTip(src)}`
       kind: "feature"
     },
     {
+      label: "Farm",
+      detail: "Nearby kill-pace chips, session gold, and chest loot \u2014 Details for tables and charts.",
+      kind: "feature"
+    },
+    {
       label: "Damage meters",
       detail: "DPS and HPS windows, Inspector, Time Line, and report views.",
       kind: "feature"
@@ -9631,8 +9663,13 @@ ${fightHoverTip(src)}`
       id: "0.19.0",
       title: "0.19.0",
       date: "2026-11-07",
-      summary: "Experimental farm-machine knobs: cap the stock map draw loop (and optionally lower render scale) without slowing Comm UI.",
+      summary: "Farm replaces the old kill strip with nearby pace chips, session gold, and chest loot \u2014 plus optional map FPS / render-scale knobs for farm machines.",
       highlights: [
+        {
+          label: "Farm panel",
+          detail: "Windows \u2192 Farm: compact nearby monster chips with kill pace, a gold spark, and Details tabs for kills, gold, and chest loot (ItemInstance tiles). Settings \u2192 Comm HUD \u2192 Farm glance sets chip grow direction, columns, and rows.",
+          kind: "feature"
+        },
         {
           label: "Experimental FPS cap",
           detail: "Settings \u2192 Comm UI \u2192 Experimental: fixed Off / 30 / 60 while focused, plus separate toggles to cap at 60 when the tab is hidden, when the window is blurred, and to pause draws when the map canvas is off-screen. Live draw rate shows under the controls. Defaults all off \u2014 host hooks, so treat as experimental.",
@@ -12785,9 +12822,28 @@ ${fightHoverTip(src)}`
       code: "say('hi')"
     }
   ];
+  function normalizeFarmGlanceGrow(raw) {
+    if (raw === "down" || raw === "left" || raw === "up" || raw === "right") {
+      return raw;
+    }
+    return "right";
+  }
+  function normalizeFarmGlanceCols(raw) {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(n)) return 2;
+    return Math.max(1, Math.min(4, Math.floor(n)));
+  }
+  function normalizeFarmGlanceRows(raw) {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(n)) return 2;
+    return Math.max(0, Math.min(8, Math.floor(n)));
+  }
   var DEFAULTS = {
     partyScope: "watched",
     killScope: "watched",
+    farmGlanceGrow: "right",
+    farmGlanceCols: 2,
+    farmGlanceRows: 2,
     threatScope: "visible",
     combatView: "table",
     combatChannels: ["dps", "base", "blast", "burn", "hps"],
@@ -13033,6 +13089,9 @@ ${fightHoverTip(src)}`
     const next = {
       ...DEFAULTS,
       ...parsed,
+      farmGlanceGrow: normalizeFarmGlanceGrow(parsed.farmGlanceGrow),
+      farmGlanceCols: normalizeFarmGlanceCols(parsed.farmGlanceCols),
+      farmGlanceRows: normalizeFarmGlanceRows(parsed.farmGlanceRows),
       combatChannels: normalizeChannels(parsed.combatChannels),
       barChannel: normalizeBarChannel(parsed.barChannel),
       panelLayout,
@@ -14389,6 +14448,8 @@ ${fightHoverTip(src)}`
     const keys = Object.keys(rec);
     for (let i = 0; i < keys.length; i++) delete rec[keys[i]];
   }
+  var recentKillMtypes = [];
+  var RECENT_KILL_MAX = 24;
   function clearCounts() {
     clearRecord(mtypeCounts);
     clearRecord(partyKillCounts);
@@ -14396,6 +14457,21 @@ ${fightHoverTip(src)}`
     clearRecord(partyTiming);
     totalKills = 0;
     sessionStartedAt = 0;
+    recentKillMtypes.length = 0;
+  }
+  function getRecentKillMtype(withinMs = 45e3) {
+    const now = Date.now();
+    for (let i = recentKillMtypes.length - 1; i >= 0; i--) {
+      const row3 = recentKillMtypes[i];
+      if (now - row3.at <= withinMs) return row3.mtype;
+    }
+    return void 0;
+  }
+  function noteRecentKillMtypeForPreview(mtype, at = Date.now()) {
+    const w = window;
+    if (!w.__ecuOverlayPreview || !mtype) return;
+    recentKillMtypes.push({ mtype, at });
+    while (recentKillMtypes.length > RECENT_KILL_MAX) recentKillMtypes.shift();
   }
   function noteTiming(rec, key, at) {
     const prev = rec[key];
@@ -14418,7 +14494,8 @@ ${fightHoverTip(src)}`
     if (trackingId !== observingId) {
       trackingId = observingId;
       trackingName = name || observingId;
-      clearCounts();
+      const preview = window.__ecuOverlayPreview;
+      if (!preview) clearCounts();
     } else if (name) {
       trackingName = name;
     }
@@ -14512,6 +14589,8 @@ ${fightHoverTip(src)}`
     noteTiming(partyTiming, partyKey, ev.at);
     totalKills += 1;
     if (!sessionStartedAt) sessionStartedAt = ev.at;
+    recentKillMtypes.push({ mtype, at: ev.at });
+    while (recentKillMtypes.length > RECENT_KILL_MAX) recentKillMtypes.shift();
     blameByTarget.delete(ev.id);
     lastSeen.delete(ev.id);
   }
@@ -14609,6 +14688,97 @@ ${fightHoverTip(src)}`
     clearCounts();
     blameByTarget.clear();
   }
+  function seedSessionKillsForPreview(opts) {
+    var _a;
+    const w = window;
+    if (!w.__ecuOverlayPreview) return;
+    const now = Date.now();
+    const startedAgo = (_a = opts == null ? void 0 : opts.startedAgoMs) != null ? _a : 12 * 6e4;
+    clearCounts();
+    blameByTarget.clear();
+    lastSeen.clear();
+    sessionStartedAt = now - startedAgo;
+    const obs = getObserving();
+    const obsId = getObservingId();
+    if (obsId) {
+      trackingId = obsId;
+      trackingName = (obs == null ? void 0 : obs.name) || obsId;
+      watchedPartyKey2 = (obs == null ? void 0 : obs.party) || soloKey2(obsId, obs == null ? void 0 : obs.name);
+      watchedPartyIds2 = /* @__PURE__ */ new Set([obsId]);
+    }
+    const partyKey = watchedPartyKey2 || (obsId ? soloKey2(obsId) : "solo:preview");
+    const liveMtypes = [];
+    const seenLive = /* @__PURE__ */ new Set();
+    const ents = Object.values(getEntitiesRecord());
+    for (let i = 0; i < ents.length; i++) {
+      const ent = ents[i];
+      if (!ent || ent.player || !ent.mtype) continue;
+      const mt = String(ent.mtype);
+      if (seenLive.has(mt)) continue;
+      seenLive.add(mt);
+      liveMtypes.push(mt);
+      if (liveMtypes.length >= 6) break;
+    }
+    const fallbackRows = [
+      { mtype: "a1", count: 148, avgIntervalSec: 4.2 },
+      { mtype: "bat", count: 61, avgIntervalSec: 9.5 },
+      { mtype: "skeletor", count: 22, avgIntervalSec: 28 },
+      { mtype: "fvampire", count: 7, avgIntervalSec: 95 },
+      { mtype: "boar", count: 3, avgIntervalSec: 180 }
+    ];
+    const demoCounts = [148, 61, 22, 14, 7, 3];
+    const demoAvg = [4.2, 9.5, 18, 28, 55, 95];
+    const rows = (opts == null ? void 0 : opts.rows) || (liveMtypes.length ? liveMtypes.map((mtype, i) => ({
+      mtype,
+      count: demoCounts[i] || 5,
+      avgIntervalSec: demoAvg[i] || 40
+    })) : fallbackRows);
+    let total = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const row3 = rows[i];
+      mtypeCounts[row3.mtype] = row3.count;
+      total += row3.count;
+      const span = row3.count > 1 && row3.avgIntervalSec != null ? row3.avgIntervalSec * (row3.count - 1) * 1e3 : Math.max(startedAgo * 0.6, 3e4);
+      mtypeTiming[row3.mtype] = {
+        firstAt: sessionStartedAt + i * 2e3,
+        lastAt: sessionStartedAt + span
+      };
+    }
+    totalKills = total;
+    partyKillCounts[partyKey] = total;
+    partyTiming[partyKey] = {
+      firstAt: sessionStartedAt,
+      lastAt: now - 4e3
+    };
+    const nearby = (opts == null ? void 0 : opts.nearby) || rows.slice(0, Math.min(5, rows.length)).map((r) => r.mtype);
+    for (let i = 0; i < nearby.length; i++) {
+      const mtype = nearby[i];
+      lastSeen.set(`ecu-farm-near-${mtype}`, {
+        mtype,
+        nearAt: now - i * 400,
+        nearPartyKey: partyKey
+      });
+    }
+  }
+  function getNearbyMtypes(max = 12) {
+    const now = Date.now();
+    const scored = [];
+    const seen = /* @__PURE__ */ new Set();
+    const entries = Array.from(lastSeen.entries());
+    for (let i = 0; i < entries.length; i++) {
+      const row3 = entries[i][1];
+      if (!row3.mtype || row3.nearAt == null) continue;
+      if (now - row3.nearAt > ATTRIBUTION_MS) continue;
+      if (seen.has(row3.mtype)) continue;
+      seen.add(row3.mtype);
+      scored.push({ mtype: row3.mtype, nearAt: row3.nearAt });
+    }
+    scored.sort((a, b) => b.nearAt - a.nearAt);
+    const out = [];
+    const n = Math.min(max, scored.length);
+    for (let i = 0; i < n; i++) out.push(scored[i].mtype);
+    return out;
+  }
   function getStats() {
     var _a;
     const now = Date.now();
@@ -14664,6 +14834,301 @@ ${fightHoverTip(src)}`
       active,
       scope
     };
+  }
+
+  // src/kpi/farmSession.ts
+  var GOLD_SERIES_MAX = 24;
+  var GOLD_SAMPLE_MS = 5e3;
+  var goldGained = 0;
+  var lastGoldSample = null;
+  var lastGoldAt = 0;
+  var goldSeries = [];
+  var lootByName = {};
+  var lootByMtype = {};
+  var lootStartedAt = 0;
+  var unsubLoot = null;
+  var combatAt = 0;
+  var idleMs = 0;
+  var lastTickAt = 0;
+  var lastKillTotal = 0;
+  function clearFarm() {
+    goldGained = 0;
+    lastGoldSample = null;
+    lastGoldAt = 0;
+    goldSeries = [];
+    lootByName = {};
+    lootByMtype = {};
+    lootStartedAt = 0;
+    idleMs = 0;
+    lastTickAt = 0;
+    combatAt = 0;
+    lastKillTotal = 0;
+  }
+  function bumpLootBucket(bag, name, q, level, at) {
+    const prev = bag[name];
+    if (!prev) {
+      bag[name] = { q, level, firstAt: at, lastAt: at };
+      return;
+    }
+    prev.q += q;
+    prev.lastAt = at;
+    if (level != null) prev.level = level;
+  }
+  function sampleGold(now) {
+    const obs = getObserving();
+    if (!obs || typeof obs.gold !== "number") return;
+    const g = obs.gold;
+    if (lastGoldSample == null) {
+      lastGoldSample = g;
+      lastGoldAt = now;
+      return;
+    }
+    if (now - lastGoldAt < GOLD_SAMPLE_MS) return;
+    const delta = g - lastGoldSample;
+    lastGoldSample = g;
+    const elapsedMin = Math.max(now - lastGoldAt, GOLD_SAMPLE_MS) / 6e4;
+    lastGoldAt = now;
+    if (delta > 0) {
+      goldGained += delta;
+      const rate = delta / elapsedMin;
+      goldSeries = goldSeries.concat([rate]);
+      while (goldSeries.length > GOLD_SERIES_MAX) goldSeries.shift();
+    } else if (goldSeries.length) {
+      goldSeries = goldSeries.concat([goldSeries[goldSeries.length - 1] * 0.85]);
+      while (goldSeries.length > GOLD_SERIES_MAX) goldSeries.shift();
+    }
+  }
+  function ingestFarmLoot(ev) {
+    if (!lootStartedAt) lootStartedAt = ev.at;
+    const mtype = ev.fromMtype || getRecentKillMtype();
+    for (let i = 0; i < ev.items.length; i++) {
+      const it = ev.items[i];
+      bumpLootBucket(lootByName, it.name, it.q, it.level, ev.at);
+      if (mtype) {
+        if (!lootByMtype[mtype]) lootByMtype[mtype] = {};
+        bumpLootBucket(lootByMtype[mtype], it.name, it.q, it.level, ev.at);
+      }
+    }
+    if (ev.gold > 0 || ev.items.length) {
+      combatAt = ev.at;
+    }
+  }
+  function topDropFromBag(bag, started2, now) {
+    if (!bag) return void 0;
+    const names = Object.keys(bag);
+    if (!names.length) return void 0;
+    let bestName = names[0];
+    let best = bag[bestName];
+    for (let i = 1; i < names.length; i++) {
+      const name = names[i];
+      const row3 = bag[name];
+      if (row3.q > best.q) {
+        bestName = name;
+        best = row3;
+      }
+    }
+    const span = Math.max(now - (best.firstAt || started2 || now), 1e3) / 1e3;
+    return {
+      name: bestName,
+      q: best.q,
+      level: best.level,
+      perMin: best.q > 0 ? best.q / span * 60 : null
+    };
+  }
+  function updateFarmContext(entities) {
+    const now = Date.now();
+    updateKillContext(entities);
+    sampleGold(now);
+    const kills = getStats().total;
+    if (kills > lastKillTotal) {
+      combatAt = now;
+      lastKillTotal = kills;
+    }
+    if (lastTickAt) {
+      const gap = now - lastTickAt;
+      if (combatAt && now - combatAt > 8e3) {
+        idleMs += gap;
+      }
+    }
+    lastTickAt = now;
+  }
+  function startFarmSession() {
+    const stopKills = startSessionKills();
+    if (!unsubLoot) unsubLoot = onLootSubscribe(ingestFarmLoot);
+    return () => {
+      stopKills();
+      if (unsubLoot) {
+        unsubLoot();
+        unsubLoot = null;
+      }
+    };
+  }
+  function resetFarmSession() {
+    resetKillSession();
+    clearFarm();
+  }
+  function getFarmStats() {
+    const kills = getStats();
+    const now = Date.now();
+    const started2 = kills.sessionStartedAt || lootStartedAt;
+    let goldPerMinute = null;
+    let goldPerHour = null;
+    if (started2 && goldGained > 0) {
+      const elapsedSec = Math.max(now - started2, 1e3) / 1e3;
+      goldPerMinute = goldGained / elapsedSec * 60;
+      goldPerHour = goldPerMinute * 60;
+    } else if (goldSeries.length) {
+      goldPerMinute = goldSeries[goldSeries.length - 1];
+      goldPerHour = goldPerMinute * 60;
+    }
+    const loot = [];
+    const names = Object.keys(lootByName);
+    let lootTotal = 0;
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      const row3 = lootByName[name];
+      lootTotal += row3.q;
+      const span = Math.max(now - (row3.firstAt || started2 || now), 1e3) / 1e3;
+      loot.push({
+        name,
+        q: row3.q,
+        level: row3.level,
+        perMin: row3.q > 0 ? row3.q / span * 60 : null,
+        firstAt: row3.firstAt,
+        lastAt: row3.lastAt
+      });
+    }
+    loot.sort((a, b) => b.q - a.q);
+    let lootPerMinute = null;
+    if (started2 && lootTotal > 0) {
+      const elapsedSec = Math.max(now - started2, 1e3) / 1e3;
+      lootPerMinute = lootTotal / elapsedSec * 60;
+    }
+    const goldPerKill = kills.total > 0 && goldGained > 0 ? goldGained / kills.total : null;
+    let downtimePct = null;
+    if (started2 && lastTickAt) {
+      const span = Math.max(lastTickAt - started2, 1);
+      downtimePct = Math.max(0, Math.min(100, Math.round(idleMs / span * 100)));
+    }
+    const nearby = getNearbyMtypes(12);
+    const byMap = {};
+    for (let i = 0; i < kills.byMtype.length; i++) {
+      byMap[kills.byMtype[i].mtype] = kills.byMtype[i];
+    }
+    const nearbyOrdered = [];
+    const pushed = /* @__PURE__ */ new Set();
+    for (let i = 0; i < nearby.length; i++) {
+      const mt = nearby[i];
+      if (!byMap[mt] || pushed.has(mt)) continue;
+      nearbyOrdered.push(mt);
+      pushed.add(mt);
+    }
+    for (let i = 0; i < nearby.length; i++) {
+      const mt = nearby[i];
+      if (pushed.has(mt)) continue;
+      nearbyOrdered.push(mt);
+      pushed.add(mt);
+    }
+    if (!nearbyOrdered.length) {
+      for (let i = 0; i < Math.min(4, kills.byMtype.length); i++) {
+        nearbyOrdered.push(kills.byMtype[i].mtype);
+      }
+    }
+    const topDropByMtype = {};
+    const mtypes = Object.keys(lootByMtype);
+    for (let i = 0; i < mtypes.length; i++) {
+      const mt = mtypes[i];
+      const top = topDropFromBag(lootByMtype[mt], started2, now);
+      if (top) topDropByMtype[mt] = top;
+    }
+    return {
+      ...kills,
+      goldGained,
+      goldPerMinute,
+      goldPerHour,
+      goldPerKill,
+      goldSeries: goldSeries.slice(),
+      loot,
+      lootPerMinute,
+      nearbyMtypes: nearbyOrdered,
+      downtimePct,
+      topDropByMtype
+    };
+  }
+  function farmMtypeRow(stats, mtype) {
+    for (let i = 0; i < stats.byMtype.length; i++) {
+      if (stats.byMtype[i].mtype === mtype) return stats.byMtype[i];
+    }
+    return void 0;
+  }
+  function farmTopDrop(stats, mtype) {
+    return stats.topDropByMtype[mtype];
+  }
+  function seedFarmPreviewDemo() {
+    var _a;
+    const w = window;
+    if (!w.__ecuOverlayPreview) return;
+    clearFarm();
+    seedSessionKillsForPreview();
+    const now = Date.now();
+    lootStartedAt = now - 11 * 6e4;
+    goldGained = 32840;
+    lastGoldSample = typeof ((_a = w.observing) == null ? void 0 : _a.gold) === "number" ? w.observing.gold : 1e5;
+    lastGoldAt = now;
+    goldSeries = [
+      1200,
+      1450,
+      1380,
+      1620,
+      1710,
+      1550,
+      1680,
+      1820,
+      1740,
+      1900,
+      1860,
+      2010
+    ];
+    combatAt = now - 3e3;
+    lastTickAt = now;
+    const kills = getStats();
+    lastKillTotal = kills.total;
+    idleMs = 95e3;
+    const dropPairs = [
+      { name: "seashell", q: 41 },
+      { name: "hpot0", q: 28 },
+      { name: "mpot0", q: 19 },
+      { name: "gem0", q: 3 },
+      { name: "shadowstone", q: 2 },
+      { name: "intearring", q: 1 }
+    ];
+    for (let i = 0; i < kills.byMtype.length && i < dropPairs.length; i++) {
+      const mt = kills.byMtype[i].mtype;
+      noteRecentKillMtypeForPreview(mt, now - 3e4 - i * 1e3);
+      ingestFarmLoot({
+        gold: 0,
+        party: true,
+        at: now - 9e4 + i * 1e3,
+        fromMtype: mt,
+        items: [dropPairs[i]]
+      });
+    }
+    if (kills.byMtype.length < dropPairs.length) {
+      ingestFarmLoot({
+        gold: 0,
+        party: true,
+        at: now - 8e4,
+        items: dropPairs.slice(kills.byMtype.length)
+      });
+    }
+  }
+  function installFarmPreviewSeedHook() {
+    const w = window;
+    if (!w.__ecuOverlayPreview) return;
+    w.__ecuSeedFarmPreview = () => {
+      seedFarmPreviewDemo();
+    };
+    seedFarmPreviewDemo();
   }
 
   // src/host/commander.ts
@@ -21746,6 +22211,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       className,
       title,
       stockChrome = true,
+      bare = false,
       forceShowQ,
       qtyColor,
       bankQ,
@@ -21807,7 +22273,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
         p,
         size,
         title: tip,
-        nativeTitle: false
+        nativeTitle: false,
+        bare
       }) : itemIconHtml(name, {
         skin: effectiveSkin,
         size,
@@ -21839,7 +22306,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       return () => {
         if (el) el.innerHTML = "";
       };
-    }, [name, effectiveSkin, levelNum, q, p, size, tip, stockChrome, cooltip]);
+    }, [name, effectiveSkin, levelNum, q, p, size, tip, stockChrome, bare, cooltip]);
     React.useEffect(() => {
       if (!cooltip) return;
       const key = tipKeyRef.current;
@@ -21847,6 +22314,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
         dismissItemCooltip(key);
       };
     }, [cooltip]);
+    const box = bare || !stockChrome ? size : size + 6;
     return e(
       "span",
       {
@@ -21854,8 +22322,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
         style: {
           position: "relative",
           display: "inline-flex",
-          width: size + 6,
-          height: size + 6,
+          width: box,
+          height: box,
           flex: "0 0 auto",
           alignItems: "center",
           justifyContent: "center",
@@ -21873,8 +22341,8 @@ html.ecu-phone-dock-on #${HOST_ID4} {
         className: "ecu-item-instance-art",
         style: {
           display: "inline-flex",
-          width: size + 6,
-          height: size + 6,
+          width: box,
+          height: box,
           alignItems: "center",
           justifyContent: "center",
           overflow: "visible",
@@ -32743,7 +33211,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.19.0" : "unknown";
-    const builtAt = true ? "2026-11-06T23:42:58.972Z" : "unknown";
+    const builtAt = true ? "2026-11-08T09:51:24.795Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -35784,8 +36252,8 @@ button.comm-mail__stack-u {
       },
       {
         section: "Overlay",
-        title: "Kill counter",
-        body: "Session kill KPI in a compact strip. Change scope in the panel header.",
+        title: "Farm",
+        body: "Nearby kill pace chips plus session gold. Open Details for kills, gold, and chest loot.",
         target: ".comm-pos-panel.comm-pos-kills",
         targetKind: "panel",
         enter: { closeBag: true, closeCommand: true, closePhoneChrome: true }
@@ -54323,7 +54791,7 @@ ${parts.map(cssSlice).join("\n")}
       isCurrentSeg,
       titleSeg,
       durSec,
-      partyLabel: partyLabel2,
+      partyLabel,
       instance,
       tip,
       optionsOpen,
@@ -54353,7 +54821,7 @@ ${parts.map(cssSlice).join("\n")}
         resolved ? e(
           "span",
           { className: "ecu-meter-inspector-sub" },
-          `${isCurrentSeg ? "Current" : titleSeg} \xB7 ${durSec.toFixed(0)}s \xB7 ${partyLabel2}`
+          `${isCurrentSeg ? "Current" : titleSeg} \xB7 ${durSec.toFixed(0)}s \xB7 ${partyLabel}`
         ) : null
       );
     } else {
@@ -55009,7 +55477,7 @@ ${parts.map(cssSlice).join("\n")}
     });
     const followLive = partyChrome.followCamera;
     const barsLive = segmentWantsLiveTick(selectedset, getLiveSegment());
-    const { hasObserver, appliedFocus, partyLabel: partyLabel2, partyMenuOpts } = partyChrome;
+    const { hasObserver, appliedFocus, partyLabel, partyMenuOpts } = partyChrome;
     const pres = presentationFor(instance);
     const isToolPanel = pres === "details" || isReportPresentation(pres);
     const idle = followLive && !isToolPanel && instance.fadeWhenIdle !== false && !inCombat2;
@@ -55154,7 +55622,7 @@ ${parts.map(cssSlice).join("\n")}
       partyMenuOpts,
       partyFocus: appliedFocus,
       hasObserver,
-      partyLabel: partyLabel2,
+      partyLabel,
       watchedName: partyChrome.watchedLabel,
       selectedset,
       resolved,
@@ -55249,7 +55717,7 @@ ${parts.map(cssSlice).join("\n")}
         isCurrentSeg,
         titleSeg,
         durSec,
-        partyLabel: partyLabel2,
+        partyLabel,
         instance,
         tip,
         optionsOpen,
@@ -64659,10 +65127,17 @@ html.ecu-phone-dock-on body {
   }
 
   // src/ui/frames/settings/commHudSettingsPane.ts
+  var FARM_GLANCE_GROWS = [
+    "right",
+    "down",
+    "left",
+    "up"
+  ];
   function buildCommHudSubsections() {
     const out = [
       { id: settingsSectionId("HUD density"), label: "HUD density" },
-      { id: settingsSectionId("Meters"), label: "Meters" }
+      { id: settingsSectionId("Meters"), label: "Meters" },
+      { id: settingsSectionId("Farm glance"), label: "Farm glance" }
     ];
     const sections = overlayToggleSectionsForPane("commHud");
     for (let i = 0; i < sections.length; i++) {
@@ -64707,6 +65182,12 @@ html.ecu-phone-dock-on body {
   function metersMatches(query) {
     return matchesQuery2("meters hide dps hps combat skada", query);
   }
+  function farmGlanceMatches(query) {
+    return matchesQuery2(
+      "farm glance chips kills gold loot grow columns rows grid nearby",
+      query
+    );
+  }
   function phoneCameraControlsMatch(query) {
     if (!isPhoneViewport()) return false;
     const q = query.trim().toLowerCase();
@@ -64720,6 +65201,7 @@ html.ecu-phone-dock-on body {
     if (phoneCameraControlsMatch(query)) total += 1;
     if (hudDensityMatches(query)) total += 1;
     if (metersMatches(query)) total += 1;
+    if (farmGlanceMatches(query)) total += 1;
     for (let s = 0; s < sections.length; s++) {
       const defs = sections[s].defs;
       for (let i = 0; i < defs.length; i++) {
@@ -64834,6 +65316,97 @@ html.ecu-phone-dock-on body {
           {
             help: "Hides DPS/HPS frames. Damage ingest still runs so reports stay correct when you show them again."
           }
+        )
+      );
+    }
+    if (farmGlanceMatches(query)) {
+      rowCount += 1;
+      kids.push(settingsSection("Farm glance"));
+      kids.push(
+        e(
+          "p",
+          { key: "farm-help", className: "ecu-settings-help" },
+          "Chip grid on the Farm panel (Windows \u2192 Farm). Grow sets fill direction; rows 0 means no row cap."
+        )
+      );
+      const grow = settings.farmGlanceGrow || "right";
+      const cols = settings.farmGlanceCols || 2;
+      const rows = typeof settings.farmGlanceRows === "number" ? settings.farmGlanceRows : 2;
+      const growOpts = [];
+      for (let i = 0; i < FARM_GLANCE_GROWS.length; i++) {
+        const g = FARM_GLANCE_GROWS[i];
+        growOpts.push(e("option", { key: g, value: g }, g));
+      }
+      kids.push(
+        e(
+          "label",
+          {
+            key: "farm-grow",
+            className: "ecu-settings-row",
+            style: { display: "flex", gap: "10px", alignItems: "center" }
+          },
+          e("span", { className: "ecu-settings-row-label" }, "Grow"),
+          e(
+            "select",
+            {
+              value: grow,
+              onChange: (ev) => {
+                patchSettings({
+                  farmGlanceGrow: ev.target.value
+                });
+                setTick((n) => n + 1);
+              }
+            },
+            ...growOpts
+          )
+        ),
+        e(
+          "label",
+          {
+            key: "farm-cols",
+            className: "ecu-settings-row",
+            style: { display: "flex", gap: "10px", alignItems: "center" }
+          },
+          e("span", { className: "ecu-settings-row-label" }, "Columns"),
+          e("input", {
+            type: "number",
+            min: 1,
+            max: 4,
+            value: cols,
+            style: { width: "4em" },
+            onChange: (ev) => {
+              const n = Number(ev.target.value);
+              if (!Number.isFinite(n)) return;
+              patchSettings({
+                farmGlanceCols: Math.max(1, Math.min(4, Math.floor(n)))
+              });
+              setTick((n2) => n2 + 1);
+            }
+          })
+        ),
+        e(
+          "label",
+          {
+            key: "farm-rows",
+            className: "ecu-settings-row",
+            style: { display: "flex", gap: "10px", alignItems: "center" }
+          },
+          e("span", { className: "ecu-settings-row-label" }, "Rows"),
+          e("input", {
+            type: "number",
+            min: 0,
+            max: 8,
+            value: rows,
+            style: { width: "4em" },
+            onChange: (ev) => {
+              const n = Number(ev.target.value);
+              if (!Number.isFinite(n)) return;
+              patchSettings({
+                farmGlanceRows: Math.max(0, Math.min(8, Math.floor(n)))
+              });
+              setTick((n2) => n2 + 1);
+            }
+          })
         )
       );
     }
@@ -74898,17 +75471,436 @@ ${ESTIMATE_HINT}`,
     );
   }
 
-  // src/ui/frames/KillKpiPanel.ts
-  var MOB_ICON_SIZE2 = 20;
-  var LIST_ROW_HEIGHT = 30;
-  var UNIT_COLOR = "#c8c8c8";
-  var META_COLOR = "#b0b0b0";
-  function partyLabel(key) {
-    return key.indexOf("solo:") === 0 ? key.slice(5) : key;
+  // src/ui/frames/farmPanelCss.ts
+  var STYLE_ID11 = "ecu-farm-panel-css";
+  var FARM_PANEL_CSS = `
+.ecu-farm {
+  display: flex;
+  flex-direction: column;
+  color: #eee;
+  font-weight: normal;
+  text-shadow: none;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+/* Glance = floating HUD chips (mockup shape): no outer window fill. */
+.ecu-farm--glance {
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  align-items: flex-start;
+}
+.ecu-farm.is-details {
+  gap: 4px;
+  margin: 2px;
+  padding: 5px;
+  min-width: 0;
+  width: max-content;
+  /* Choice B (3/3): short BL dock \u2014 narrower than full sheet. */
+  max-width: min(240px, 92vw);
+  height: max-content;
+  border: 2px solid #555;
+  background: rgba(0, 0, 0, 0.94);
+}
+.ecu-farm__title {
+  font-size: 15px;
+  color: #eee;
+  cursor: grab;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ecu-farm__title-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ecu-farm__btn {
+  border: 1px solid #555;
+  background: #1a1a1a;
+  color: #ccc;
+  padding: 2px 7px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: normal;
+  text-shadow: none;
+}
+.ecu-farm__btn:hover { color: #eee; border-color: #777; }
+.ecu-farm__btn.is-on {
+  border-color: #e8c96a;
+  color: #e8c96a;
+}
+.ecu-farm__glance-head {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+.ecu-farm--glance .ecu-farm__gold-band {
+  margin-bottom: 3px;
+}
+.ecu-farm__gold-band {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.82);
+}
+.ecu-farm__open {
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #c8c8c8;
+  padding: 3px 7px;
+  font-size: 11px;
+  cursor: pointer;
+  font-weight: normal;
+  text-shadow: 0 1px 2px #000;
+  flex-shrink: 0;
+}
+.ecu-farm__open:hover {
+  color: #e8c96a;
+  background: rgba(255, 255, 255, 0.06);
+}
+.ecu-farm__gold {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: none;
+  background: transparent;
+  cursor: grab;
+  align-self: flex-start;
+  color: inherit;
+  font-weight: normal;
+  text-shadow: none;
+}
+.ecu-farm__gold:hover { background: rgba(255, 255, 255, 0.04); }
+.ecu-farm__gold-v {
+  font-size: 15px;
+  color: #e8c96a;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-farm__gold-v .u {
+  font-size: 12px;
+  color: #c8c8c8;
+}
+.ecu-farm__spark {
+  width: 48px;
+  height: 14px;
+  display: block;
+}
+.ecu-farm__chips {
+  display: grid;
+  gap: 3px 4px;
+}
+.ecu-farm__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 5px 4px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.82);
+  cursor: pointer;
+  color: #eee;
+  font-weight: normal;
+  text-shadow: none;
+  width: max-content;
+  max-width: 100%;
+  min-height: 30px;
+  overflow: visible;
+}
+.ecu-farm__chip:hover { border-color: rgba(255, 255, 255, 0.4); }
+/* Portrait + drop share one 24\xD724 well; feet/crop clipped to the floor. */
+.ecu-farm__portrait {
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border: 1px solid #444;
+  background: #141210;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  align-self: center;
+}
+.ecu-farm__portrait .ecu-icon-html {
+  display: block !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+.ecu-farm__portrait .ecu-icon-html > div {
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+.ecu-farm__portrait .ecu-icon-html > div > div {
+  bottom: 0 !important;
+  top: auto !important;
+}
+.ecu-farm__rate {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 0;
+  font-size: 13px;
+  color: #eee;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.4ch;
+  height: 24px;
+  line-height: 24px;
+  text-shadow: 0 1px 2px #000;
+}
+.ecu-farm__rate .u {
+  color: #b8b8b8;
+  font-size: 10px;
+  line-height: 24px;
+}
+/* Same outer well as portrait; qty badge tucked so it doesn't own the chip. */
+.ecu-farm__chip-drop.ecu-item-instance-host {
+  flex-shrink: 0;
+  align-self: center;
+  margin-left: 0;
+  width: 24px !important;
+  height: 24px !important;
+  border: 1px solid #444;
+  background: #141210;
+  box-sizing: border-box;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+.ecu-farm__chip-drop .ecu-item-instance-art {
+  width: 20px !important;
+  height: 20px !important;
+}
+.ecu-farm__chip-drop .ecu-item-badge--qty {
+  font-size: 9px !important;
+  line-height: 11px !important;
+  height: 11px;
+  min-width: 11px;
+  padding: 0 2px;
+  right: -2px;
+  bottom: -2px;
+}
+.ecu-farm__more {
+  margin-top: 2px;
+  padding: 0 2px;
+  font-size: 10px;
+  color: rgba(180, 180, 180, 0.65);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  align-self: flex-start;
+  font-weight: normal;
+  text-shadow: none;
+}
+.ecu-farm__more:hover { color: #e8c96a; }
+.ecu-farm__empty {
+  padding: 2px 5px;
+  font-size: 11px;
+  color: #9a9a9a;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.82);
+  cursor: pointer;
+  align-self: flex-start;
+  font-weight: normal;
+  text-shadow: none;
+}
+.ecu-farm--glance .ecu-farm__empty {
+  cursor: grab;
+}
+.ecu-farm__tabs,
+.ecu-farm__seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.ecu-farm__tab {
+  padding: 3px 7px;
+  border: 1px solid #444;
+  background: #181614;
+  color: #ccc;
+  font-size: 11px;
+  cursor: pointer;
+  font-weight: normal;
+  text-shadow: none;
+}
+.ecu-farm__tab.is-on {
+  border-color: #e8c96a;
+  color: #e8c96a;
+  background: #221c12;
+}
+.ecu-farm__body {
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Choice B (3/3): short scroll dock \u2014 fight stays clear on desktop. */
+  max-height: min(160px, 28vh);
+  overflow-y: auto;
+}
+.ecu-farm__kpi-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0;
+  border: 1px solid #333;
+  background: #121212;
+}
+.ecu-farm__kpi {
+  border: none;
+  border-right: 1px solid #2a2a2a;
+  border-bottom: 1px solid #2a2a2a;
+  background: transparent;
+  padding: 6px 7px;
+}
+.ecu-farm__kpi:nth-child(2n) { border-right: none; }
+.ecu-farm__kpi:nth-last-child(-n+2) { border-bottom: none; }
+.ecu-farm__kpi-v {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: #eee;
+}
+.ecu-farm__kpi--gold {
+  background: rgba(232, 201, 106, 0.06);
+}
+.ecu-farm__kpi-v--gold {
+  color: #e8c96a;
+  font-size: 15px;
+}
+.ecu-farm__kpi-v--mute {
+  color: #b0b0b0;
+  font-size: 13px;
+}
+.ecu-farm__kpi-l {
+  font-size: 10px;
+  color: #9a9a9a;
+}
+.ecu-farm__signal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  font-size: 10px;
+  color: #b0b0b0;
+  border: 1px solid #2a2a2a;
+  background: #101010;
+}
+.ecu-farm__signal > div {
+  border: none;
+  border-right: 1px solid #2a2a2a;
+  background: transparent;
+  padding: 3px 6px;
+}
+.ecu-farm__signal > div:last-child { border-right: none; }
+.ecu-farm__signal b { color: #e8c96a; font-weight: normal; }
+.ecu-farm__ok { color: #7dce8a !important; }
+.ecu-farm__warn { color: #e8c96a !important; }
+.ecu-farm__charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.ecu-farm__chart {
+  border: 1px solid #333;
+  background: #101010;
+  padding: 5px;
+}
+.ecu-farm__chart h3 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #b0b0b0;
+  font-weight: normal;
+}
+.ecu-farm__line {
+  width: 100%;
+  height: 48px;
+  display: block;
+}
+.ecu-farm__chart--gold {
+  padding: 4px 5px 5px;
+}
+.ecu-farm__chart--gold .ecu-farm__line {
+  height: 40px;
+}
+.ecu-farm__table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.ecu-farm__table th {
+  text-align: left;
+  font-size: 10px;
+  color: #c4c4c4;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 4px 2px 2px;
+  border-bottom: 1px solid #333;
+}
+.ecu-farm__table .ecu-farm__avg {
+  color: #8a8a8a;
+}
+.ecu-farm__table td {
+  padding: 1px 4px 1px 2px;
+  vertical-align: middle;
+  border-bottom: 1px solid #1c1c1c;
+}
+.ecu-farm__table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  width: 1%;
+  padding-left: 10px;
+}
+.ecu-farm__loot-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 11.5em;
+}
+.ecu-farm__loot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.ecu-farm__loot-meta > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-farm__sub {
+  font-size: 10px;
+  color: #9a9a9a;
+}
+.ecu-farm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+`;
+  function ensureFarmPanelCss() {
+    if (typeof document === "undefined") return;
+    let el = document.getElementById(STYLE_ID11);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = STYLE_ID11;
+      document.head.appendChild(el);
+    }
+    if (el.textContent !== FARM_PANEL_CSS) el.textContent = FARM_PANEL_CSS;
   }
-  function killWord(n) {
-    return n === 1 ? "kill" : "kills";
-  }
+
+  // src/ui/frames/FarmPanel.ts
   function fmtCompact(n) {
     if (n >= 1e3) {
       const k = n / 1e3;
@@ -74918,467 +75910,542 @@ ${ESTIMATE_HINT}`,
     return String(Math.round(n));
   }
   function fmtRate3(n) {
-    if (n >= 1e3) return fmtCompact(n);
     if (n >= 100) return String(Math.round(n));
     return n.toFixed(1).replace(/\.0$/, "");
   }
-  function metricCell(opts) {
+  function fmtLootRate(n) {
+    if (n >= 10) return n.toFixed(1);
+    return n.toFixed(2);
+  }
+  function linePoints(series, w, h, pad3) {
+    if (!series.length) return "";
+    const max = Math.max.apply(null, series.concat([1]));
+    const pts = [];
+    for (let i = 0; i < series.length; i++) {
+      const x = pad3 + i / Math.max(series.length - 1, 1) * (w - pad3 * 2);
+      const y = h - pad3 - series[i] / max * (h - pad3 * 2);
+      pts.push(`${x},${y}`);
+    }
+    return pts.join(" ");
+  }
+  function sparkSvg(series) {
+    const pts = linePoints(series.length ? series : [0], 48, 14, 1);
     return e(
-      "span",
+      "svg",
       {
-        key: opts.key,
-        title: opts.title,
-        style: {
-          position: "relative",
-          flexShrink: 0,
-          display: "inline-flex",
-          alignItems: "baseline",
-          gap: "2px",
-          minWidth: opts.minWidth || "4.5ch",
-          justifyContent: "flex-end",
-          fontVariantNumeric: "tabular-nums",
-          ...PIXEL_TEXT
-        }
+        className: "ecu-farm__spark",
+        viewBox: "0 0 48 14",
+        preserveAspectRatio: "none",
+        "aria-hidden": true
       },
-      e(
-        "span",
-        {
-          style: {
-            fontSize: TYPE.count,
-            color: "#eee",
-            ...PIXEL_TEXT
-          }
-        },
-        opts.value
-      ),
-      opts.unit ? e(
-        "span",
-        {
-          style: {
-            fontSize: TYPE.secondaryMin,
-            color: UNIT_COLOR,
-            ...PIXEL_TEXT
-          }
-        },
-        opts.unit
-      ) : null
+      e("polyline", {
+        fill: "none",
+        stroke: "#e8c96a",
+        strokeWidth: "1.4",
+        points: pts
+      })
     );
   }
-  function KillKpiPanel() {
-    const React = getReact();
-    const [storedScope, setStoredScope] = React.useState(
-      () => loadSettings().killScope
+  function chartSvg(series, stroke3) {
+    const pts = linePoints(series.length ? series : [0], 160, 56, 4);
+    return e(
+      "svg",
+      {
+        className: "ecu-farm__line",
+        viewBox: "0 0 160 56",
+        preserveAspectRatio: "none",
+        "aria-hidden": true
+      },
+      e("polyline", {
+        fill: "none",
+        stroke: stroke3,
+        strokeWidth: "2",
+        points: pts
+      })
     );
-    const stats = getStats();
-    const hasObserver = getObservingId() != null && getObservingId() !== "";
-    const scope = effectiveKillScope(storedScope, hasObserver);
-    const setKillScope = (next) => {
-      saveSettings({ killScope: next });
-      setStoredScope(next);
+  }
+  function chipCap(cols, rows) {
+    if (rows <= 0) return 99;
+    return Math.max(1, cols * rows);
+  }
+  function gridStyle(grow, cols, rows) {
+    if (grow === "right" || grow === "left") {
+      return {
+        gridTemplateColumns: `repeat(${cols}, max-content)`,
+        gridAutoFlow: "row",
+        direction: grow === "left" ? "rtl" : "ltr"
+      };
+    }
+    const r = rows > 0 ? rows : 99;
+    return {
+      gridTemplateRows: `repeat(${r}, max-content)`,
+      gridTemplateColumns: `repeat(${cols}, max-content)`,
+      gridAutoFlow: "column",
+      direction: grow === "up" ? "rtl" : "ltr"
     };
-    const selectStyle = {
-      fontSize: TYPE.body,
-      padding: "5px 8px",
-      background: "#141414",
-      color: "#eee",
-      border: "1px solid #555",
-      maxWidth: "200px",
-      flex: "1 1 auto",
-      minWidth: 0,
-      ...PIXEL_TEXT
-    };
-    const resetBtn = e(
+  }
+  function mobCooltipHtml(stats, mtype) {
+    const row3 = farmMtypeRow(stats, mtype);
+    const drop = farmTopDrop(stats, mtype);
+    const sprite = monsterSprite(mtype, { size: 28 });
+    const rate = (row3 == null ? void 0 : row3.killsPerMinute) != null ? `${fmtRate3(row3.killsPerMinute)}/min` : "\u2014";
+    const count = row3 ? `\xD7${row3.count}` : "\xD70";
+    const avg = (row3 == null ? void 0 : row3.avgIntervalSec) != null ? `${Math.max(1, Math.round(row3.avgIntervalSec))}s` : "\u2014";
+    const topDrop = drop != null ? `${drop.name} \xD7${drop.q}` + (drop.perMin != null ? ` \xB7 ${fmtLootRate(drop.perMin)}/min` : "") : "\u2014";
+    return `<h4><span class="ecu-meter-icon-monster">${sprite || ""}</span> ${mtype}</h4><div class="line"><b>Kills</b><span>${rate} \xB7 ${count}</span></div><div class="line"><b>Avg</b><span>${avg}</span></div><div class="line"><b>Top drop</b><span>${topDrop}</span></div><div class="line" style="opacity:.75"><span>Click for Farm details</span></div>`;
+  }
+  function FarmPanel() {
+    const React = getReact();
+    ensureFarmPanelCss();
+    ensureItemInstanceBadgeCss();
+    const [details, setDetails] = React.useState(false);
+    const [tab, setTab] = React.useState("overview");
+    const [, bump] = React.useState(0);
+    const settings = loadSettings();
+    const grow = settings.farmGlanceGrow || "right";
+    const cols = settings.farmGlanceCols || 2;
+    const rows = typeof settings.farmGlanceRows === "number" ? settings.farmGlanceRows : 2;
+    const stats = getFarmStats();
+    const nearby = stats.nearbyMtypes;
+    const cap = chipCap(cols, rows);
+    const shown = nearby.slice(0, cap);
+    const overflow = nearby.length - shown.length;
+    const goldLabel = stats.goldGained > 0 ? fmtCompact(stats.goldGained) : stats.goldPerMinute != null ? fmtCompact(stats.goldPerMinute) : "0";
+    const goldRate = stats.goldPerMinute != null ? fmtCompact(stats.goldPerMinute) : "\u2014";
+    const detailsTitle = e(
+      "div",
+      {
+        className: "ecu-farm__title",
+        "data-comm-drag-handle": "true",
+        style: { ...PIXEL_TEXT, fontSize: TYPE.title }
+      },
+      e("span", null, "Farm"),
+      e(
+        "span",
+        { className: "ecu-farm__title-actions" },
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-farm__btn is-on",
+            style: PIXEL_TEXT,
+            onClick: () => setDetails(false)
+          },
+          "Glance"
+        )
+      )
+    );
+    if (!stats.active && stats.scope === "watched") {
+      return e(
+        "div",
+        { className: "ecu-farm ecu-farm--glance", style: PIXEL_TEXT },
+        e(
+          "div",
+          {
+            className: "ecu-farm__empty",
+            "data-comm-drag-handle": "true",
+            style: PIXEL_TEXT
+          },
+          "Select a character to track."
+        )
+      );
+    }
+    const goldBar = e(
       "button",
       {
         type: "button",
-        onClick: () => resetKillSession(),
-        style: {
-          cursor: "pointer",
-          fontSize: TYPE.body,
-          padding: "5px 10px",
-          border: "1px solid #555",
-          background: "#1a1a1a",
-          color: "#ccc",
-          flexShrink: 0,
-          ...PIXEL_TEXT
-        }
-      },
-      "Reset"
-    );
-    const title = e(
-      "div",
-      {
+        className: "ecu-farm__gold",
+        style: PIXEL_TEXT,
         "data-comm-drag-handle": "true",
-        style: {
-          fontSize: TYPE.title,
-          color: "#eee",
-          cursor: "grab",
-          ...PIXEL_TEXT
-        }
-      },
-      "Kills"
-    );
-    const scopeRow = (showReset) => e(
-      "div",
-      {
-        style: {
-          display: "flex",
-          alignItems: "center",
-          gap: "8px"
+        "aria-label": "Farm gold \u2014 drag to move",
+        onClick: () => {
+          setTab("gold");
+          setDetails(true);
         }
       },
       e(
         "span",
-        {
-          style: {
-            fontSize: TYPE.body,
-            color: "#999",
-            flexShrink: 0,
-            ...PIXEL_TEXT
-          }
-        },
-        "Scope"
+        { className: "ecu-farm__gold-v" },
+        `${goldLabel}g `,
+        e("span", { className: "u" }, `${goldRate}/m`)
       ),
-      e(
-        "select",
-        {
-          value: scope,
-          style: selectStyle,
-          onChange: (ev) => setKillScope(ev.target.value)
-        },
-        hasObserver ? e(
-          "option",
-          { value: "watched" },
-          killScopeLabel("watched", stats.trackingName)
-        ) : null,
-        e("option", { value: "all" }, killScopeLabel("all"))
-      ),
-      showReset ? resetBtn : null
+      sparkSvg(stats.goldSeries)
     );
-    const shell = (children) => e(
+    const chips = e(
       "div",
       {
-        style: {
-          display: "flex",
-          overflow: "auto",
-          flexDirection: "column",
-          margin: "4px",
-          border: "2px solid #555",
-          background: "rgba(0,0,0,0.94)",
-          gap: "10px",
-          padding: "10px",
-          maxHeight: "300px",
-          width: "100%",
-          minWidth: 0,
-          maxWidth: "100%",
-          fontSize: TYPE.name,
-          color: "#eee",
-          ...PIXEL_TEXT
-        }
+        className: "ecu-farm__chips",
+        style: gridStyle(grow, cols, rows)
       },
-      ...children
-    );
-    if (!stats.active && scope === "watched") {
-      return shell([
-        title,
-        scopeRow(false),
-        e(
-          "div",
-          { style: { fontSize: TYPE.body, color: "#999", ...PIXEL_TEXT } },
-          "Select a character to track, or switch to visible parties."
-        )
-      ]);
-    }
-    const elapsedSec = stats.sessionStartedAt ? (Date.now() - stats.sessionStartedAt) / 1e3 : 0;
-    const kpm = stats.killsPerMinute;
-    const kph = stats.killsPerHour;
-    const kpd = stats.killsPerDay;
-    const ratesReady = kph != null;
-    const rateChip = (value, unit) => e(
-      "div",
-      {
-        style: {
-          flex: "1 1 0",
-          minWidth: "64px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "4px",
-          padding: "8px 6px",
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid #444",
-          ...PIXEL_TEXT
-        }
-      },
-      e(
-        "span",
-        {
-          style: {
-            fontSize: TYPE.count,
-            color: "#eee",
-            lineHeight: 1.1,
-            fontVariantNumeric: "tabular-nums",
-            ...PIXEL_TEXT
-          }
-        },
-        value != null ? fmtCompact(value) : "\u2014"
-      ),
-      e(
-        "span",
-        {
-          style: {
-            fontSize: TYPE.body,
-            color: UNIT_COLOR,
-            lineHeight: 1.1,
-            letterSpacing: "0.04em",
-            ...PIXEL_TEXT
-          }
-        },
-        `/${unit}`
-      )
-    );
-    const rateStrip = e(
-      "div",
-      {
-        style: {
-          display: "flex",
-          gap: "6px",
-          width: "100%"
-        }
-      },
-      ...ratesReady ? [rateChip(kpm, "min"), rateChip(kph, "h"), rateChip(kpd, "d")] : [
-        e(
-          "div",
+      ...shown.map((mtype) => {
+        const row3 = farmMtypeRow(stats, mtype);
+        const drop = farmTopDrop(stats, mtype);
+        const rate = row3 == null ? void 0 : row3.killsPerMinute;
+        const tipKey = `farm-mob-${mtype}`;
+        const handlers = cooltipHandlers(
+          tipKey,
+          () => mobCooltipHtml(stats, mtype)
+        );
+        return e(
+          "button",
           {
-            style: {
-              flex: 1,
-              padding: "8px",
-              textAlign: "center",
-              color: "#888",
-              fontSize: TYPE.body,
-              border: "1px solid #333",
-              ...PIXEL_TEXT
-            }
+            key: mtype,
+            type: "button",
+            className: "ecu-farm__chip",
+            style: { ...PIXEL_TEXT, direction: "ltr" },
+            "aria-label": mtype,
+            onClick: () => {
+              setTab("kills");
+              setDetails(true);
+            },
+            onMouseEnter: handlers.onMouseEnter,
+            onMouseMove: handlers.onMouseMove,
+            onMouseLeave: handlers.onMouseLeave
           },
-          "Rates after first kill\u2026"
-        )
-      ]
+          e(
+            "span",
+            { className: "ecu-farm__portrait" },
+            wrapIconHtml(monsterSprite(mtype, { size: 18 }))
+          ),
+          rate != null ? e(
+            "span",
+            { className: "ecu-farm__rate" },
+            fmtRate3(rate),
+            e("span", { className: "u" }, "/m")
+          ) : null,
+          drop ? e(ItemInstance, {
+            name: drop.name,
+            q: drop.q,
+            size: 20,
+            // Stock art without nested item_container border (chip is the tile).
+            bare: true,
+            // Chip already owns the mob cooltip — don't nest item tips.
+            cooltip: false,
+            className: "ecu-farm__chip-drop"
+          }) : null
+        );
+      })
     );
-    const sessionLine = e(
-      "div",
-      {
-        style: {
-          fontSize: TYPE.body,
-          color: "#aaa",
-          ...PIXEL_TEXT
-        }
-      },
-      `Session \xB7 ${stats.sessionStartedAt ? formatTime(elapsedSec) : "\u2014"}`
-    );
-    const hero = e(
-      "div",
-      {
-        style: {
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px"
-        }
-      },
-      e(
-        "div",
-        {
-          style: {
-            fontSize: "22px",
-            lineHeight: "1.15",
-            color: "#f0f0f0",
-            ...PIXEL_TEXT
-          }
-        },
-        `${stats.total} ${killWord(stats.total)}`
-      ),
-      rateStrip,
-      sessionLine
-    );
-    const listSection = (heading, colHint, rows) => e(
-      "div",
-      {
-        style: {
-          borderTop: "1px solid #333",
-          paddingTop: "8px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "2px"
-        }
-      },
-      e(
-        "div",
-        {
-          style: {
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            gap: "8px",
-            marginBottom: "4px"
-          }
-        },
-        e(
-          "div",
-          {
-            style: {
-              fontSize: TYPE.body,
-              color: "#888",
-              ...PIXEL_TEXT
-            }
-          },
-          heading
-        ),
-        colHint ? e(
-          "div",
-          {
-            style: {
-              fontSize: TYPE.secondaryMin,
-              color: META_COLOR,
-              ...PIXEL_TEXT
-            }
-          },
-          colHint
-        ) : null
-      ),
-      ...rows
-    );
-    const listRow = (opts) => {
-      const share = opts.max > 0 ? Math.max(0, Math.min(1, opts.count / opts.max)) : 0;
-      let icon = null;
-      if (opts.mtype) {
-        const html = monsterSprite(opts.mtype, { size: MOB_ICON_SIZE2 });
-        if (html) icon = wrapIconHtml(html);
-      }
-      const rate = opts.killsPerMinute != null ? metricCell({
-        value: fmtRate3(opts.killsPerMinute),
-        unit: "/min",
-        title: "Kills per minute (session)",
-        minWidth: "5.5ch"
-      }) : metricCell({
-        value: "\u2014",
-        unit: "/min",
-        title: "Kills per minute (session)",
-        minWidth: "5.5ch"
-      });
-      const pace = opts.showPace !== false ? opts.avgIntervalSec != null ? metricCell({
-        value: formatTime(opts.avgIntervalSec),
-        unit: "avg",
-        title: "Average interval between kills of this type (pace, not HP TTK)",
-        minWidth: "5ch"
-      }) : metricCell({
-        value: "\u2014",
-        unit: "avg",
-        title: "Average interval between kills (needs 2+ kills)",
-        minWidth: "5ch"
-      }) : null;
+    if (!details) {
       return e(
         "div",
-        {
-          key: opts.key,
-          style: {
-            position: "relative",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            minHeight: `${LIST_ROW_HEIGHT}px`,
-            height: `${LIST_ROW_HEIGHT}px`,
-            padding: "0 6px",
-            boxSizing: "border-box",
-            ...PIXEL_TEXT
-          }
-        },
-        e("div", {
-          style: {
-            position: "absolute",
-            left: 0,
-            top: 2,
-            bottom: 2,
-            width: `${(share * 100).toFixed(1)}%`,
-            background: "rgba(180, 70, 70, 0.22)",
-            pointerEvents: "none"
-          }
-        }),
-        icon,
+        { className: "ecu-farm ecu-farm--glance", style: PIXEL_TEXT },
         e(
-          "span",
+          "div",
+          { className: "ecu-farm__glance-head" },
+          e(
+            "div",
+            { className: "ecu-farm__gold-band" },
+            goldBar,
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-farm__open",
+                style: PIXEL_TEXT,
+                onClick: () => setDetails(true)
+              },
+              "Details"
+            )
+          )
+        ),
+        shown.length ? chips : e(
+          "div",
           {
-            style: {
-              position: "relative",
-              flex: "1 1 auto",
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontSize: TYPE.body,
-              color: "#ddd",
-              ...PIXEL_TEXT
+            className: "ecu-farm__empty",
+            "data-comm-drag-handle": "true",
+            style: PIXEL_TEXT
+          },
+          "No farm nearby"
+        ),
+        overflow > 0 ? e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-farm__more",
+            style: PIXEL_TEXT,
+            onClick: () => {
+              setTab("kills");
+              setDetails(true);
             }
           },
-          opts.label
-        ),
-        rate,
-        pace,
+          `+${overflow}`
+        ) : null
+      );
+    }
+    const kpi = (v, l, tone) => e(
+      "div",
+      {
+        className: "ecu-farm__kpi" + (tone === "gold" ? " ecu-farm__kpi--gold" : "")
+      },
+      e(
+        "div",
+        {
+          className: "ecu-farm__kpi-v" + (tone === "gold" ? " ecu-farm__kpi-v--gold" : tone === "mute" ? " ecu-farm__kpi-v--mute" : ""),
+          style: PIXEL_TEXT
+        },
+        v
+      ),
+      e("div", { className: "ecu-farm__kpi-l", style: PIXEL_TEXT }, l)
+    );
+    const killSeries = stats.byMtype.length ? stats.byMtype[0].killsPerMinute != null ? stats.goldSeries.length ? stats.goldSeries.map((_, i) => {
+      const base = stats.killsPerMinute || 0;
+      return Math.max(0, base * (0.85 + i % 5 * 0.04));
+    }) : [stats.killsPerMinute || 0] : [0] : [0];
+    let body = null;
+    if (tab === "overview") {
+      body = e(
+        React.Fragment,
+        null,
         e(
-          "span",
-          {
-            style: {
-              position: "relative",
-              flexShrink: 0,
-              fontSize: TYPE.count,
-              color: "#eee",
-              fontVariantNumeric: "tabular-nums",
-              minWidth: "2.5ch",
-              textAlign: "right",
-              ...PIXEL_TEXT
-            },
-            title: "Kill count"
-          },
-          String(opts.count)
+          "div",
+          { className: "ecu-farm__kpi-row" },
+          kpi(
+            String(stats.total),
+            stats.killsPerMinute != null ? `kills \xB7 ${fmtRate3(stats.killsPerMinute)}/min` : "kills"
+          ),
+          kpi(
+            `${fmtCompact(stats.goldGained)}g`,
+            stats.goldPerMinute != null ? `gold \xB7 ${fmtCompact(stats.goldPerMinute)}/min` : "gold",
+            "gold"
+          ),
+          kpi(
+            stats.lootPerMinute != null ? fmtLootRate(stats.lootPerMinute) : "\u2014",
+            "loot /min"
+          ),
+          kpi(
+            stats.goldPerKill != null ? stats.goldPerKill.toFixed(1) : "\u2014",
+            "gold / kill"
+          )
+        ),
+        e(
+          "div",
+          { className: "ecu-farm__signal" },
+          e(
+            "div",
+            null,
+            "Downtime ",
+            e(
+              "b",
+              {
+                className: (stats.downtimePct || 0) > 20 ? "ecu-farm__warn" : "ecu-farm__ok"
+              },
+              stats.downtimePct != null ? `${stats.downtimePct}%` : "\u2014"
+            )
+          ),
+          e(
+            "div",
+            null,
+            "Nearby ",
+            e(
+              "b",
+              null,
+              nearby.length ? overflow > 0 ? `${nearby.length}+` : String(nearby.length) : "\u2014"
+            )
+          )
+        ),
+        stats.goldSeries.length || stats.killsPerMinute != null && stats.killsPerMinute > 0 ? e(
+          "div",
+          { className: "ecu-farm__charts" },
+          e(
+            "div",
+            { className: "ecu-farm__chart" },
+            e("h3", null, "Kills / min"),
+            chartSvg(killSeries, "#c8c8c8")
+          ),
+          e(
+            "div",
+            { className: "ecu-farm__chart" },
+            e("h3", null, "Gold / min"),
+            chartSvg(
+              stats.goldSeries.length ? stats.goldSeries : [0],
+              "#e8c96a"
+            )
+          )
+        ) : null
+      );
+    } else if (tab === "kills") {
+      body = e(
+        "table",
+        { className: "ecu-farm__table" },
+        e(
+          "thead",
+          null,
+          e(
+            "tr",
+            null,
+            e("th", null, ""),
+            e("th", null, "Monster"),
+            e("th", { className: "num" }, "/min"),
+            e("th", { className: "num" }, "avg"),
+            e("th", { className: "num" }, "count")
+          )
+        ),
+        e(
+          "tbody",
+          null,
+          ...stats.byMtype.slice(0, 12).map(
+            (row3) => e(
+              "tr",
+              { key: row3.mtype },
+              e("td", null, wrapIconHtml(monsterSprite(row3.mtype, { size: 18 }))),
+              e(
+                "td",
+                null,
+                monsterDisplayName(row3.mtype) || row3.mtype
+              ),
+              e(
+                "td",
+                { className: "num" },
+                row3.killsPerMinute != null ? fmtRate3(row3.killsPerMinute) : "\u2014"
+              ),
+              e(
+                "td",
+                { className: "num ecu-farm__avg" },
+                row3.avgIntervalSec != null ? `${Math.max(1, Math.round(row3.avgIntervalSec))}s` : "\u2014"
+              ),
+              e("td", { className: "num" }, row3.count)
+            )
+          )
         )
       );
-    };
-    const partyMax = scope === "all" && stats.byParty.length ? stats.byParty[0].count : 0;
-    const mtypeMax = stats.byMtype.length ? stats.byMtype[0].count : 0;
-    return shell([
-      title,
-      scopeRow(true),
-      hero,
-      scope === "all" && stats.byParty.length > 1 ? listSection(
-        "Parties",
-        "/min \xB7 count",
-        stats.byParty.slice(0, 8).map(
-          (row3) => listRow({
-            key: row3.party,
-            label: partyLabel(row3.party),
-            count: row3.count,
-            max: partyMax,
-            killsPerMinute: row3.killsPerMinute,
-            showPace: false
-          })
+    } else if (tab === "gold") {
+      body = e(
+        React.Fragment,
+        null,
+        e(
+          "div",
+          { className: "ecu-farm__kpi-row" },
+          kpi(`${fmtCompact(stats.goldGained)}g`, "session", "gold"),
+          kpi(
+            stats.goldPerMinute != null ? fmtCompact(stats.goldPerMinute) : "\u2014",
+            "/min",
+            "gold"
+          ),
+          kpi(
+            stats.goldPerHour != null ? fmtCompact(stats.goldPerHour) : "\u2014",
+            "/h",
+            "mute"
+          ),
+          kpi(
+            stats.goldPerKill != null ? stats.goldPerKill.toFixed(1) : "\u2014",
+            "g/kill"
+          )
+        ),
+        stats.goldSeries.length ? e(
+          "div",
+          { className: "ecu-farm__chart ecu-farm__chart--gold" },
+          e("h3", null, "Gold / min trend"),
+          chartSvg(stats.goldSeries, "#e8c96a")
+        ) : e(
+          "div",
+          { className: "ecu-farm__sub", style: PIXEL_TEXT },
+          "Gold spark fills as the watched purse moves."
         )
+      );
+    } else {
+      body = stats.loot.length === 0 ? e(
+        "div",
+        { className: "ecu-farm__sub", style: PIXEL_TEXT },
+        "No chest loot this session yet."
+      ) : e(
+        "table",
+        { className: "ecu-farm__table" },
+        e(
+          "thead",
+          null,
+          e(
+            "tr",
+            null,
+            e("th", null, "Item"),
+            e("th", { className: "num" }, "/min")
+          )
+        ),
+        e(
+          "tbody",
+          null,
+          ...stats.loot.slice(0, 16).map(
+            (row3) => e(
+              "tr",
+              { key: row3.name },
+              e(
+                "td",
+                null,
+                e(
+                  "div",
+                  { className: "ecu-farm__loot-row" },
+                  e(ItemInstance, {
+                    name: row3.name,
+                    size: 28,
+                    cooltip: true
+                  }),
+                  e(
+                    "span",
+                    { className: "ecu-farm__loot-meta" },
+                    e(
+                      "span",
+                      null,
+                      `${itemDisplayName(row3.name) || row3.name} \xB7 \xD7${row3.q}`
+                    )
+                  )
+                )
+              ),
+              e(
+                "td",
+                { className: "num" },
+                row3.perMin != null ? `${fmtLootRate(row3.perMin)}/m` : "\u2014"
+              )
+            )
+          )
+        )
+      );
+    }
+    const tabs = ["overview", "kills", "gold", "loot"];
+    return e(
+      "div",
+      { className: "ecu-farm is-details", style: PIXEL_TEXT },
+      detailsTitle,
+      e(
+        "div",
+        { className: "ecu-farm__tabs" },
+        ...tabs.map(
+          (t) => e(
+            "button",
+            {
+              key: t,
+              type: "button",
+              className: "ecu-farm__tab" + (tab === t ? " is-on" : ""),
+              style: PIXEL_TEXT,
+              onClick: () => setTab(t)
+            },
+            t[0].toUpperCase() + t.slice(1)
+          )
+        )
+      ),
+      tab === "overview" ? e(
+        "div",
+        { className: "ecu-farm__sub", style: PIXEL_TEXT },
+        "Session \xB7 Reset clears kills + farm gold/loot"
       ) : null,
-      stats.byMtype.length ? listSection(
-        "Monsters",
-        "/min \xB7 avg \xB7 count",
-        stats.byMtype.slice(0, 12).map(
-          (row3) => listRow({
-            key: row3.mtype,
-            label: row3.mtype,
-            count: row3.count,
-            max: mtypeMax,
-            mtype: row3.mtype,
-            killsPerMinute: row3.killsPerMinute,
-            avgIntervalSec: row3.avgIntervalSec,
-            showPace: true
-          })
+      e("div", { className: "ecu-farm__body" }, body),
+      e(
+        "div",
+        { className: "ecu-farm__actions" },
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-farm__btn",
+            style: PIXEL_TEXT,
+            onClick: () => {
+              resetFarmSession();
+              bump((n) => n + 1);
+            }
+          },
+          "Reset"
         )
-      ) : null
-    ]);
+      )
+    );
   }
 
   // src/ui/minimap/mapExtent.ts
@@ -75880,7 +76947,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/minimap/minimapCss.ts
-  var STYLE_ID11 = "ecu-minimap-chrome-css";
+  var STYLE_ID12 = "ecu-minimap-chrome-css";
   var CSS11 = `
 .comm-minimap {
   display: flex;
@@ -76038,10 +77105,10 @@ ${ESTIMATE_HINT}`,
   var injected11 = false;
   function injectMinimapCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID11);
+    let el = document.getElementById(STYLE_ID12);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID11;
+      el.id = STYLE_ID12;
       document.head.appendChild(el);
     }
     if (!injected11 || el.textContent !== CSS11) {
@@ -77557,7 +78624,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/panelExpandControl.ts
-  var STYLE_ID12 = "ecu-panel-expand-css";
+  var STYLE_ID13 = "ecu-panel-expand-css";
   var EXPAND_CSS = `
 .ecu-panel-expand {
   appearance: none;
@@ -77602,9 +78669,9 @@ ${ESTIMATE_HINT}`,
 `;
   function ensurePanelExpandCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID12)) return;
+    if (document.getElementById(STYLE_ID13)) return;
     const el = document.createElement("style");
-    el.id = STYLE_ID12;
+    el.id = STYLE_ID13;
     el.textContent = EXPAND_CSS;
     document.head.appendChild(el);
   }
@@ -79216,7 +80283,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/peerPageDotsCss.ts
-  var STYLE_ID13 = "ecu-peer-page-dots-css";
+  var STYLE_ID14 = "ecu-peer-page-dots-css";
   var CSS12 = `
 .ecu-peer-page-dots {
   flex-shrink: 0;
@@ -79373,10 +80440,10 @@ ${ESTIMATE_HINT}`,
 `;
   function ensurePeerPageDotsCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID13);
+    let el = document.getElementById(STYLE_ID14);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID13;
+      el.id = STYLE_ID14;
       document.head.appendChild(el);
     }
     el.textContent = CSS12;
@@ -88143,7 +89210,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bagPanelCss.ts
-  var STYLE_ID14 = "ecu-bag-panel-css";
+  var STYLE_ID15 = "ecu-bag-panel-css";
   var CSS14 = `
 .comm-bag-panel {
   display: flex;
@@ -88378,12 +89445,12 @@ ${ESTIMATE_HINT}`,
   var injected15 = false;
   function ensureBagPanelCss() {
     if (typeof document === "undefined") return;
-    if (injected15 || document.getElementById(STYLE_ID14)) {
+    if (injected15 || document.getElementById(STYLE_ID15)) {
       injected15 = true;
       return;
     }
     const el = document.createElement("style");
-    el.id = STYLE_ID14;
+    el.id = STYLE_ID15;
     el.textContent = CSS14;
     document.head.appendChild(el);
     injected15 = true;
@@ -90207,7 +91274,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/querySearchFieldCss.ts
-  var STYLE_ID15 = "ecu-query-search-field-css";
+  var STYLE_ID16 = "ecu-query-search-field-css";
   var CSS15 = `
 .ecu-qsearch {
   position: relative;
@@ -90347,9 +91414,9 @@ ${ESTIMATE_HINT}`,
 `;
   function ensureQuerySearchFieldCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID15)) return;
+    if (document.getElementById(STYLE_ID16)) return;
     const el = document.createElement("style");
-    el.id = STYLE_ID15;
+    el.id = STYLE_ID16;
     el.textContent = CSS15;
     document.head.appendChild(el);
   }
@@ -95499,7 +96566,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bankPanelCss.ts
-  var STYLE_ID16 = "ecu-bank-panel-css";
+  var STYLE_ID17 = "ecu-bank-panel-css";
   var CSS16 = `
 .BankPanel {
   --bk-line: #2a2a2a;
@@ -96034,13 +97101,13 @@ ${ESTIMATE_HINT}`,
   function ensureBankPanelCss() {
     if (typeof document === "undefined") return;
     if (bankPanelCssInjected) {
-      if (document.getElementById(STYLE_ID16)) return;
+      if (document.getElementById(STYLE_ID17)) return;
       bankPanelCssInjected = false;
     }
-    let el = document.getElementById(STYLE_ID16);
+    let el = document.getElementById(STYLE_ID17);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID16;
+      el.id = STYLE_ID17;
       document.head.appendChild(el);
     }
     el.textContent = CSS16;
@@ -100546,9 +101613,10 @@ ${ESTIMATE_HINT}`,
           )
         }
       ),
-      panel("kills", e(KillKpiPanel), {
+      panel("kills", e(FarmPanel), {
         style: KILLS_PANEL_STYLE,
-        hiddenBodyStyle: KILLS_PANEL_STYLE
+        hiddenBodyStyle: KILLS_PANEL_STYLE,
+        interactiveBody: true
       }),
       panel(
         "command",
@@ -101051,7 +102119,7 @@ ${ESTIMATE_HINT}`,
       meters.reopenClosedMeter(id);
     };
     React.useEffect(() => {
-      updateKillContext(snap.entities);
+      updateFarmContext(snap.entities);
       updateMeterContext(snap.entities);
     }, [snap.entities]);
     React.useEffect(() => {
@@ -103571,7 +104639,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
       let lastKey = "";
       const stopTick = startTick((s) => {
         updateMeterContext(s.entities);
-        updateKillContext(s.entities);
+        updateFarmContext(s.entities);
         const combat = isMeterInCombat() ? 1 : 0;
         const coarse = snapshotUiCoarseHash(s) * 2 + combat;
         if (coarse === lastCoarse) return;
@@ -103604,7 +104672,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     startSocketHub();
     startInstanceTracker();
     startMeterEngine();
-    startSessionKills();
+    startFarmSession();
     startWorldOverlay();
     installWorldZoom();
     installNameplateSharpness();
@@ -103612,6 +104680,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     installGameFpsCap();
     installGameRenderScale();
     seedPhoneOverlayFixtures();
+    installFarmPreviewSeedHook();
     let domContainer = document.querySelector("#comm-ui");
     if (!domContainer) {
       domContainer = document.createElement("div");

@@ -123,9 +123,17 @@ export type CommandSnippet = {
 /** Per-panel overlay opacity (0.25–1). Unset → 1. */
 export type PanelOpacityMap = Partial<Record<PanelId, number>>;
 
+export type FarmGlanceGrow = "right" | "down" | "left" | "up";
+
 export type CommUiSettings = {
   partyScope: PartyScope;
   killScope: PartyScope;
+  /** Farm glance chip grid grow direction. */
+  farmGlanceGrow: FarmGlanceGrow;
+  /** Farm glance columns (1–4). */
+  farmGlanceCols: number;
+  /** Farm glance rows (0 = unlimited). */
+  farmGlanceRows: number;
   /**
    * Threat meter rows: watched = subject's in-game party; visible = everyone
    * with aggro in vision. `"all"` is treated as visible (no session history).
@@ -322,9 +330,31 @@ const DEFAULT_COMMAND_SNIPPETS: CommandSnippet[] = [
   },
 ];
 
+function normalizeFarmGlanceGrow(raw: unknown): FarmGlanceGrow {
+  if (raw === "down" || raw === "left" || raw === "up" || raw === "right") {
+    return raw;
+  }
+  return "right";
+}
+
+function normalizeFarmGlanceCols(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return 2;
+  return Math.max(1, Math.min(4, Math.floor(n)));
+}
+
+function normalizeFarmGlanceRows(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return 2;
+  return Math.max(0, Math.min(8, Math.floor(n)));
+}
+
 const DEFAULTS: CommUiSettings = {
   partyScope: "watched",
   killScope: "watched",
+  farmGlanceGrow: "right",
+  farmGlanceCols: 2,
+  farmGlanceRows: 2,
   threatScope: "visible",
   combatView: "table",
   combatChannels: ["dps", "base", "blast", "burn", "hps"],
@@ -624,6 +654,9 @@ function migrate(parsed: any): CommUiSettings {
   const next: CommUiSettings = {
     ...DEFAULTS,
     ...parsed,
+    farmGlanceGrow: normalizeFarmGlanceGrow(parsed.farmGlanceGrow),
+    farmGlanceCols: normalizeFarmGlanceCols(parsed.farmGlanceCols),
+    farmGlanceRows: normalizeFarmGlanceRows(parsed.farmGlanceRows),
     combatChannels: normalizeChannels(parsed.combatChannels),
     barChannel: normalizeBarChannel(parsed.barChannel),
     panelLayout,

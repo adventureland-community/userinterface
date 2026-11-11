@@ -49,6 +49,11 @@ export type ItemInstanceProps = {
    * readable qty/level badges. Default true.
    */
   stockChrome?: boolean;
+  /**
+   * When stockChrome: strip item_container margin/space/border so the tile
+   * can sit inside our own chrome (glance chips, shrine pickers).
+   */
+  bare?: boolean;
   /** Show quantity badge even when q is 0 or 1 (recipe cards). */
   forceShowQ?: boolean;
   /** Override qty badge color (e.g. missing reagents). */
@@ -91,6 +96,7 @@ export function ItemInstance(props: ItemInstanceProps): any {
     className,
     title,
     stockChrome = true,
+    bare = false,
     forceShowQ,
     qtyColor,
     bankQ,
@@ -180,6 +186,7 @@ export function ItemInstance(props: ItemInstanceProps): any {
           size,
           title: tip,
           nativeTitle: false,
+          bare,
         })
       : itemIconHtml(name, {
           skin: effectiveSkin,
@@ -216,7 +223,7 @@ export function ItemInstance(props: ItemInstanceProps): any {
     return () => {
       if (el) el.innerHTML = "";
     };
-  }, [name, effectiveSkin, levelNum, q, p, size, tip, stockChrome, cooltip]);
+  }, [name, effectiveSkin, levelNum, q, p, size, tip, stockChrome, bare, cooltip]);
 
   React.useEffect(() => {
     if (!cooltip) return;
@@ -226,6 +233,8 @@ export function ItemInstance(props: ItemInstanceProps): any {
     };
   }, [cooltip]);
 
+  // Stock chrome needs +6 for item_container pad/border; bare/icon crops fit `size`.
+  const box = bare || !stockChrome ? size : size + 6;
   return e(
     "span",
     {
@@ -233,8 +242,8 @@ export function ItemInstance(props: ItemInstanceProps): any {
       style: {
         position: "relative",
         display: "inline-flex",
-        width: size + 6,
-        height: size + 6,
+        width: box,
+        height: box,
         flex: "0 0 auto",
         alignItems: "center",
         justifyContent: "center",
@@ -252,8 +261,8 @@ export function ItemInstance(props: ItemInstanceProps): any {
       className: "ecu-item-instance-art",
       style: {
         display: "inline-flex",
-        width: size + 6,
-        height: size + 6,
+        width: box,
+        height: box,
         alignItems: "center",
         justifyContent: "center",
         overflow: "visible",

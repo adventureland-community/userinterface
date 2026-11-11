@@ -63,6 +63,12 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
     kind: "feature",
   },
   {
+    label: "Farm",
+    detail:
+      "Nearby kill-pace chips, session gold, and chest loot — Details for tables and charts.",
+    kind: "feature",
+  },
+  {
     label: "Damage meters",
     detail: "DPS and HPS windows, Inspector, Time Line, and report views.",
     kind: "feature",
@@ -116,8 +122,14 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: "0.19.0",
     date: "2026-11-07",
     summary:
-      "Experimental farm-machine knobs: cap the stock map draw loop (and optionally lower render scale) without slowing Comm UI.",
+      "Farm replaces the old kill strip with nearby pace chips, session gold, and chest loot — plus optional map FPS / render-scale knobs for farm machines.",
     highlights: [
+      {
+        label: "Farm panel",
+        detail:
+          "Windows → Farm: compact nearby monster chips with kill pace, a gold spark, and Details tabs for kills, gold, and chest loot (ItemInstance tiles). Settings → Comm HUD → Farm glance sets chip grow direction, columns, and rows.",
+        kind: "feature",
+      },
       {
         label: "Experimental FPS cap",
         detail:

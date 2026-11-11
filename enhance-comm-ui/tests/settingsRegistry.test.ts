@@ -76,6 +76,8 @@ describe("settingsRegistry", () => {
 
     const liteCounts = settingsPaneMatchCounts("lite");
     assert.ok(liteCounts.commHud > 0);
+    const farmCounts = settingsPaneMatchCounts("farm glance");
+    assert.ok(farmCounts.commHud > 0);
     const tmCounts = settingsPaneMatchCounts("tampermonkey");
     assert.ok(tmCounts.commUi > 0);
     const overlayCounts = settingsPaneMatchCounts("overlay");

@@ -75,6 +75,10 @@ function clearRecord(rec: Record<string, number> | Record<string, KillTiming>): 
   for (let i = 0; i < keys.length; i++) delete rec[keys[i]];
 }
 
+/** Recent credited kills — Farm loot attribution for glance top-drops. */
+const recentKillMtypes: Array<{ mtype: string; at: number }> = [];
+const RECENT_KILL_MAX = 24;
+
 function clearCounts(): void {
   clearRecord(mtypeCounts);
   clearRecord(partyKillCounts);
@@ -82,6 +86,25 @@ function clearCounts(): void {
   clearRecord(partyTiming);
   totalKills = 0;
   sessionStartedAt = 0;
+  recentKillMtypes.length = 0;
+}
+
+/** Most recent credited kill mtype within `withinMs` (chest loot → mob). */
+export function getRecentKillMtype(withinMs = 45_000): string | undefined {
+  const now = Date.now();
+  for (let i = recentKillMtypes.length - 1; i >= 0; i--) {
+    const row = recentKillMtypes[i];
+    if (now - row.at <= withinMs) return row.mtype;
+  }
+  return undefined;
+}
+
+/** Overlay seed helper — push synthetic recent kills for loot attribution. */
+export function noteRecentKillMtypeForPreview(mtype: string, at = Date.now()): void {
+  const w = window as { __ecuOverlayPreview?: boolean };
+  if (!w.__ecuOverlayPreview || !mtype) return;
+  recentKillMtypes.push({ mtype, at });
+  while (recentKillMtypes.length > RECENT_KILL_MAX) recentKillMtypes.shift();
 }
 
 function noteTiming(rec: Record<string, KillTiming>, key: string, at: number): void {
@@ -109,7 +132,10 @@ function ensureSession(observingId: string, name: string): void {
   if (trackingId !== observingId) {
     trackingId = observingId;
     trackingName = name || observingId;
-    clearCounts();
+    // Overlay Farm council seed must survive late observing swaps.
+    const preview = (window as { __ecuOverlayPreview?: boolean })
+      .__ecuOverlayPreview;
+    if (!preview) clearCounts();
   } else if (name) {
     trackingName = name;
   }
@@ -219,6 +245,8 @@ function handleKill(ev: KillEvent): void {
   noteTiming(partyTiming, partyKey, ev.at);
   totalKills += 1;
   if (!sessionStartedAt) sessionStartedAt = ev.at;
+  recentKillMtypes.push({ mtype, at: ev.at });
+  while (recentKillMtypes.length > RECENT_KILL_MAX) recentKillMtypes.shift();
   blameByTarget.delete(ev.id);
   lastSeen.delete(ev.id);
 }
@@ -337,6 +365,119 @@ export function startSessionKills(): () => void {
 export function resetKillSession(): void {
   clearCounts();
   blameByTarget.clear();
+}
+
+/**
+ * Nearby monster types (soft credit range), newest proximity first.
+ * Used by Farm glance chips.
+ */
+/**
+ * Overlay-only: populate kill rows + nearby proximity for Farm council shots.
+ * No-op unless `window.__ecuOverlayPreview`.
+ */
+export function seedSessionKillsForPreview(opts?: {
+  startedAgoMs?: number;
+  rows?: Array<{ mtype: string; count: number; avgIntervalSec?: number }>;
+  nearby?: string[];
+}): void {
+  const w = window as { __ecuOverlayPreview?: boolean };
+  if (!w.__ecuOverlayPreview) return;
+  const now = Date.now();
+  const startedAgo = opts?.startedAgoMs ?? 12 * 60_000;
+  clearCounts();
+  blameByTarget.clear();
+  lastSeen.clear();
+  sessionStartedAt = now - startedAgo;
+  const obs = getObserving();
+  const obsId = getObservingId();
+  if (obsId) {
+    trackingId = obsId;
+    trackingName = obs?.name || obsId;
+    watchedPartyKey = obs?.party || soloKey(obsId, obs?.name);
+    watchedPartyIds = new Set([obsId]);
+  }
+  const partyKey = watchedPartyKey || (obsId ? soloKey(obsId) : "solo:preview");
+  const liveMtypes: string[] = [];
+  const seenLive = new Set<string>();
+  const ents = Object.values(getEntitiesRecord());
+  for (let i = 0; i < ents.length; i++) {
+    const ent = ents[i];
+    if (!ent || ent.player || !ent.mtype) continue;
+    const mt = String(ent.mtype);
+    if (seenLive.has(mt)) continue;
+    seenLive.add(mt);
+    liveMtypes.push(mt);
+    if (liveMtypes.length >= 6) break;
+  }
+  const fallbackRows = [
+    { mtype: "a1", count: 148, avgIntervalSec: 4.2 },
+    { mtype: "bat", count: 61, avgIntervalSec: 9.5 },
+    { mtype: "skeletor", count: 22, avgIntervalSec: 28 },
+    { mtype: "fvampire", count: 7, avgIntervalSec: 95 },
+    { mtype: "boar", count: 3, avgIntervalSec: 180 },
+  ];
+  const demoCounts = [148, 61, 22, 14, 7, 3];
+  const demoAvg = [4.2, 9.5, 18, 28, 55, 95];
+  const rows =
+    opts?.rows ||
+    (liveMtypes.length
+      ? liveMtypes.map((mtype, i) => ({
+          mtype,
+          count: demoCounts[i] || 5,
+          avgIntervalSec: demoAvg[i] || 40,
+        }))
+      : fallbackRows);
+  let total = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    mtypeCounts[row.mtype] = row.count;
+    total += row.count;
+    const span =
+      row.count > 1 && row.avgIntervalSec != null
+        ? row.avgIntervalSec * (row.count - 1) * 1000
+        : Math.max(startedAgo * 0.6, 30_000);
+    mtypeTiming[row.mtype] = {
+      firstAt: sessionStartedAt + i * 2_000,
+      lastAt: sessionStartedAt + span,
+    };
+  }
+  totalKills = total;
+  partyKillCounts[partyKey] = total;
+  partyTiming[partyKey] = {
+    firstAt: sessionStartedAt,
+    lastAt: now - 4_000,
+  };
+  const nearby =
+    opts?.nearby ||
+    rows.slice(0, Math.min(5, rows.length)).map((r) => r.mtype);
+  for (let i = 0; i < nearby.length; i++) {
+    const mtype = nearby[i];
+    lastSeen.set(`ecu-farm-near-${mtype}`, {
+      mtype,
+      nearAt: now - i * 400,
+      nearPartyKey: partyKey,
+    });
+  }
+}
+
+export function getNearbyMtypes(max = 12): string[] {
+  const now = Date.now();
+  const scored: Array<{ mtype: string; nearAt: number }> = [];
+  const seen = new Set<string>();
+  const entries = Array.from(lastSeen.entries());
+  for (let i = 0; i < entries.length; i++) {
+    const row = entries[i][1];
+    if (!row.mtype || row.nearAt == null) continue;
+    if (now - row.nearAt > ATTRIBUTION_MS) continue;
+    if (seen.has(row.mtype)) continue;
+    seen.add(row.mtype);
+    scored.push({ mtype: row.mtype, nearAt: row.nearAt });
+  }
+  scored.sort((a, b) => b.nearAt - a.nearAt);
+  const out: string[] = [];
+  const n = Math.min(max, scored.length);
+  for (let i = 0; i < n; i++) out.push(scored[i].mtype);
+  return out;
 }
 
 export function getStats(): {

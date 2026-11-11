@@ -65,11 +65,11 @@ export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
     autoSize: true,
   },
   kills: {
-    x: 27,
-    y: 99.2,
-    anchor: "br",
-    frameW: 280,
-    frameH: 180,
+    x: 1.2,
+    y: 78,
+    anchor: "bl",
+    frameW: 200,
+    frameH: 140,
     autoSize: true,
   },
   playerFrame: {

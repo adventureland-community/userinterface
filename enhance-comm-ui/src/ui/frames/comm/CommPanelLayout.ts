@@ -50,7 +50,7 @@ import { AbilityTimelinePanel } from "../AbilityTimelinePanel";
 import { AbilityTimelineBigIconPanel } from "../AbilityTimelineBigIconPanel";
 import { AbilityTimelineHighlightPanel } from "../AbilityTimelineHighlightPanel";
 import { ThreatTable } from "../ThreatTable";
-import { KillKpiPanel } from "../KillKpiPanel";
+import { FarmPanel } from "../FarmPanel";
 import { Minimap } from "../Minimap";
 import { CommandPanel } from "../CommandPanel";
 import { ChatPanel } from "../chat/ChatPanel";
@@ -589,9 +589,10 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       },
     ),
 
-    panel("kills", e(KillKpiPanel), {
+    panel("kills", e(FarmPanel), {
       style: KILLS_PANEL_STYLE,
       hiddenBodyStyle: KILLS_PANEL_STYLE,
+      interactiveBody: true,
     }),
 
     panel(
