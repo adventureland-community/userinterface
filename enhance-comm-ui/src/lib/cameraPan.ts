@@ -152,10 +152,19 @@ export const MOUSE_PAN_DRAG_THRESHOLD_PX = 4;
  * Follow soft edge — fraction of each half-viewport kept as a push band.
  * Subject may roam the center; leaving the band starts a smooth recenter
  * onto the subject (camera lock → subject XY). Idle lock = no retile churn.
+ * Standing still past {@link FOLLOW_IDLE_CENTER_MS} also recenters (see
+ * {@link followIdleShouldCenter}).
  */
 export const FOLLOW_EDGE_MARGIN = 0.22;
+/**
+ * Phone: tighter band so the watched character does not walk into vision fog
+ * / under the dock before Follow starts easing.
+ */
+export const FOLLOW_EDGE_MARGIN_PHONE = 0.4;
 /** Exponential recenter rate (1/s) — ~center in a few tenths of a second. */
 export const FOLLOW_RECENTER_SPEED = 5.5;
+/** Phone: catch up faster once the edge band is hit. */
+export const FOLLOW_RECENTER_SPEED_PHONE = 7.5;
 /** World units — treat lock as arrived on the subject. */
 export const FOLLOW_RECENTER_SNAP = 3;
 /**
@@ -163,6 +172,13 @@ export const FOLLOW_RECENTER_SNAP = 3;
  * Keeps tiles ahead of the lock without thrashing every frame.
  */
 export const FOLLOW_RETILE_STEP_FRAC = 0.35;
+/**
+ * How long the Follow subject must stand still before we ease the camera
+ * onto them (even inside the dead zone). Keeps walk/fight framing idle-free.
+ */
+export const FOLLOW_IDLE_CENTER_MS = 900;
+/** World units — subject motion below this counts as standing still. */
+export const FOLLOW_IDLE_MOVE_EPS = 2;
 
 /** World half-extents of the logical buffer (stock width/height ÷ scale). */
 export function followViewHalfExtents(
@@ -189,6 +205,42 @@ export function followSafeOffset(
   };
 }
 
+/** Edge margin for the current surface — phone keeps the subject more centered. */
+export function followEdgeMarginForProfile(
+  profile: "phone" | "tablet" | "desktop" | string,
+): number {
+  return profile === "phone" ? FOLLOW_EDGE_MARGIN_PHONE : FOLLOW_EDGE_MARGIN;
+}
+
+/** Recenter ease rate for the current surface. */
+export function followRecenterSpeedForProfile(
+  profile: "phone" | "tablet" | "desktop" | string,
+): number {
+  return profile === "phone"
+    ? FOLLOW_RECENTER_SPEED_PHONE
+    : FOLLOW_RECENTER_SPEED;
+}
+
+/**
+ * Shrink usable Follow half-extents by a bottom CSS inset (phone dock), so the
+ * dead zone is measured against what the player can actually see.
+ */
+export function followHalfExtentsWithBottomInset(
+  halfW: number,
+  halfH: number,
+  viewHeightPx: number,
+  bottomInsetPx: number,
+): { halfW: number; halfH: number } {
+  const h = halfH > 0 && Number.isFinite(halfH) ? halfH : 1;
+  const viewH =
+    viewHeightPx > 0 && Number.isFinite(viewHeightPx) ? viewHeightPx : 0;
+  const inset =
+    bottomInsetPx > 0 && Number.isFinite(bottomInsetPx) ? bottomInsetPx : 0;
+  if (!(viewH > 0) || !(inset > 0)) return { halfW, halfH: h };
+  const frac = Math.min(0.28, inset / viewH);
+  return { halfW, halfH: Math.max(32, h * (1 - frac)) };
+}
+
 /** True when the subject is outside the Follow dead zone (needs recenter). */
 export function followLockNeedsRecenter(
   lockX: number,
@@ -204,6 +256,38 @@ export function followLockNeedsRecenter(
     Math.abs(subjectX - lockX) > maxOffX ||
     Math.abs(subjectY - lockY) > maxOffY
   );
+}
+
+/** True when the subject has not moved more than `eps` since the prior sample. */
+export function followSubjectIsStill(
+  prevX: number | null | undefined,
+  prevY: number | null | undefined,
+  subjectX: number,
+  subjectY: number,
+  eps: number = FOLLOW_IDLE_MOVE_EPS,
+): boolean {
+  if (prevX == null || prevY == null) return false;
+  if (!Number.isFinite(prevX + prevY + subjectX + subjectY)) return false;
+  const lim = eps > 0 && Number.isFinite(eps) ? eps : FOLLOW_IDLE_MOVE_EPS;
+  return Math.hypot(subjectX - prevX, subjectY - prevY) <= lim;
+}
+
+/**
+ * Standing still long enough and off-center → start a Follow recenter.
+ * Pure — host tracks idle duration from {@link followSubjectIsStill}.
+ */
+export function followIdleShouldCenter(
+  idleForMs: number,
+  lockX: number,
+  lockY: number,
+  subjectX: number,
+  subjectY: number,
+  idleMs: number = FOLLOW_IDLE_CENTER_MS,
+): boolean {
+  const need = idleMs > 0 && Number.isFinite(idleMs) ? idleMs : FOLLOW_IDLE_CENTER_MS;
+  if (!(idleForMs >= need)) return false;
+  if (!Number.isFinite(lockX + lockY + subjectX + subjectY)) return false;
+  return Math.hypot(subjectX - lockX, subjectY - lockY) > FOLLOW_RECENTER_SNAP;
 }
 
 /** True when the subject is fully outside the logical viewport. */

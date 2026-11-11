@@ -5,7 +5,10 @@
 
 import type { ItemFingerprint } from "../../host/mail/types";
 import { getObserving, resolvePlayerCtype } from "../../host/al";
-import { refreshObservedInventory } from "../../host/inventory";
+import {
+  isBagRefreshing,
+  refreshObservedInventory,
+} from "../../host/inventory";
 import {
   getG,
   observingBagItems,
@@ -608,22 +611,23 @@ function watchLevelBump(opts: {
     for (let i = 0; i < timers.length; i++) window.clearTimeout(timers[i]);
     fn();
   };
-  const poll = () => {
-    if (done) return;
-    try {
-      refreshObservedInventory();
-    } catch {
-      /* best-effort */
-    }
-    const items = observingBagItems();
-    const verdict = evaluateShrineBagWatch({
-      items,
+  const evalWatch = (failureDebounceMs?: number) =>
+    evaluateShrineBagWatch({
+      items: observingBagItems(),
       name: opts.name,
       fromLevel: opts.fromLevel,
       beforeNext: opts.beforeNext,
       watchedSlots: opts.watchedSlots,
       elapsedMs: Date.now() - started,
+      failureDebounceMs,
+      // Mid-reconnect bags look empty — do not call that a shrine fail.
+      snapshotUnreliable: isBagRefreshing(),
     });
+  const poll = () => {
+    if (done) return;
+    // Read the current observe snapshot only. Full init_socket on every kick
+    // stormed reconnects, blanked the bag, and dropped watching.
+    const verdict = evalWatch();
     if (verdict === "success") {
       finish(() => opts.onSuccess());
       return;
@@ -637,6 +641,20 @@ function watchLevelBump(opts: {
       if (opts.onProgress) opts.onProgress();
     }
   };
+  // At most two observe reconnects for a fresh welcome — not one per kick.
+  const refreshKicks = [700, 2800];
+  for (let i = 0; i < refreshKicks.length; i++) {
+    timers.push(
+      window.setTimeout(() => {
+        if (done) return;
+        try {
+          refreshObservedInventory();
+        } catch {
+          /* best-effort */
+        }
+      }, refreshKicks[i]),
+    );
+  }
   const kicks = [500, 1000, 1800, 2800, 4200, 6500, 9000, 12000, 16000];
   for (let i = 0; i < kicks.length; i++) {
     timers.push(window.setTimeout(poll, kicks[i]));
@@ -651,16 +669,7 @@ function watchLevelBump(opts: {
         } catch {
           /* best-effort */
         }
-        const items = observingBagItems();
-        const verdict = evaluateShrineBagWatch({
-          items,
-          name: opts.name,
-          fromLevel: opts.fromLevel,
-          beforeNext: opts.beforeNext,
-          watchedSlots: opts.watchedSlots,
-          elapsedMs: Date.now() - started,
-          failureDebounceMs: 4000,
-        });
+        const verdict = evalWatch(4000);
         if (verdict === "success") {
           finish(() => opts.onSuccess());
           return;

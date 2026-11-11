@@ -118,6 +118,35 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.19.1",
+    title: "0.19.1",
+    date: "2026-11-11",
+    summary:
+      "Phone Follow keeps the watched character on screen, Compound stops dropping observe mid-roll, and the phone bag keeps a full seven-column grid.",
+    highlights: [
+      {
+        label: "Phone Follow framing",
+        detail:
+          "Follow recenters before the watched character walks into vision fog or under the dock. Standing still eases them back to center; map or realm hops snap the camera onto them again.",
+        kind: "fix",
+      },
+      {
+        label: "Compound while watching",
+        detail:
+          "Upgrade and Compound no longer blank the bag or drop observe mid-roll. Matching compound partners stay distinct when bag slots shuffle after a roll.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Phone bag grid",
+        detail:
+          "The bag sheet keeps all seven columns on one row without wrapping or clipping under the dock.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.19.0",
     title: "0.19.0",
     date: "2026-11-07",

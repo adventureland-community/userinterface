@@ -3,13 +3,22 @@ import { describe, it } from "node:test";
 import {
   CAMERA_PAN_SPEED,
   FOLLOW_EDGE_MARGIN,
+  FOLLOW_EDGE_MARGIN_PHONE,
+  FOLLOW_IDLE_CENTER_MS,
   FOLLOW_RECENTER_SNAP,
+  FOLLOW_RECENTER_SPEED,
+  FOLLOW_RECENTER_SPEED_PHONE,
   JOYSTICK_DEADZONE,
   JOYSTICK_RADIUS_PX,
   followCameraLockSmoothToward,
+  followEdgeMarginForProfile,
+  followHalfExtentsWithBottomInset,
+  followIdleShouldCenter,
   followLockNeedsRecenter,
+  followRecenterSpeedForProfile,
   followRetileStepWorld,
   followShouldForceRetileAhead,
+  followSubjectIsStill,
   followSubjectOffScreen,
   followViewHalfExtents,
   keysToPan,
@@ -28,6 +37,7 @@ import {
   panFrameDtSec,
   setFollowCamera,
   stockMapScreenWouldChange,
+  syncFollowAfterRealmChange,
   syncFreeCameraAfterRealmChange,
   unlockCamera,
 } from "../src/host/cameraPan";
@@ -118,6 +128,49 @@ describe("cameraPan math", () => {
     );
   });
 
+  it("uses a tighter Follow edge band on phone", () => {
+    assert.equal(followEdgeMarginForProfile("desktop"), FOLLOW_EDGE_MARGIN);
+    assert.equal(followEdgeMarginForProfile("phone"), FOLLOW_EDGE_MARGIN_PHONE);
+    assert.ok(FOLLOW_EDGE_MARGIN_PHONE > FOLLOW_EDGE_MARGIN);
+    assert.equal(
+      followRecenterSpeedForProfile("phone"),
+      FOLLOW_RECENTER_SPEED_PHONE,
+    );
+    assert.equal(
+      followRecenterSpeedForProfile("desktop"),
+      FOLLOW_RECENTER_SPEED,
+    );
+    const halfW = 400;
+    const halfH = 300;
+    const desktopOff = halfW * (1 - FOLLOW_EDGE_MARGIN);
+    const phoneOff = halfW * (1 - FOLLOW_EDGE_MARGIN_PHONE);
+    // Offset that is still "safe" on desktop should already recenter on phone.
+    const mid = (desktopOff + phoneOff) / 2;
+    assert.equal(
+      followLockNeedsRecenter(0, 0, mid, 0, halfW, halfH, FOLLOW_EDGE_MARGIN),
+      false,
+    );
+    assert.equal(
+      followLockNeedsRecenter(
+        0,
+        0,
+        mid,
+        0,
+        halfW,
+        halfH,
+        FOLLOW_EDGE_MARGIN_PHONE,
+      ),
+      true,
+    );
+  });
+
+  it("shrinks Follow half-height for a bottom dock inset", () => {
+    const next = followHalfExtentsWithBottomInset(200, 400, 800, 64);
+    assert.equal(next.halfW, 200);
+    assert.ok(next.halfH < 400);
+    assert.ok(next.halfH > 300);
+  });
+
   it("smoothly eases the Follow lock onto the subject center", () => {
     const step = followCameraLockSmoothToward(0, 0, 200, 0, 1 / 60);
     assert.ok(step.x > 0 && step.x < 200);
@@ -140,6 +193,28 @@ describe("cameraPan math", () => {
   it("flags Follow subjects that leave the logical viewport", () => {
     assert.equal(followSubjectOffScreen(0, 0, 2000, -1500, 400, 300), true);
     assert.equal(followSubjectOffScreen(0, 0, 100, 50, 400, 300), false);
+  });
+
+  it("treats tiny subject motion as standing still", () => {
+    assert.equal(followSubjectIsStill(null, null, 10, 20), false);
+    assert.equal(followSubjectIsStill(100, 200, 100, 200), true);
+    assert.equal(followSubjectIsStill(100, 200, 101, 200), true);
+    assert.equal(followSubjectIsStill(100, 200, 120, 200), false);
+  });
+
+  it("centers Follow only after a standing dwell while off-center", () => {
+    assert.equal(
+      followIdleShouldCenter(FOLLOW_IDLE_CENTER_MS - 1, 0, 0, 80, 0),
+      false,
+    );
+    assert.equal(
+      followIdleShouldCenter(FOLLOW_IDLE_CENTER_MS, 0, 0, 80, 0),
+      true,
+    );
+    assert.equal(
+      followIdleShouldCenter(FOLLOW_IDLE_CENTER_MS * 2, 0, 0, 1, 0),
+      false,
+    );
   });
 });
 
@@ -178,6 +253,67 @@ describe("cameraPan realm hop clears free-cam", () => {
       assert.equal(syncFreeCameraAfterRealmChange(), true);
       assert.equal(isFreeCamera(), false);
     } finally {
+      lockCamera();
+      if (prev === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        (globalThis as { window: unknown }).window = prev;
+      }
+    }
+  });
+});
+
+describe("cameraPan Follow map hop snap", () => {
+  it("hard-snaps Follow + o:home when current_map changes", () => {
+    const prev = (globalThis as { window?: unknown }).window;
+    let homeEmits = 0;
+    (globalThis as { window: any }).window = {
+      current_map: "main",
+      current_in: "main",
+      server_region: "EU",
+      server_identifier: "I",
+      observing: { id: "Hero", name: "Hero", real_x: 10, real_y: 20 },
+      entities: {
+        Hero: {
+          id: "Hero",
+          name: "Hero",
+          real_x: 10,
+          real_y: 20,
+          type: "character",
+          player: true,
+        },
+      },
+      map: { real_x: 10, real_y: 20, map_name: "main" },
+      socket: {
+        emit(ev: string) {
+          if (ev === "o:home") homeEmits++;
+        },
+      },
+      requestAnimationFrame: () => 1,
+      cancelAnimationFrame: () => {},
+      setTimeout: (fn: () => void) => {
+        fn();
+        return 1;
+      },
+    };
+    try {
+      setFollowCamera(true);
+      assert.equal(isFollowCamera(), true);
+      homeEmits = 0;
+      (window as any).current_map = "desertland";
+      (window as any).map.map_name = "desertland";
+      (window as any).entities.Hero.real_x = 900;
+      (window as any).entities.Hero.real_y = -50;
+      assert.equal(syncFollowAfterRealmChange(), true);
+      assert.equal((window as any).map.real_x, 900);
+      assert.equal((window as any).map.real_y, -50);
+      assert.ok(homeEmits >= 1);
+      // Same key again — no repeat snap.
+      homeEmits = 0;
+      assert.equal(syncFollowAfterRealmChange(), false);
+      assert.equal(homeEmits, 0);
+    } finally {
+      setFollowCamera(false);
       lockCamera();
       if (prev === undefined) {
         delete (globalThis as { window?: unknown }).window;

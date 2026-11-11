@@ -35,7 +35,9 @@ function lit(value: string): string {
 }
 
 function scheduleBagRefresh(): void {
-  const delays = [1200, 4000, 10000];
+  // Coalesced in refreshObservedInventory — keep kicks sparse so shrine watch
+  // does not stack observe reconnects (bag blank + dropped watching).
+  const delays = [1500, 6000];
   for (let i = 0; i < delays.length; i++) {
     window.setTimeout(() => {
       try {
@@ -186,6 +188,14 @@ export function dismantleCommand(
   return true;
 }
 
+/**
+ * Title key for shrine fingerprints — empty / missing `p` is plain, and must
+ * not rematch a shiny/glitched twin when preferred slots drift.
+ */
+function fingerprintTitleKey(p: string | null | undefined): string {
+  return p != null && String(p).trim() !== "" ? String(p) : "";
+}
+
 function fingerprintCheckNamedJs(
   fp: ItemFingerprint,
   varName: string,
@@ -193,15 +203,22 @@ function fingerprintCheckNamedJs(
   const parts = [`!${varName}`, `${varName}.name!==${lit(fp.name)}`];
   if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
   if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
-  if (fp.p != null) parts.push(`${varName}.p!==${lit(fp.p)}`);
+  const wantTitle = fingerprintTitleKey(fp.p);
+  parts.push(
+    `((${varName}.p!=null&&String(${varName}.p).trim()!=="")?String(${varName}.p):"")!==${lit(wantTitle)}`,
+  );
   if (fp.data != null) parts.push(`${varName}.data!==${lit(fp.data)}`);
   return parts.join("||");
 }
 
-/** Resolve fingerprint into `slotVar` (number) or abort. */
+/**
+ * Resolve fingerprint into `slotVar` (number) or abort.
+ * `excludeSlotVars` skips slots already claimed (compound partners).
+ */
 export function resolveInvSlotNamedJs(
   fp: ItemFingerprint,
   slotVar: string,
+  excludeSlotVars?: string[] | null,
 ): string {
   const preferSlot = Number(fp.slot) | 0;
   const itVar = slotVar + "It";
@@ -209,12 +226,26 @@ export function resolveInvSlotNamedJs(
   const siVar = slotVar + "Si";
   const mismatch = fingerprintCheckNamedJs(fp, itVar);
   const candMismatch = fingerprintCheckNamedJs(fp, candVar);
+  const excl = excludeSlotVars || [];
+  const excludePred =
+    excl.length > 0
+      ? excl.map((v) => `${siVar}===${v}`).join("||")
+      : "";
+  const skipExcluded = excludePred
+    ? `if(${excludePred})continue;`
+    : "";
+  const preferExcluded =
+    excl.length > 0
+      ? `if(${excl.map((v) => `${slotVar}===${v}`).join("||")}){${slotVar}=-1;}`
+      : "";
   return [
     `var ${slotVar}=${preferSlot};`,
+    preferExcluded,
     `var ${itVar}=character.items[${slotVar}];`,
-    `if(${mismatch}){`,
+    `if(${slotVar}<0||(${mismatch})){`,
     `${slotVar}=-1;`,
     `for(var ${siVar}=0;${siVar}<character.items.length;${siVar}++){`,
+    skipExcluded,
     `var ${candVar}=character.items[${siVar}];`,
     `if(!(${candMismatch})){${slotVar}=${siVar};break;}`,
     `}`,
@@ -473,19 +504,30 @@ export function buildCompoundScript(
   }
   parts.push(buildEnsureStationJs(station));
   parts.push(buildShrineSkillPrefixJs(buyOpts));
+  // Exclusive rematch — identical name/level/title copies must not collide
+  // when preferred slots drifted after a prior roll or bag sort.
   parts.push(resolveInvSlotNamedJs(items[0], "__c0"));
-  parts.push(resolveInvSlotNamedJs(items[1], "__c1"));
-  parts.push(resolveInvSlotNamedJs(items[2], "__c2"));
+  parts.push(resolveInvSlotNamedJs(items[1], "__c1", ["__c0"]));
+  parts.push(resolveInvSlotNamedJs(items[2], "__c2", ["__c0", "__c1"]));
   if (buyScroll) {
     parts.push(resolveInvSlotByNameJs(scroll.name, "__cScroll"));
   } else {
-    parts.push(resolveInvSlotNamedJs(scroll, "__cScroll"));
+    parts.push(
+      resolveInvSlotNamedJs(scroll, "__cScroll", ["__c0", "__c1", "__c2"]),
+    );
   }
   if (offering) {
     if (buyOffering) {
       parts.push(resolveInvSlotByNameJs(offering.name, "__cOffering"));
     } else {
-      parts.push(resolveInvSlotNamedJs(offering, "__cOffering"));
+      parts.push(
+        resolveInvSlotNamedJs(offering, "__cOffering", [
+          "__c0",
+          "__c1",
+          "__c2",
+          "__cScroll",
+        ]),
+      );
     }
   } else {
     parts.push(`var __cOffering=null;`);

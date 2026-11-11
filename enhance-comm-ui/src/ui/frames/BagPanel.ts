@@ -248,8 +248,9 @@ function BagSyncChrome(props: {
         border: "1px solid #444",
         // Stretch with the inventory host — do not lock to BAG_FRAME_WIDTH
         // (fixed width + #bottomleftcorner borders wraps floats into 6+1 rows).
+        // Phone sheets are ~390px; a 385 min-width overflows the sheet.
         width: "100%",
-        minWidth: BAG_FRAME_WIDTH,
+        minWidth: statusOnly ? 0 : BAG_FRAME_WIDTH,
       },
     },
     e(
@@ -435,6 +436,54 @@ export function BagPanel(props: BagPanelProps): any {
     attachInventoryToMount(mountRef.current);
     if (open) refreshInventoryItemTitles();
   }, [open, refreshing, showDummy, props.tradeRevision]);
+
+  /**
+   * Phone sheet: fit #bottomleftcorner into the mount width.
+   * Fixed zoom:1.45 (~558px) clipped the 7-col grid on ~390px phones.
+   */
+  React.useLayoutEffect(() => {
+    if (!phoneUi || !expanded) return;
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    const fitZoom = () => {
+      const host = mount.querySelector(
+        "#" + HOST_ID,
+      ) as HTMLElement | null;
+      if (!host) return;
+      const prevZoom = host.style.zoom;
+      host.style.zoom = "1";
+      // Prefer live board width (7 nowrap cols); fall back to measured frame.
+      const natural = Math.max(
+        host.scrollWidth || 0,
+        host.offsetWidth || 0,
+        BAG_FRAME_WIDTH,
+      );
+      host.style.zoom = prevZoom;
+      const avail = Math.max(0, mount.clientWidth);
+      if (avail <= 0 || natural <= 0) return;
+      // Fill width; soft-cap so large sheets don't balloon slot hit targets.
+      const z = Math.min(1.25, Math.max(0.72, avail / natural));
+      mount.style.setProperty(
+        "--ecu-bag-phone-zoom",
+        String(Number(z.toFixed(4))),
+      );
+    };
+
+    fitZoom();
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => fitZoom())
+        : null;
+    if (ro) ro.observe(mount);
+    const mo = new MutationObserver(() => fitZoom());
+    const host = mount.querySelector("#" + HOST_ID);
+    if (host) mo.observe(host, { childList: true, subtree: true });
+    return () => {
+      if (ro) ro.disconnect();
+      mo.disconnect();
+    };
+  }, [phoneUi, expanded, open, refreshing, showDummy]);
 
   const showNeedObserve = phoneUi && !observing && !showDummy && !refreshing;
 

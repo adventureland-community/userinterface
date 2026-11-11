@@ -85,6 +85,11 @@ export type ShrineWatchEval = {
   elapsedMs: number;
   /** Default 2500 — ignore empty-slot flicker before declaring failure. */
   failureDebounceMs?: number;
+  /**
+   * Observe reconnect / bag refresh in flight — empty or missing slots are
+   * not a compound fail (snapshot is mid-replace).
+   */
+  snapshotUnreliable?: boolean;
 };
 
 /**
@@ -96,6 +101,10 @@ export function evaluateShrineBagWatch(opts: ShrineWatchEval): ShrineWatchVerdic
   const name = String(opts.name || "");
   const fromLevel = Number(opts.fromLevel) || 0;
   const nextLevel = fromLevel + 1;
+  const unreliable = !!opts.snapshotUnreliable;
+  // Mid-reconnect: observing.items is often null — never call that a fail.
+  if (unreliable && (!items || !items.length)) return "pending";
+
   const atNext = countNameLevel(items, name, nextLevel);
   if (atNext > opts.beforeNext) return "success";
 
@@ -123,7 +132,12 @@ export function evaluateShrineBagWatch(opts: ShrineWatchEval): ShrineWatchVerdic
     opts.failureDebounceMs != null && opts.failureDebounceMs > 0
       ? opts.failureDebounceMs
       : 2500;
-  if (allMissing && atNext <= opts.beforeNext && opts.elapsedMs > debounce) {
+  if (
+    allMissing &&
+    atNext <= opts.beforeNext &&
+    opts.elapsedMs > debounce &&
+    !unreliable
+  ) {
     return "failure";
   }
   return "pending";

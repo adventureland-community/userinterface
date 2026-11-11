@@ -133,4 +133,31 @@ describe("shrineOutcomeWatch", () => {
       "progress",
     );
   });
+
+  it("does not treat empty bag as fail while observe refresh is in flight", () => {
+    assert.equal(
+      evaluateShrineBagWatch({
+        items: null,
+        name: "ringsj",
+        fromLevel: 2,
+        beforeNext: 0,
+        watchedSlots: [0, 1, 2],
+        elapsedMs: 5000,
+        snapshotUnreliable: true,
+      }),
+      "pending",
+    );
+    assert.equal(
+      evaluateShrineBagWatch({
+        items: [null, null, null],
+        name: "ringsj",
+        fromLevel: 2,
+        beforeNext: 0,
+        watchedSlots: [0, 1, 2],
+        elapsedMs: 5000,
+        snapshotUnreliable: true,
+      }),
+      "pending",
+    );
+  });
 });

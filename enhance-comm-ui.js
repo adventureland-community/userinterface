@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.19.0
+// @version      0.19.1
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -9660,6 +9660,31 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.19.1",
+      title: "0.19.1",
+      date: "2026-11-11",
+      summary: "Phone Follow keeps the watched character on screen, Compound stops dropping observe mid-roll, and the phone bag keeps a full seven-column grid.",
+      highlights: [
+        {
+          label: "Phone Follow framing",
+          detail: "Follow recenters before the watched character walks into vision fog or under the dock. Standing still eases them back to center; map or realm hops snap the camera onto them again.",
+          kind: "fix"
+        },
+        {
+          label: "Compound while watching",
+          detail: "Upgrade and Compound no longer blank the bag or drop observe mid-roll. Matching compound partners stay distinct when bag slots shuffle after a roll.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Phone bag grid",
+          detail: "The bag sheet keeps all seven columns on one row without wrapping or clipping under the dock.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.19.0",
       title: "0.19.0",
       date: "2026-11-07",
@@ -17016,9 +17041,13 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   var MOUSE_PAN_DRAG_THRESHOLD_PX = 4;
   var FOLLOW_EDGE_MARGIN = 0.22;
+  var FOLLOW_EDGE_MARGIN_PHONE = 0.4;
   var FOLLOW_RECENTER_SPEED = 5.5;
+  var FOLLOW_RECENTER_SPEED_PHONE = 7.5;
   var FOLLOW_RECENTER_SNAP = 3;
   var FOLLOW_RETILE_STEP_FRAC = 0.35;
+  var FOLLOW_IDLE_CENTER_MS = 900;
+  var FOLLOW_IDLE_MOVE_EPS = 2;
   function followViewHalfExtents(width, height, scale) {
     const s = scale > 0 && Number.isFinite(scale) ? scale : 1;
     const w = width > 0 && Number.isFinite(width) ? width : 1;
@@ -17032,9 +17061,35 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       maxOffY: Math.max(0, halfH * (1 - m))
     };
   }
+  function followEdgeMarginForProfile(profile) {
+    return profile === "phone" ? FOLLOW_EDGE_MARGIN_PHONE : FOLLOW_EDGE_MARGIN;
+  }
+  function followRecenterSpeedForProfile(profile) {
+    return profile === "phone" ? FOLLOW_RECENTER_SPEED_PHONE : FOLLOW_RECENTER_SPEED;
+  }
+  function followHalfExtentsWithBottomInset(halfW, halfH, viewHeightPx, bottomInsetPx) {
+    const h = halfH > 0 && Number.isFinite(halfH) ? halfH : 1;
+    const viewH = viewHeightPx > 0 && Number.isFinite(viewHeightPx) ? viewHeightPx : 0;
+    const inset = bottomInsetPx > 0 && Number.isFinite(bottomInsetPx) ? bottomInsetPx : 0;
+    if (!(viewH > 0) || !(inset > 0)) return { halfW, halfH: h };
+    const frac = Math.min(0.28, inset / viewH);
+    return { halfW, halfH: Math.max(32, h * (1 - frac)) };
+  }
   function followLockNeedsRecenter(lockX2, lockY2, subjectX, subjectY, halfW, halfH, edgeMargin = FOLLOW_EDGE_MARGIN) {
     const { maxOffX, maxOffY } = followSafeOffset(halfW, halfH, edgeMargin);
     return Math.abs(subjectX - lockX2) > maxOffX || Math.abs(subjectY - lockY2) > maxOffY;
+  }
+  function followSubjectIsStill(prevX, prevY, subjectX, subjectY, eps = FOLLOW_IDLE_MOVE_EPS) {
+    if (prevX == null || prevY == null) return false;
+    if (!Number.isFinite(prevX + prevY + subjectX + subjectY)) return false;
+    const lim = eps > 0 && Number.isFinite(eps) ? eps : FOLLOW_IDLE_MOVE_EPS;
+    return Math.hypot(subjectX - prevX, subjectY - prevY) <= lim;
+  }
+  function followIdleShouldCenter(idleForMs, lockX2, lockY2, subjectX, subjectY, idleMs2 = FOLLOW_IDLE_CENTER_MS) {
+    const need = idleMs2 > 0 && Number.isFinite(idleMs2) ? idleMs2 : FOLLOW_IDLE_CENTER_MS;
+    if (!(idleForMs >= need)) return false;
+    if (!Number.isFinite(lockX2 + lockY2 + subjectX + subjectY)) return false;
+    return Math.hypot(subjectX - lockX2, subjectY - lockY2) > FOLLOW_RECENTER_SNAP;
   }
   function followSubjectOffScreen(lockX2, lockY2, subjectX, subjectY, halfW, halfH) {
     return Math.abs(subjectX - lockX2) > halfW || Math.abs(subjectY - lockY2) > halfH;
@@ -17075,6 +17130,10 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var followCamera = true;
   var followRecenter = false;
   var followRecenterLastTs = 0;
+  var followSubjectLastX = null;
+  var followSubjectLastY = null;
+  var followSubjectStillSince = 0;
+  var followRealmKey = "";
   var lockX = 0;
   var lockY = 0;
   var observerAnchorX = 0;
@@ -17180,6 +17239,9 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     followRecenterLastTs = 0;
     hasFollowRetileMark = false;
   }
+  function noteFollowRealmKey() {
+    followRealmKey = readCameraRealmKey() || "";
+  }
   function nowMs() {
     return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
   }
@@ -17260,11 +17322,60 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     window.clearInterval(realmFallbackId);
     realmFallbackId = null;
   }
+  function clearFollowIdleTracking() {
+    followSubjectLastX = null;
+    followSubjectLastY = null;
+    followSubjectStillSince = 0;
+  }
+  function noteFollowSubjectSample(at, now) {
+    if (followSubjectIsStill(
+      followSubjectLastX,
+      followSubjectLastY,
+      at.x,
+      at.y
+    )) {
+      if (!(followSubjectStillSince > 0)) followSubjectStillSince = now;
+    } else {
+      followSubjectStillSince = 0;
+    }
+    followSubjectLastX = at.x;
+    followSubjectLastY = at.y;
+  }
+  function readPhoneFollowBottomInsetPx() {
+    if (typeof document === "undefined") return 0;
+    const root = document.documentElement;
+    if (detectViewportProfile() !== "phone" && !root.classList.contains("ecu-phone-dock-on")) {
+      return 0;
+    }
+    const raw = getComputedStyle(root).getPropertyValue("--ecu-phone-dock-h");
+    const dock = Number.parseFloat(raw);
+    const dockPx = Number.isFinite(dock) && dock > 0 ? dock : 56;
+    return dockPx + 8;
+  }
+  function followHalfForPan() {
+    const size = readHostSize();
+    const base = followViewHalfExtents(size.w, size.h, readHostWorldZoom());
+    const profile = detectViewportProfile();
+    const inset = readPhoneFollowBottomInsetPx();
+    const half = followHalfExtentsWithBottomInset(
+      base.halfW,
+      base.halfH,
+      size.h,
+      inset
+    );
+    return {
+      halfW: half.halfW,
+      halfH: half.halfH,
+      edgeMargin: followEdgeMarginForProfile(profile),
+      recenterSpeed: followRecenterSpeedForProfile(profile)
+    };
+  }
   function panLockToObserved() {
     const at = readObservedWorldXY();
     if (!at) return;
-    const size = readHostSize();
-    const half = followViewHalfExtents(size.w, size.h, readHostWorldZoom());
+    const now = nowMs();
+    noteFollowSubjectSample(at, now);
+    const half = followHalfForPan();
     if (followSubjectOffScreen(lockX, lockY, at.x, at.y, half.halfW, half.halfH)) {
       lockX = at.x;
       lockY = at.y;
@@ -17272,16 +17383,31 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       forceFollowRetileAtLock();
       return;
     }
-    if (followLockNeedsRecenter(lockX, lockY, at.x, at.y, half.halfW, half.halfH)) {
+    const idleForMs = followSubjectStillSince > 0 ? now - followSubjectStillSince : 0;
+    if (followLockNeedsRecenter(
+      lockX,
+      lockY,
+      at.x,
+      at.y,
+      half.halfW,
+      half.halfH,
+      half.edgeMargin
+    ) || followIdleShouldCenter(idleForMs, lockX, lockY, at.x, at.y)) {
       const starting = !followRecenter;
       followRecenter = true;
       if (starting) maybeForceFollowRetileAlongPath(half.halfW, half.halfH);
     }
     if (!followRecenter) return;
-    const now = nowMs();
     const dt = followRecenterLastTs > 0 ? Math.min(0.05, Math.max(0, (now - followRecenterLastTs) / 1e3)) : 1 / 60;
     followRecenterLastTs = now;
-    const next = followCameraLockSmoothToward(lockX, lockY, at.x, at.y, dt);
+    const next = followCameraLockSmoothToward(
+      lockX,
+      lockY,
+      at.x,
+      at.y,
+      dt,
+      half.recenterSpeed
+    );
     lockX = next.x;
     lockY = next.y;
     maybeForceFollowRetileAlongPath(half.halfW, half.halfH);
@@ -17333,6 +17459,29 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     lockCamera();
     syncLockFromMap();
     return true;
+  }
+  function syncFollowAfterRealmChange() {
+    if (!followCamera || freeCamera) return false;
+    const key = readCameraRealmKey();
+    if (!key) return false;
+    if (!followRealmKey) {
+      followRealmKey = key;
+      return false;
+    }
+    if (key === followRealmKey) return false;
+    followRealmKey = key;
+    clearFollowRecenter();
+    clearFollowIdleTracking();
+    const snapped = snapMapToObserved();
+    forceFollowRetileAtLock();
+    emitObserveHome();
+    window.setTimeout(() => {
+      if (!followCamera || freeCamera) return;
+      if (readCameraRealmKey() !== key) return;
+      snapMapToObserved();
+      forceFollowRetileAtLock();
+    }, 250);
+    return snapped;
   }
   function readObservedWorldXY() {
     var _a, _b, _c, _d, _e, _f, _g, _h;
@@ -17386,7 +17535,9 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       freeCamera = true;
       const wasFollow = followCamera;
       followCamera = false;
+      followRealmKey = "";
       clearFollowRecenter();
+      clearFollowIdleTracking();
       notifyFree();
       if (wasFollow) notifyFollow();
     }
@@ -17654,6 +17805,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function patchedPositionMap() {
     syncFreeCameraAfterRealmChange();
+    syncFollowAfterRealmChange();
     const map = hostMap();
     const w = window;
     if (followCamera && !freeCamera) {
@@ -17714,6 +17866,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       lockCamera();
       snapMapToObserved();
       clearFollowRecenter();
+      clearFollowIdleTracking();
+      noteFollowRealmKey();
       emitObserveHome();
       notifyFollow();
       window.setTimeout(() => {
@@ -17722,7 +17876,9 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       return;
     }
     followCamera = false;
+    followRealmKey = "";
     clearFollowRecenter();
+    clearFollowIdleTracking();
     notifyFollow();
     unlockCamera();
   }
@@ -20268,6 +20424,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var bagSyncedForName = null;
   var bagRenderedForName = null;
   var bagRefreshing = false;
+  var bagRefreshQueued = false;
   var refreshPendingName = null;
   var refreshPollTimer = null;
   var bagSyncSocketId = null;
@@ -20298,6 +20455,12 @@ html.ecu-phone-dock-on #${HOST_ID4} {
 #${HOST_ID4} .theinventory {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
+}
+/* Stock /comm rows use white-space:nowrap; ECU forces the non-comm 7-col
+ * branch (no nowrap in html.js) so narrow hosts wrap to 6+1 and look like
+ * missing columns. Keep each inventory row on one line. */
+#${HOST_ID4} .theinventory > div {
+  white-space: nowrap;
 }
 .imodal .theinventory {
   margin-top: 0 !important;
@@ -20529,7 +20692,22 @@ html.ecu-phone-dock-on #${HOST_ID4} {
       }
     });
   }
+  function finishBagRefreshCycle() {
+    setBagRefreshing(false);
+    if (!bagRefreshQueued) return;
+    bagRefreshQueued = false;
+    window.setTimeout(() => {
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+    }, 0);
+  }
   function refreshObservedInventory() {
+    if (bagRefreshing || refreshPollTimer != null) {
+      bagRefreshQueued = true;
+      return;
+    }
     const obs = window.observing;
     const name = obs && obs.name != null ? String(obs.name) : "";
     const secret = name ? findObserveSecret(name) : null;
@@ -20545,9 +20723,9 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     saveSettings({ bagOpenPreferred: true });
     const initSocket = window.init_socket;
     if (typeof initSocket !== "function") {
-      setBagRefreshing(false);
       refreshPendingName = null;
       repaintObservedInventoryFromSnapshot();
+      finishBagRefreshCycle();
       return;
     }
     initSocket({ secret });
@@ -20562,7 +20740,7 @@ html.ecu-phone-dock-on #${HOST_ID4} {
         backfillBagSyncedAt();
         if (bagSyncedAt == null) stampBagSyncedFromObserving(next);
         openInventory();
-        setBagRefreshing(false);
+        finishBagRefreshCycle();
         return;
       }
       if (attempts > 40) {
@@ -20575,8 +20753,16 @@ html.ecu-phone-dock-on #${HOST_ID4} {
           openInventory();
         } else {
           bagRefreshKind = "local";
+          if (name) {
+            try {
+              const again = window.init_socket;
+              const sec = findObserveSecret(name);
+              if (typeof again === "function" && sec) again({ secret: sec });
+            } catch (e2) {
+            }
+          }
         }
-        setBagRefreshing(false);
+        finishBagRefreshCycle();
       }
     }, 250);
   }
@@ -33210,8 +33396,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.19.0" : "unknown";
-    const builtAt = true ? "2026-11-08T09:51:24.795Z" : "unknown";
+    const version = true ? "0.19.1" : "unknown";
+    const builtAt = true ? "2026-11-11T17:47:38.165Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -84718,7 +84904,7 @@ ${ESTIMATE_HINT}`,
     return JSON.stringify(String(value));
   }
   function scheduleBagRefresh4() {
-    const delays = [1200, 4e3, 1e4];
+    const delays = [1500, 6e3];
     for (let i = 0; i < delays.length; i++) {
       window.setTimeout(() => {
         try {
@@ -84836,27 +85022,39 @@ ${ESTIMATE_HINT}`,
     scheduleBagRefresh4();
     return true;
   }
+  function fingerprintTitleKey(p) {
+    return p != null && String(p).trim() !== "" ? String(p) : "";
+  }
   function fingerprintCheckNamedJs(fp, varName) {
     const parts = [`!${varName}`, `${varName}.name!==${lit7(fp.name)}`];
     if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
     if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
-    if (fp.p != null) parts.push(`${varName}.p!==${lit7(fp.p)}`);
+    const wantTitle = fingerprintTitleKey(fp.p);
+    parts.push(
+      `((${varName}.p!=null&&String(${varName}.p).trim()!=="")?String(${varName}.p):"")!==${lit7(wantTitle)}`
+    );
     if (fp.data != null) parts.push(`${varName}.data!==${lit7(fp.data)}`);
     return parts.join("||");
   }
-  function resolveInvSlotNamedJs(fp, slotVar) {
+  function resolveInvSlotNamedJs(fp, slotVar, excludeSlotVars) {
     const preferSlot = Number(fp.slot) | 0;
     const itVar = slotVar + "It";
     const candVar = slotVar + "Cand";
     const siVar = slotVar + "Si";
     const mismatch = fingerprintCheckNamedJs(fp, itVar);
     const candMismatch = fingerprintCheckNamedJs(fp, candVar);
+    const excl = excludeSlotVars || [];
+    const excludePred = excl.length > 0 ? excl.map((v) => `${siVar}===${v}`).join("||") : "";
+    const skipExcluded = excludePred ? `if(${excludePred})continue;` : "";
+    const preferExcluded = excl.length > 0 ? `if(${excl.map((v) => `${slotVar}===${v}`).join("||")}){${slotVar}=-1;}` : "";
     return [
       `var ${slotVar}=${preferSlot};`,
+      preferExcluded,
       `var ${itVar}=character.items[${slotVar}];`,
-      `if(${mismatch}){`,
+      `if(${slotVar}<0||(${mismatch})){`,
       `${slotVar}=-1;`,
       `for(var ${siVar}=0;${siVar}<character.items.length;${siVar}++){`,
+      skipExcluded,
       `var ${candVar}=character.items[${siVar}];`,
       `if(!(${candMismatch})){${slotVar}=${siVar};break;}`,
       `}`,
@@ -85027,18 +85225,27 @@ ${ESTIMATE_HINT}`,
     parts.push(buildEnsureStationJs(station));
     parts.push(buildShrineSkillPrefixJs(buyOpts));
     parts.push(resolveInvSlotNamedJs(items[0], "__c0"));
-    parts.push(resolveInvSlotNamedJs(items[1], "__c1"));
-    parts.push(resolveInvSlotNamedJs(items[2], "__c2"));
+    parts.push(resolveInvSlotNamedJs(items[1], "__c1", ["__c0"]));
+    parts.push(resolveInvSlotNamedJs(items[2], "__c2", ["__c0", "__c1"]));
     if (buyScroll) {
       parts.push(resolveInvSlotByNameJs(scroll.name, "__cScroll"));
     } else {
-      parts.push(resolveInvSlotNamedJs(scroll, "__cScroll"));
+      parts.push(
+        resolveInvSlotNamedJs(scroll, "__cScroll", ["__c0", "__c1", "__c2"])
+      );
     }
     if (offering) {
       if (buyOffering) {
         parts.push(resolveInvSlotByNameJs(offering.name, "__cOffering"));
       } else {
-        parts.push(resolveInvSlotNamedJs(offering, "__cOffering"));
+        parts.push(
+          resolveInvSlotNamedJs(offering, "__cOffering", [
+            "__c0",
+            "__c1",
+            "__c2",
+            "__cScroll"
+          ])
+        );
       }
     } else {
       parts.push(`var __cOffering=null;`);
@@ -85827,6 +86034,8 @@ ${ESTIMATE_HINT}`,
     const name = String(opts.name || "");
     const fromLevel = Number(opts.fromLevel) || 0;
     const nextLevel = fromLevel + 1;
+    const unreliable = !!opts.snapshotUnreliable;
+    if (unreliable && (!items || !items.length)) return "pending";
     const atNext = countNameLevel(items, name, nextLevel);
     if (atNext > opts.beforeNext) return "success";
     const slots = opts.watchedSlots || [];
@@ -85848,7 +86057,7 @@ ${ESTIMATE_HINT}`,
     }
     if (hasPlaceholder) return "progress";
     const debounce = opts.failureDebounceMs != null && opts.failureDebounceMs > 0 ? opts.failureDebounceMs : 2500;
-    if (allMissing && atNext <= opts.beforeNext && opts.elapsedMs > debounce) {
+    if (allMissing && atNext <= opts.beforeNext && opts.elapsedMs > debounce && !unreliable) {
       return "failure";
     }
     return "pending";
@@ -86836,21 +87045,20 @@ ${ESTIMATE_HINT}`,
       for (let i = 0; i < timers.length; i++) window.clearTimeout(timers[i]);
       fn();
     };
+    const evalWatch = (failureDebounceMs) => evaluateShrineBagWatch({
+      items: observingBagItems(),
+      name: opts.name,
+      fromLevel: opts.fromLevel,
+      beforeNext: opts.beforeNext,
+      watchedSlots: opts.watchedSlots,
+      elapsedMs: Date.now() - started2,
+      failureDebounceMs,
+      // Mid-reconnect bags look empty — do not call that a shrine fail.
+      snapshotUnreliable: isBagRefreshing()
+    });
     const poll = () => {
       if (done) return;
-      try {
-        refreshObservedInventory();
-      } catch (e2) {
-      }
-      const items = observingBagItems();
-      const verdict = evaluateShrineBagWatch({
-        items,
-        name: opts.name,
-        fromLevel: opts.fromLevel,
-        beforeNext: opts.beforeNext,
-        watchedSlots: opts.watchedSlots,
-        elapsedMs: Date.now() - started2
-      });
+      const verdict = evalWatch();
       if (verdict === "success") {
         finish(() => opts.onSuccess());
         return;
@@ -86864,6 +87072,18 @@ ${ESTIMATE_HINT}`,
         if (opts.onProgress) opts.onProgress();
       }
     };
+    const refreshKicks = [700, 2800];
+    for (let i = 0; i < refreshKicks.length; i++) {
+      timers.push(
+        window.setTimeout(() => {
+          if (done) return;
+          try {
+            refreshObservedInventory();
+          } catch (e2) {
+          }
+        }, refreshKicks[i])
+      );
+    }
     const kicks = [500, 1e3, 1800, 2800, 4200, 6500, 9e3, 12e3, 16e3];
     for (let i = 0; i < kicks.length; i++) {
       timers.push(window.setTimeout(poll, kicks[i]));
@@ -86876,16 +87096,7 @@ ${ESTIMATE_HINT}`,
             refreshObservedInventory();
           } catch (e2) {
           }
-          const items = observingBagItems();
-          const verdict = evaluateShrineBagWatch({
-            items,
-            name: opts.name,
-            fromLevel: opts.fromLevel,
-            beforeNext: opts.beforeNext,
-            watchedSlots: opts.watchedSlots,
-            elapsedMs: Date.now() - started2,
-            failureDebounceMs: 4e3
-          });
+          const verdict = evalWatch(4e3);
           if (verdict === "success") {
             finish(() => opts.onSuccess());
             return;
@@ -89327,10 +89538,11 @@ ${ESTIMATE_HINT}`,
   width: 100%;
 }
 .comm-bag-panel.is-phone .comm-bag-sync-chrome {
-  min-height: 48px;
+  /* Status-only on phone (actions live in the foot) \u2014 keep this compact. */
+  min-height: 0;
   height: auto;
-  padding: 8px 10px;
-  gap: 10px;
+  padding: 4px 10px;
+  gap: 8px;
   flex: 0 0 auto;
   width: 100% !important;
   min-width: 0 !important;
@@ -89382,20 +89594,28 @@ ${ESTIMATE_HINT}`,
   background: #0a0a0a;
 }
 .comm-bag-panel.is-phone.is-expanded .comm-bag-mount #bottomleftcorner {
-  /* zoom (not transform) grows layout box so the sheet isn\u2019t left empty under the board. */
-  min-width: 0;
+  /* Keep the unzoomed 7-col float width (\u2265385). Shrinking min-width wraps to 6+1.
+   * --ecu-bag-phone-zoom scales that board into the sheet (see BagPanel). */
+  min-width: 385px;
   max-width: none;
   max-height: none;
   width: max-content;
   margin: 0 auto;
   flex: 0 0 auto;
-  zoom: 1.45;
+  zoom: var(--ecu-bag-phone-zoom, 1);
 }
 .comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
   /* Pack the board under the title \u2014 avoid a black void above the grid. */
   align-items: flex-start;
   justify-content: center;
-  padding: 8px 4px 10px;
+  /* No side padding \u2014 390px phones are already tight vs the 385px board. */
+  padding: 4px 0 8px;
+}
+/* Stock inventory close \u2014 ECU panel/phone Done owns dismiss; phrase keys also
+ * render as raw ".inventory.close" when localization is missing. */
+.comm-bag-mount .inventory-close,
+.comm-bag-panel .inventory-close {
+  display: none !important;
 }
 .comm-bag-panel.is-phone .comm-bag-panel__phoneFoot {
   flex: 0 0 auto;
@@ -89622,8 +89842,9 @@ ${ESTIMATE_HINT}`,
           border: "1px solid #444",
           // Stretch with the inventory host — do not lock to BAG_FRAME_WIDTH
           // (fixed width + #bottomleftcorner borders wraps floats into 6+1 rows).
+          // Phone sheets are ~390px; a 385 min-width overflows the sheet.
           width: "100%",
-          minWidth: BAG_FRAME_WIDTH
+          minWidth: statusOnly ? 0 : BAG_FRAME_WIDTH
         }
       },
       e(
@@ -89784,6 +90005,42 @@ ${ESTIMATE_HINT}`,
       attachInventoryToMount(mountRef.current);
       if (open) refreshInventoryItemTitles();
     }, [open, refreshing, showDummy, props.tradeRevision]);
+    React.useLayoutEffect(() => {
+      if (!phoneUi || !expanded) return;
+      const mount = mountRef.current;
+      if (!mount) return;
+      const fitZoom = () => {
+        const host5 = mount.querySelector(
+          "#" + HOST_ID6
+        );
+        if (!host5) return;
+        const prevZoom = host5.style.zoom;
+        host5.style.zoom = "1";
+        const natural = Math.max(
+          host5.scrollWidth || 0,
+          host5.offsetWidth || 0,
+          BAG_FRAME_WIDTH
+        );
+        host5.style.zoom = prevZoom;
+        const avail = Math.max(0, mount.clientWidth);
+        if (avail <= 0 || natural <= 0) return;
+        const z = Math.min(1.25, Math.max(0.72, avail / natural));
+        mount.style.setProperty(
+          "--ecu-bag-phone-zoom",
+          String(Number(z.toFixed(4)))
+        );
+      };
+      fitZoom();
+      const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => fitZoom()) : null;
+      if (ro) ro.observe(mount);
+      const mo = new MutationObserver(() => fitZoom());
+      const host4 = mount.querySelector("#" + HOST_ID6);
+      if (host4) mo.observe(host4, { childList: true, subtree: true });
+      return () => {
+        if (ro) ro.disconnect();
+        mo.disconnect();
+      };
+    }, [phoneUi, expanded, open, refreshing, showDummy]);
     const showNeedObserve = phoneUi && !observing && !showDummy && !refreshing;
     return e(
       "div",

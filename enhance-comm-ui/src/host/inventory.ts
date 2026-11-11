@@ -45,6 +45,11 @@ let bagSyncedForName: string | null = null;
 let bagRenderedForName: string | null = null;
 /** True while Refresh is reconnecting the observer for a fresh welcome. */
 let bagRefreshing = false;
+/**
+ * Another refresh was asked while `init_socket` was already in flight.
+ * Run one more after the current poll settles (coalesce shrine/watch storms).
+ */
+let bagRefreshQueued = false;
 /** Observed name we expect after Refresh reconnect. */
 let refreshPendingName: string | null = null;
 let refreshPollTimer: number | null = null;
@@ -101,6 +106,12 @@ html.ecu-phone-dock-on #${HOST_ID} {
 #${HOST_ID} .theinventory {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
+}
+/* Stock /comm rows use white-space:nowrap; ECU forces the non-comm 7-col
+ * branch (no nowrap in html.js) so narrow hosts wrap to 6+1 and look like
+ * missing columns. Keep each inventory row on one line. */
+#${HOST_ID} .theinventory > div {
+  white-space: nowrap;
 }
 .imodal .theinventory {
   margin-top: 0 !important;
@@ -397,13 +408,35 @@ export function repaintObservedInventoryFromSnapshot(): void {
   });
 }
 
+function finishBagRefreshCycle(): void {
+  setBagRefreshing(false);
+  if (!bagRefreshQueued) return;
+  bagRefreshQueued = false;
+  // One coalesced follow-up — shrine watch used to stack init_socket storms.
+  window.setTimeout(() => {
+    try {
+      refreshObservedInventory();
+    } catch {
+      /* best-effort */
+    }
+  }, 0);
+}
+
 /**
  * Best-effort refresh of observed inventory.
  * Prefer observe reconnect (`init_socket({secret})`) — the only stock path that
  * replaces `observing.items`. Falls back to local re-render when secret/socket
  * is unavailable.
+ *
+ * Concurrent calls coalesce: only one `init_socket` runs; further asks queue a
+ * single retry after the current reconnect settles (avoids observe drops).
  */
 export function refreshObservedInventory(): void {
+  if (bagRefreshing || refreshPollTimer != null) {
+    bagRefreshQueued = true;
+    return;
+  }
+
   const obs = window.observing;
   const name = obs && obs.name != null ? String(obs.name) : "";
   const secret = name ? findObserveSecret(name) : null;
@@ -425,9 +458,9 @@ export function refreshObservedInventory(): void {
   const initSocket = (window as any).init_socket as
     ((args?: { secret?: string }) => void) | undefined;
   if (typeof initSocket !== "function") {
-    setBagRefreshing(false);
     refreshPendingName = null;
     repaintObservedInventoryFromSnapshot();
+    finishBagRefreshCycle();
     return;
   }
   initSocket({ secret });
@@ -444,7 +477,7 @@ export function refreshObservedInventory(): void {
       if (bagSyncedAt == null) stampBagSyncedFromObserving(next);
       // Re-open before clearing refreshing so the Bag panel stays mounted.
       openInventory();
-      setBagRefreshing(false);
+      finishBagRefreshCycle();
       return;
     }
     if (attempts > 40) {
@@ -456,9 +489,21 @@ export function refreshObservedInventory(): void {
         if (bagSyncedAt == null) stampBagSyncedFromObserving(window.observing);
         openInventory();
       } else {
+        // Keep watching if we still have a name — do not leave observe cleared.
         bagRefreshKind = "local";
+        if (name) {
+          try {
+            const again = (window as any).init_socket as
+              | ((args?: { secret?: string }) => void)
+              | undefined;
+            const sec = findObserveSecret(name);
+            if (typeof again === "function" && sec) again({ secret: sec });
+          } catch {
+            /* best-effort */
+          }
+        }
       }
-      setBagRefreshing(false);
+      finishBagRefreshCycle();
     }
   }, 250);
 }

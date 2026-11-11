@@ -122,10 +122,11 @@ const CSS = `
   width: 100%;
 }
 .comm-bag-panel.is-phone .comm-bag-sync-chrome {
-  min-height: 48px;
+  /* Status-only on phone (actions live in the foot) — keep this compact. */
+  min-height: 0;
   height: auto;
-  padding: 8px 10px;
-  gap: 10px;
+  padding: 4px 10px;
+  gap: 8px;
   flex: 0 0 auto;
   width: 100% !important;
   min-width: 0 !important;
@@ -177,20 +178,28 @@ const CSS = `
   background: #0a0a0a;
 }
 .comm-bag-panel.is-phone.is-expanded .comm-bag-mount #bottomleftcorner {
-  /* zoom (not transform) grows layout box so the sheet isn’t left empty under the board. */
-  min-width: 0;
+  /* Keep the unzoomed 7-col float width (≥385). Shrinking min-width wraps to 6+1.
+   * --ecu-bag-phone-zoom scales that board into the sheet (see BagPanel). */
+  min-width: 385px;
   max-width: none;
   max-height: none;
   width: max-content;
   margin: 0 auto;
   flex: 0 0 auto;
-  zoom: 1.45;
+  zoom: var(--ecu-bag-phone-zoom, 1);
 }
 .comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
   /* Pack the board under the title — avoid a black void above the grid. */
   align-items: flex-start;
   justify-content: center;
-  padding: 8px 4px 10px;
+  /* No side padding — 390px phones are already tight vs the 385px board. */
+  padding: 4px 0 8px;
+}
+/* Stock inventory close — ECU panel/phone Done owns dismiss; phrase keys also
+ * render as raw ".inventory.close" when localization is missing. */
+.comm-bag-mount .inventory-close,
+.comm-bag-panel .inventory-close {
+  display: none !important;
 }
 .comm-bag-panel.is-phone .comm-bag-panel__phoneFoot {
   flex: 0 0 auto;

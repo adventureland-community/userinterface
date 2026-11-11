@@ -12,9 +12,14 @@
 import {
   CAMERA_PAN_SPEED,
   followCameraLockSmoothToward,
+  followEdgeMarginForProfile,
+  followHalfExtentsWithBottomInset,
+  followIdleShouldCenter,
   followLockNeedsRecenter,
+  followRecenterSpeedForProfile,
   followRetileStepWorld,
   followShouldForceRetileAhead,
+  followSubjectIsStill,
   followSubjectOffScreen,
   followViewHalfExtents,
   keysToPan,
@@ -37,6 +42,16 @@ let followCamera = true;
 /** Smooth Follow recenter in progress (edge left dead zone → ease to center). */
 let followRecenter = false;
 let followRecenterLastTs = 0;
+/** Last Follow subject sample — idle center when they stand still. */
+let followSubjectLastX: number | null = null;
+let followSubjectLastY: number | null = null;
+/** `performance.now()` when the subject first looked still (0 = moving). */
+let followSubjectStillSince = 0;
+/**
+ * Realm fingerprint while Follow is on — map/instance/server hop hard-snaps
+ * the lock (free-cam uses {@link freeCamRealmKey} separately).
+ */
+let followRealmKey = "";
 let lockX = 0;
 let lockY = 0;
 /** Observer/spectator world pos frozen when free-cam starts (vision hole). */
@@ -197,6 +212,10 @@ function clearFollowRecenter(): void {
   hasFollowRetileMark = false;
 }
 
+function noteFollowRealmKey(): void {
+  followRealmKey = readCameraRealmKey() || "";
+}
+
 function nowMs(): number {
   return typeof performance !== "undefined" &&
     typeof performance.now === "function"
@@ -322,16 +341,82 @@ function syncRealmFallbackTimer(): void {
   realmFallbackId = null;
 }
 
+function clearFollowIdleTracking(): void {
+  followSubjectLastX = null;
+  followSubjectLastY = null;
+  followSubjectStillSince = 0;
+}
+
+function noteFollowSubjectSample(at: { x: number; y: number }, now: number): void {
+  if (
+    followSubjectIsStill(
+      followSubjectLastX,
+      followSubjectLastY,
+      at.x,
+      at.y,
+    )
+  ) {
+    if (!(followSubjectStillSince > 0)) followSubjectStillSince = now;
+  } else {
+    followSubjectStillSince = 0;
+  }
+  followSubjectLastX = at.x;
+  followSubjectLastY = at.y;
+}
+
+/** Phone dock / home indicator — keep Follow dead zone above this chrome. */
+function readPhoneFollowBottomInsetPx(): number {
+  if (typeof document === "undefined") return 0;
+  const root = document.documentElement;
+  if (
+    detectViewportProfile() !== "phone" &&
+    !root.classList.contains("ecu-phone-dock-on")
+  ) {
+    return 0;
+  }
+  const raw = getComputedStyle(root).getPropertyValue("--ecu-phone-dock-h");
+  const dock = Number.parseFloat(raw);
+  const dockPx = Number.isFinite(dock) && dock > 0 ? dock : 56;
+  return dockPx + 8;
+}
+
+function followHalfForPan(): {
+  halfW: number;
+  halfH: number;
+  edgeMargin: number;
+  recenterSpeed: number;
+} {
+  const size = readHostSize();
+  const base = followViewHalfExtents(size.w, size.h, readHostWorldZoom());
+  const profile = detectViewportProfile();
+  const inset = readPhoneFollowBottomInsetPx();
+  const half = followHalfExtentsWithBottomInset(
+    base.halfW,
+    base.halfH,
+    size.h,
+    inset,
+  );
+  return {
+    halfW: half.halfW,
+    halfH: half.halfH,
+    edgeMargin: followEdgeMarginForProfile(profile),
+    recenterSpeed: followRecenterSpeedForProfile(profile),
+  };
+}
+
 /**
  * Follow: idle while the subject stays in the viewport dead zone; once they
  * near the edge, ease the lock onto them (true center) instead of edge-nudging.
- * Step-ahead forced retiles keep map tiles in front of the ease.
+ * Standing still also recenters after a short dwell. Phone uses a tighter band
+ * above the dock so they do not walk into vision fog first. Step-ahead forced
+ * retiles keep map tiles in front of the ease.
  */
 function panLockToObserved(): void {
   const at = readObservedWorldXY();
   if (!at) return;
-  const size = readHostSize();
-  const half = followViewHalfExtents(size.w, size.h, readHostWorldZoom());
+  const now = nowMs();
+  noteFollowSubjectSample(at, now);
+  const half = followHalfForPan();
   if (
     followSubjectOffScreen(lockX, lockY, at.x, at.y, half.halfW, half.halfH)
   ) {
@@ -341,8 +426,19 @@ function panLockToObserved(): void {
     forceFollowRetileAtLock();
     return;
   }
+  const idleForMs =
+    followSubjectStillSince > 0 ? now - followSubjectStillSince : 0;
   if (
-    followLockNeedsRecenter(lockX, lockY, at.x, at.y, half.halfW, half.halfH)
+    followLockNeedsRecenter(
+      lockX,
+      lockY,
+      at.x,
+      at.y,
+      half.halfW,
+      half.halfH,
+      half.edgeMargin,
+    ) ||
+    followIdleShouldCenter(idleForMs, lockX, lockY, at.x, at.y)
   ) {
     const starting = !followRecenter;
     followRecenter = true;
@@ -351,13 +447,19 @@ function panLockToObserved(): void {
   }
   if (!followRecenter) return;
 
-  const now = nowMs();
   const dt =
     followRecenterLastTs > 0
       ? Math.min(0.05, Math.max(0, (now - followRecenterLastTs) / 1000))
       : 1 / 60;
   followRecenterLastTs = now;
-  const next = followCameraLockSmoothToward(lockX, lockY, at.x, at.y, dt);
+  const next = followCameraLockSmoothToward(
+    lockX,
+    lockY,
+    at.x,
+    at.y,
+    dt,
+    half.recenterSpeed,
+  );
   lockX = next.x;
   lockY = next.y;
   maybeForceFollowRetileAlongPath(half.halfW, half.halfH);
@@ -445,6 +547,36 @@ export function syncFreeCameraAfterRealmChange(): boolean {
   return true;
 }
 
+/**
+ * While Follow is on, hard-snap + o:home when map/instance/server changes so
+ * the camera catches the watched character on the new map without waiting for
+ * the dead-zone edge. Returns true when a hop snap ran.
+ */
+export function syncFollowAfterRealmChange(): boolean {
+  if (!followCamera || freeCamera) return false;
+  const key = readCameraRealmKey();
+  if (!key) return false;
+  if (!followRealmKey) {
+    followRealmKey = key;
+    return false;
+  }
+  if (key === followRealmKey) return false;
+  followRealmKey = key;
+  clearFollowRecenter();
+  clearFollowIdleTracking();
+  const snapped = snapMapToObserved();
+  forceFollowRetileAtLock();
+  emitObserveHome();
+  // Entity XY often lands a tick after current_map — retry once.
+  window.setTimeout(() => {
+    if (!followCamera || freeCamera) return;
+    if (readCameraRealmKey() !== key) return;
+    snapMapToObserved();
+    forceFollowRetileAtLock();
+  }, 250);
+  return snapped;
+}
+
 function readObservedWorldXY(): { x: number; y: number } | null {
   const w = window as Window & {
     observing?: {
@@ -526,7 +658,9 @@ export function unlockCamera(): void {
     freeCamera = true;
     const wasFollow = followCamera;
     followCamera = false;
+    followRealmKey = "";
     clearFollowRecenter();
+    clearFollowIdleTracking();
     notifyFree();
     if (wasFollow) notifyFollow();
   }
@@ -856,6 +990,7 @@ function stopRafIfIdle(): void {
  */
 function patchedPositionMap(this: unknown): void {
   syncFreeCameraAfterRealmChange();
+  syncFollowAfterRealmChange();
   const map = hostMap();
   const w = window as Window & { character?: unknown };
   if (followCamera && !freeCamera) {
@@ -927,7 +1062,8 @@ export function centerOnObservedCamera(): void {
 
 /**
  * Toggle Follow (exits free-cam when on). Snaps once, then dead-zone idle with
- * smooth recenter to center when they near the edge. Pan clears Follow.
+ * smooth recenter when they near the edge or stand still. Map hops hard-snap.
+ * Pan clears Follow.
  */
 export function setFollowCamera(on: boolean): void {
   if (on) {
@@ -935,6 +1071,8 @@ export function setFollowCamera(on: boolean): void {
     lockCamera();
     snapMapToObserved();
     clearFollowRecenter();
+    clearFollowIdleTracking();
+    noteFollowRealmKey();
     emitObserveHome();
     notifyFollow();
     window.setTimeout(() => {
@@ -943,7 +1081,9 @@ export function setFollowCamera(on: boolean): void {
     return;
   }
   followCamera = false;
+  followRealmKey = "";
   clearFollowRecenter();
+  clearFollowIdleTracking();
   notifyFollow();
   unlockCamera();
 }

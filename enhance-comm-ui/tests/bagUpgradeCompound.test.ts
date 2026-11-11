@@ -528,5 +528,10 @@ describe("upgrade / compound scripts", () => {
     );
     assert.match(script, /compound chance/);
     assert.match(script, /duplicate slots/);
+    // Partners rematch exclusively so identical copies don't collide.
+    assert.match(script, /__c1Si===__c0/);
+    assert.match(script, /__c2Si===__c0\|\|__c2Si===__c1/);
+    // Plain title key — empty/missing `p` must not rematch shiny twins.
+    assert.match(script, /!==""/);
   });
 });
