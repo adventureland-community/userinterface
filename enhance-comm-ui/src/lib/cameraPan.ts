@@ -179,6 +179,12 @@ export const FOLLOW_RETILE_STEP_FRAC = 0.35;
 export const FOLLOW_IDLE_CENTER_MS = 900;
 /** World units — subject motion below this counts as standing still. */
 export const FOLLOW_IDLE_MOVE_EPS = 2;
+/**
+ * World units — subject jump from the prior Follow sample that counts as a
+ * teleport (town / door / transport). Hard-snaps instead of easing, including
+ * same-map hops that never change the map/instance fingerprint.
+ */
+export const FOLLOW_TELEPORT_JUMP = 180;
 
 /** World half-extents of the logical buffer (stock width/height ÷ scale). */
 export function followViewHalfExtents(
@@ -301,6 +307,48 @@ export function followSubjectOffScreen(
 ): boolean {
   return (
     Math.abs(subjectX - lockX) > halfW || Math.abs(subjectY - lockY) > halfH
+  );
+}
+
+/**
+ * True when the Follow subject jumped far enough between samples to treat as
+ * a teleport (town on the same map, late entity XY after a door, etc.).
+ */
+export function followSubjectTeleported(
+  prevX: number | null | undefined,
+  prevY: number | null | undefined,
+  subjectX: number,
+  subjectY: number,
+  jump: number = FOLLOW_TELEPORT_JUMP,
+): boolean {
+  if (prevX == null || prevY == null) return false;
+  if (!Number.isFinite(prevX + prevY + subjectX + subjectY)) return false;
+  const lim = jump > 0 && Number.isFinite(jump) ? jump : FOLLOW_TELEPORT_JUMP;
+  return Math.hypot(subjectX - prevX, subjectY - prevY) >= lim;
+}
+
+/**
+ * True when Follow should hard-snap the lock (off-screen or teleport jump)
+ * instead of easing through the dead zone.
+ */
+export function followLockNeedsHardSnap(
+  lockX: number,
+  lockY: number,
+  subjectX: number,
+  subjectY: number,
+  halfW: number,
+  halfH: number,
+  prevSubjectX?: number | null,
+  prevSubjectY?: number | null,
+): boolean {
+  if (followSubjectOffScreen(lockX, lockY, subjectX, subjectY, halfW, halfH)) {
+    return true;
+  }
+  return followSubjectTeleported(
+    prevSubjectX,
+    prevSubjectY,
+    subjectX,
+    subjectY,
   );
 }
 

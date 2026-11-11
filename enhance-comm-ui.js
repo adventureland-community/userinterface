@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.19.1
+// @version      0.19.2
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -9660,6 +9660,20 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.19.2",
+      title: "0.19.2",
+      date: "2026-11-11",
+      summary: "Follow snaps onto the watched character after town, doors, and map changes instead of easing across the gap.",
+      highlights: [
+        {
+          label: "Follow after town / map hops",
+          detail: "Town, doors, and realm or map changes hard-snap Follow onto the watched character. Same-map town no longer leaves the camera easing from the old spot.",
+          kind: "fix"
+        }
+      ],
+      items: []
+    },
+    {
       id: "0.19.1",
       title: "0.19.1",
       date: "2026-11-11",
@@ -17048,6 +17062,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var FOLLOW_RETILE_STEP_FRAC = 0.35;
   var FOLLOW_IDLE_CENTER_MS = 900;
   var FOLLOW_IDLE_MOVE_EPS = 2;
+  var FOLLOW_TELEPORT_JUMP = 180;
   function followViewHalfExtents(width, height, scale) {
     const s = scale > 0 && Number.isFinite(scale) ? scale : 1;
     const w = width > 0 && Number.isFinite(width) ? width : 1;
@@ -17093,6 +17108,23 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function followSubjectOffScreen(lockX2, lockY2, subjectX, subjectY, halfW, halfH) {
     return Math.abs(subjectX - lockX2) > halfW || Math.abs(subjectY - lockY2) > halfH;
+  }
+  function followSubjectTeleported(prevX, prevY, subjectX, subjectY, jump = FOLLOW_TELEPORT_JUMP) {
+    if (prevX == null || prevY == null) return false;
+    if (!Number.isFinite(prevX + prevY + subjectX + subjectY)) return false;
+    const lim = jump > 0 && Number.isFinite(jump) ? jump : FOLLOW_TELEPORT_JUMP;
+    return Math.hypot(subjectX - prevX, subjectY - prevY) >= lim;
+  }
+  function followLockNeedsHardSnap(lockX2, lockY2, subjectX, subjectY, halfW, halfH, prevSubjectX, prevSubjectY) {
+    if (followSubjectOffScreen(lockX2, lockY2, subjectX, subjectY, halfW, halfH)) {
+      return true;
+    }
+    return followSubjectTeleported(
+      prevSubjectX,
+      prevSubjectY,
+      subjectX,
+      subjectY
+    );
   }
   function followRetileStepWorld(halfW, halfH, frac = FOLLOW_RETILE_STEP_FRAC) {
     const short = Math.min(
@@ -17160,7 +17192,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var DESKTOP_ECU_MDRAW_BORDER = 140;
   var LARGE_VIEW_AREA = 900 * 700;
   var LOCK_MOVED_HOLD_MS = 250;
-  var REALM_FALLBACK_MS = 2e3;
+  var REALM_FALLBACK_MS = 1e3;
+  var FOLLOW_HOP_RETRY_MS = [80, 200, 500, 1200];
   var origRetileTheMap = null;
   var lockMovedUntil = 0;
   var realmFallbackId = null;
@@ -17311,10 +17344,11 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (typeof window === "undefined" || typeof window.setInterval !== "function") {
       return;
     }
-    if (freeCamera) {
+    if (freeCamera || followCamera && !freeCamera) {
       if (realmFallbackId != null) return;
       realmFallbackId = window.setInterval(() => {
-        syncFreeCameraAfterRealmChange();
+        if (freeCamera) syncFreeCameraAfterRealmChange();
+        else if (followCamera) syncFollowAfterRealmChange();
       }, REALM_FALLBACK_MS);
       return;
     }
@@ -17374,13 +17408,27 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     const at = readObservedWorldXY();
     if (!at) return;
     const now = nowMs();
-    noteFollowSubjectSample(at, now);
     const half = followHalfForPan();
-    if (followSubjectOffScreen(lockX, lockY, at.x, at.y, half.halfW, half.halfH)) {
+    const hardSnap = followLockNeedsHardSnap(
+      lockX,
+      lockY,
+      at.x,
+      at.y,
+      half.halfW,
+      half.halfH,
+      followSubjectLastX,
+      followSubjectLastY
+    );
+    noteFollowSubjectSample(at, now);
+    if (hardSnap) {
       lockX = at.x;
       lockY = at.y;
       clearFollowRecenter();
+      clearFollowIdleTracking();
+      followSubjectLastX = at.x;
+      followSubjectLastY = at.y;
       forceFollowRetileAtLock();
+      emitObserveHome();
       return;
     }
     const idleForMs = followSubjectStillSince > 0 ? now - followSubjectStillSince : 0;
@@ -17460,6 +17508,21 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     syncLockFromMap();
     return true;
   }
+  function scheduleFollowHopRetries(key) {
+    if (typeof window === "undefined" || typeof window.setTimeout !== "function") {
+      return;
+    }
+    for (let i = 0; i < FOLLOW_HOP_RETRY_MS.length; i++) {
+      const delay2 = FOLLOW_HOP_RETRY_MS[i];
+      window.setTimeout(() => {
+        if (!followCamera || freeCamera) return;
+        if (readCameraRealmKey() !== key) return;
+        snapMapToObserved();
+        forceFollowRetileAtLock();
+        if (i === 0) emitObserveHome();
+      }, delay2);
+    }
+  }
   function syncFollowAfterRealmChange() {
     if (!followCamera || freeCamera) return false;
     const key = readCameraRealmKey();
@@ -17475,12 +17538,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     const snapped = snapMapToObserved();
     forceFollowRetileAtLock();
     emitObserveHome();
-    window.setTimeout(() => {
-      if (!followCamera || freeCamera) return;
-      if (readCameraRealmKey() !== key) return;
-      snapMapToObserved();
-      forceFollowRetileAtLock();
-    }, 250);
+    scheduleFollowHopRetries(key);
     return snapped;
   }
   function readObservedWorldXY() {
@@ -17870,6 +17928,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       noteFollowRealmKey();
       emitObserveHome();
       notifyFollow();
+      syncRealmFallbackTimer();
       window.setTimeout(() => {
         if (followCamera && !freeCamera) snapMapToObserved();
       }, 400);
@@ -17880,6 +17939,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     clearFollowRecenter();
     clearFollowIdleTracking();
     notifyFollow();
+    syncRealmFallbackTimer();
     unlockCamera();
   }
   function followObservedCamera() {
@@ -33396,8 +33456,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.19.1" : "unknown";
-    const builtAt = true ? "2026-11-11T17:47:38.165Z" : "unknown";
+    const version = true ? "0.19.2" : "unknown";
+    const builtAt = true ? "2026-11-11T18:12:53.873Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,

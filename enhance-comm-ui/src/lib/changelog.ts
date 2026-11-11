@@ -118,6 +118,22 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.19.2",
+    title: "0.19.2",
+    date: "2026-11-11",
+    summary:
+      "Follow snaps onto the watched character after town, doors, and map changes instead of easing across the gap.",
+    highlights: [
+      {
+        label: "Follow after town / map hops",
+        detail:
+          "Town, doors, and realm or map changes hard-snap Follow onto the watched character. Same-map town no longer leaves the camera easing from the old spot.",
+        kind: "fix",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.19.1",
     title: "0.19.1",
     date: "2026-11-11",

@@ -8,18 +8,21 @@ import {
   FOLLOW_RECENTER_SNAP,
   FOLLOW_RECENTER_SPEED,
   FOLLOW_RECENTER_SPEED_PHONE,
+  FOLLOW_TELEPORT_JUMP,
   JOYSTICK_DEADZONE,
   JOYSTICK_RADIUS_PX,
   followCameraLockSmoothToward,
   followEdgeMarginForProfile,
   followHalfExtentsWithBottomInset,
   followIdleShouldCenter,
+  followLockNeedsHardSnap,
   followLockNeedsRecenter,
   followRecenterSpeedForProfile,
   followRetileStepWorld,
   followShouldForceRetileAhead,
   followSubjectIsStill,
   followSubjectOffScreen,
+  followSubjectTeleported,
   followViewHalfExtents,
   keysToPan,
   joystickToPan,
@@ -171,6 +174,39 @@ describe("cameraPan math", () => {
     assert.ok(next.halfH > 300);
   });
 
+  it("hard-snaps Follow on town-sized teleports even when still on-screen", () => {
+    const halfW = 800;
+    const halfH = 600;
+    // Wide FOV: town spawn can remain inside the logical viewport.
+    assert.equal(
+      followSubjectOffScreen(0, 0, FOLLOW_TELEPORT_JUMP + 20, 0, halfW, halfH),
+      false,
+    );
+    assert.equal(
+      followSubjectTeleported(0, 0, FOLLOW_TELEPORT_JUMP + 20, 0),
+      true,
+    );
+    assert.equal(
+      followLockNeedsHardSnap(
+        0,
+        0,
+        FOLLOW_TELEPORT_JUMP + 20,
+        0,
+        halfW,
+        halfH,
+        0,
+        0,
+      ),
+      true,
+    );
+    // Normal walk step — no hard snap.
+    assert.equal(followSubjectTeleported(0, 0, 12, 0), false);
+    assert.equal(
+      followLockNeedsHardSnap(0, 0, 12, 0, halfW, halfH, 0, 0),
+      false,
+    );
+  });
+
   it("smoothly eases the Follow lock onto the subject center", () => {
     const step = followCameraLockSmoothToward(0, 0, 200, 0, 1 / 60);
     assert.ok(step.x > 0 && step.x < 200);
@@ -267,6 +303,7 @@ describe("cameraPan Follow map hop snap", () => {
   it("hard-snaps Follow + o:home when current_map changes", () => {
     const prev = (globalThis as { window?: unknown }).window;
     let homeEmits = 0;
+    const timeouts: Array<() => void> = [];
     (globalThis as { window: any }).window = {
       current_map: "main",
       current_in: "main",
@@ -291,15 +328,18 @@ describe("cameraPan Follow map hop snap", () => {
       },
       requestAnimationFrame: () => 1,
       cancelAnimationFrame: () => {},
+      setInterval: () => 1,
+      clearInterval: () => {},
       setTimeout: (fn: () => void) => {
-        fn();
-        return 1;
+        timeouts.push(fn);
+        return timeouts.length;
       },
     };
     try {
       setFollowCamera(true);
       assert.equal(isFollowCamera(), true);
       homeEmits = 0;
+      timeouts.length = 0;
       (window as any).current_map = "desertland";
       (window as any).map.map_name = "desertland";
       (window as any).entities.Hero.real_x = 900;
@@ -308,6 +348,13 @@ describe("cameraPan Follow map hop snap", () => {
       assert.equal((window as any).map.real_x, 900);
       assert.equal((window as any).map.real_y, -50);
       assert.ok(homeEmits >= 1);
+      assert.ok(timeouts.length >= 3);
+      // Late entity correction on a hop retry.
+      (window as any).entities.Hero.real_x = 940;
+      (window as any).entities.Hero.real_y = -60;
+      timeouts[0]();
+      assert.equal((window as any).map.real_x, 940);
+      assert.equal((window as any).map.real_y, -60);
       // Same key again — no repeat snap.
       homeEmits = 0;
       assert.equal(syncFollowAfterRealmChange(), false);

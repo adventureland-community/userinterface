@@ -15,12 +15,12 @@ import {
   followEdgeMarginForProfile,
   followHalfExtentsWithBottomInset,
   followIdleShouldCenter,
+  followLockNeedsHardSnap,
   followLockNeedsRecenter,
   followRecenterSpeedForProfile,
   followRetileStepWorld,
   followShouldForceRetileAhead,
   followSubjectIsStill,
-  followSubjectOffScreen,
   followViewHalfExtents,
   keysToPan,
   mouseDragWorldDelta,
@@ -95,8 +95,10 @@ const DESKTOP_ECU_MDRAW_BORDER = 140;
 const LARGE_VIEW_AREA = 900 * 700;
 /** Hold wide border briefly after a free-cam pan so the next retile sees it. */
 const LOCK_MOVED_HOLD_MS = 250;
-/** Slow fallback while free-cam — position_map already syncs on draw. */
-const REALM_FALLBACK_MS = 2000;
+/** Slow fallback while free-cam / Follow — position_map already syncs on draw. */
+const REALM_FALLBACK_MS = 1000;
+/** After a map hop, re-snap while entity XY / tiles catch up. */
+const FOLLOW_HOP_RETRY_MS = [80, 200, 500, 1200];
 let origRetileTheMap: (() => void) | null = null;
 let lockMovedUntil = 0;
 let realmFallbackId: number | null = null;
@@ -329,10 +331,11 @@ function syncRealmFallbackTimer(): void {
   ) {
     return;
   }
-  if (freeCamera) {
+  if (freeCamera || (followCamera && !freeCamera)) {
     if (realmFallbackId != null) return;
     realmFallbackId = window.setInterval(() => {
-      syncFreeCameraAfterRealmChange();
+      if (freeCamera) syncFreeCameraAfterRealmChange();
+      else if (followCamera) syncFollowAfterRealmChange();
     }, REALM_FALLBACK_MS);
     return;
   }
@@ -408,22 +411,36 @@ function followHalfForPan(): {
  * Follow: idle while the subject stays in the viewport dead zone; once they
  * near the edge, ease the lock onto them (true center) instead of edge-nudging.
  * Standing still also recenters after a short dwell. Phone uses a tighter band
- * above the dock so they do not walk into vision fog first. Step-ahead forced
- * retiles keep map tiles in front of the ease.
+ * above the dock so they do not walk into vision fog first. Town / transport
+ * teleports hard-snap (same-map jumps never change the realm key). Step-ahead
+ * forced retiles keep map tiles in front of the ease.
  */
 function panLockToObserved(): void {
   const at = readObservedWorldXY();
   if (!at) return;
   const now = nowMs();
-  noteFollowSubjectSample(at, now);
   const half = followHalfForPan();
-  if (
-    followSubjectOffScreen(lockX, lockY, at.x, at.y, half.halfW, half.halfH)
-  ) {
+  const hardSnap = followLockNeedsHardSnap(
+    lockX,
+    lockY,
+    at.x,
+    at.y,
+    half.halfW,
+    half.halfH,
+    followSubjectLastX,
+    followSubjectLastY,
+  );
+  noteFollowSubjectSample(at, now);
+  if (hardSnap) {
     lockX = at.x;
     lockY = at.y;
     clearFollowRecenter();
+    clearFollowIdleTracking();
+    // Keep last sample at the new XY so the next frame does not re-fire.
+    followSubjectLastX = at.x;
+    followSubjectLastY = at.y;
     forceFollowRetileAtLock();
+    emitObserveHome();
     return;
   }
   const idleForMs =
@@ -547,6 +564,26 @@ export function syncFreeCameraAfterRealmChange(): boolean {
   return true;
 }
 
+/** Re-snap Follow while entity XY / tiles catch up after a map hop. */
+function scheduleFollowHopRetries(key: string): void {
+  if (
+    typeof window === "undefined" ||
+    typeof window.setTimeout !== "function"
+  ) {
+    return;
+  }
+  for (let i = 0; i < FOLLOW_HOP_RETRY_MS.length; i++) {
+    const delay = FOLLOW_HOP_RETRY_MS[i];
+    window.setTimeout(() => {
+      if (!followCamera || freeCamera) return;
+      if (readCameraRealmKey() !== key) return;
+      snapMapToObserved();
+      forceFollowRetileAtLock();
+      if (i === 0) emitObserveHome();
+    }, delay);
+  }
+}
+
 /**
  * While Follow is on, hard-snap + o:home when map/instance/server changes so
  * the camera catches the watched character on the new map without waiting for
@@ -567,13 +604,8 @@ export function syncFollowAfterRealmChange(): boolean {
   const snapped = snapMapToObserved();
   forceFollowRetileAtLock();
   emitObserveHome();
-  // Entity XY often lands a tick after current_map — retry once.
-  window.setTimeout(() => {
-    if (!followCamera || freeCamera) return;
-    if (readCameraRealmKey() !== key) return;
-    snapMapToObserved();
-    forceFollowRetileAtLock();
-  }, 250);
+  // Entity XY often lands after current_map — keep retrying briefly.
+  scheduleFollowHopRetries(key);
   return snapped;
 }
 
@@ -1075,6 +1107,7 @@ export function setFollowCamera(on: boolean): void {
     noteFollowRealmKey();
     emitObserveHome();
     notifyFollow();
+    syncRealmFallbackTimer();
     window.setTimeout(() => {
       if (followCamera && !freeCamera) snapMapToObserved();
     }, 400);
@@ -1085,6 +1118,7 @@ export function setFollowCamera(on: boolean): void {
   clearFollowRecenter();
   clearFollowIdleTracking();
   notifyFollow();
+  syncRealmFallbackTimer();
   unlockCamera();
 }
 
