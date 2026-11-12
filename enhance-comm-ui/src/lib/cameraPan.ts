@@ -25,6 +25,21 @@ export const JOYSTICK_RESPONSE_POWER = 3.8;
 
 export type CameraPanVec = { x: number; y: number };
 
+/**
+ * True when ECU should own `map.real_*` from the camera lock.
+ * Free-cam always owns it. Follow only owns it while there is a live subject
+ * (watched character or self) — otherwise stock spectator / home jumps must
+ * win, and we adopt `map.real_*` into the lock afterward.
+ */
+export function ecuCameraLockDrivesMap(opts: {
+  freeCamera: boolean;
+  followCamera: boolean;
+  hasFollowSubject: boolean;
+}): boolean {
+  if (opts.freeCamera) return true;
+  return !!(opts.followCamera && opts.hasFollowSubject);
+}
+
 export function clampPanAxis(v: number): number {
   if (!Number.isFinite(v)) return 0;
   if (v > 1) return 1;
@@ -185,6 +200,12 @@ export const FOLLOW_IDLE_MOVE_EPS = 2;
  * same-map hops that never change the map/instance fingerprint.
  */
 export const FOLLOW_TELEPORT_JUMP = 180;
+/**
+ * Fraction of each view half-extent — beyond this, Follow hard-snaps instead of
+ * easing. Keeps combat (constant micro-moves that block idle-center) from
+ * parking the subject in a screen corner inside the soft dead zone.
+ */
+export const FOLLOW_HARD_SNAP_FRAC = 0.55;
 
 /** Map GEO extent — used to force Follow center near the rim. */
 export type FollowMapBounds = {
@@ -363,8 +384,32 @@ export function followSubjectNearMapBounds(
 }
 
 /**
- * True when Follow should hard-snap the lock (off-screen, teleport jump, or
- * subject on the map GEO rim) instead of easing through the dead zone.
+ * True when the subject has drifted far enough from the lock that a hard snap
+ * is better than a slow ease (combat micro-moves never trip idle-center).
+ */
+export function followSubjectFarFromLock(
+  lockX: number,
+  lockY: number,
+  subjectX: number,
+  subjectY: number,
+  halfW: number,
+  halfH: number,
+  frac: number = FOLLOW_HARD_SNAP_FRAC,
+): boolean {
+  if (!Number.isFinite(lockX + lockY + subjectX + subjectY)) return false;
+  const f =
+    frac > 0 && Number.isFinite(frac) ? Math.min(0.95, frac) : FOLLOW_HARD_SNAP_FRAC;
+  const limW = Math.max(1, (halfW > 0 && Number.isFinite(halfW) ? halfW : 1) * f);
+  const limH = Math.max(1, (halfH > 0 && Number.isFinite(halfH) ? halfH : 1) * f);
+  return (
+    Math.abs(subjectX - lockX) > limW || Math.abs(subjectY - lockY) > limH
+  );
+}
+
+/**
+ * True when Follow should hard-snap the lock (off-screen, teleport jump,
+ * far drift, or subject on the map GEO rim) instead of easing through the
+ * dead zone.
  */
 export function followLockNeedsHardSnap(
   lockX: number,
@@ -381,6 +426,11 @@ export function followLockNeedsHardSnap(
     return true;
   }
   if (followSubjectTeleported(prevSubjectX, prevSubjectY, subjectX, subjectY)) {
+    return true;
+  }
+  if (
+    followSubjectFarFromLock(lockX, lockY, subjectX, subjectY, halfW, halfH)
+  ) {
     return true;
   }
   if (!followSubjectNearMapBounds(subjectX, subjectY, mapBounds, halfW, halfH)) {

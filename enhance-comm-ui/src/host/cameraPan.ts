@@ -11,6 +11,7 @@
 
 import {
   CAMERA_PAN_SPEED,
+  ecuCameraLockDrivesMap,
   followCameraLockSmoothToward,
   followEdgeMarginForProfile,
   followHalfExtentsWithBottomInset,
@@ -21,6 +22,7 @@ import {
   followRetileStepWorld,
   followShouldForceRetileAhead,
   followSubjectIsStill,
+  followSubjectTeleported,
   followViewHalfExtents,
   type FollowMapBounds,
   keysToPan,
@@ -55,6 +57,12 @@ let followSubjectStillSince = 0;
 let followRealmKey = "";
 /** Last observing id/name — new watch hard-snaps even inside the dead zone. */
 let followObservedKey = "";
+/**
+ * After Center / Follow / observe / clear-observe, stick the lock to the
+ * subject for a short window so combat micro-moves cannot leave them in a
+ * corner before idle-center would fire.
+ */
+let followForceCenterUntil = 0;
 let lockX = 0;
 let lockY = 0;
 /** Observer/spectator world pos frozen when free-cam starts (vision hole). */
@@ -187,7 +195,32 @@ function readHostSize(): { w: number; h: number } {
 
 /** True when ECU owns map.real_* via the lock (free-cam pan or Follow track). */
 function lockDrivesCamera(): boolean {
-  return freeCamera || followCamera;
+  return ecuCameraLockDrivesMap({
+    freeCamera,
+    followCamera,
+    hasFollowSubject: readObservedWorldXY() != null,
+  });
+}
+
+/**
+ * Follow is on but there is no watch/self subject (pure /comm spectator).
+ * Adopt stock `map.real_*` into the lock so home / new_map jumps are not
+ * stomped by a stale Follow lock — and hard-retile when the home teleports.
+ */
+function adoptSpectatorMapHome(): void {
+  const map = hostMap();
+  if (!map) return;
+  const x = Number(map.real_x);
+  const y = Number(map.real_y);
+  if (!Number.isFinite(x + y)) return;
+  const jumped = followSubjectTeleported(lockX, lockY, x, y);
+  lockX = x;
+  lockY = y;
+  if (!jumped) return;
+  clearFollowRecenter();
+  clearFollowIdleTracking();
+  followObservedKey = "";
+  forceFollowRetileAtLock();
 }
 
 /** Run stock position_map at most once per animation frame. */
@@ -474,6 +507,16 @@ function noteFollowObservedKey(): boolean {
   return true;
 }
 
+/** Stick Follow to the subject for `ms` after an explicit center / observe. */
+export function armFollowForceCenter(ms: number = 2000): void {
+  const hold = ms > 0 && Number.isFinite(ms) ? ms : 2000;
+  followForceCenterUntil = Math.max(followForceCenterUntil, nowMs() + hold);
+}
+
+function followForceCenterActive(now: number = nowMs()): boolean {
+  return followForceCenterUntil > 0 && now < followForceCenterUntil;
+}
+
 /**
  * Follow: idle while the subject stays in the viewport dead zone; once they
  * near the edge, ease the lock onto them (true center) instead of edge-nudging.
@@ -490,6 +533,7 @@ function panLockToObserved(): void {
   const observedChanged = noteFollowObservedKey();
   const hardSnap =
     observedChanged ||
+    followForceCenterActive(now) ||
     followLockNeedsHardSnap(
       lockX,
       lockY,
@@ -565,9 +609,45 @@ function syncLockFromMap(): void {
   }
 }
 
-/** After clearing observe, adopt whatever stock left in map.real_*. */
+/**
+ * After clearing observe / spectator reconnect: adopt stock map.real_* (the
+ * observer home) into the lock and force a retile. Retries while welcome /
+ * new_map land.
+ */
 export function syncLockFromMapAfterObserveClear(): void {
+  followObservedKey = "";
+  clearFollowRecenter();
+  clearFollowIdleTracking();
+  armFollowForceCenter(2000);
   syncLockFromMap();
+  forceFollowRetileAtLock();
+  const map = hostMap();
+  if (map) {
+    const pos = (window as Window & { position_map?: () => void }).position_map;
+    if (typeof pos === "function") {
+      try {
+        pos();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  if (
+    typeof window === "undefined" ||
+    typeof window.setTimeout !== "function"
+  ) {
+    return;
+  }
+  const delays = [80, 400, 1000];
+  for (let i = 0; i < delays.length; i++) {
+    window.setTimeout(() => {
+      if (freeCamera) return;
+      // Still no watch target — keep adopting spectator home.
+      if (readObservedWorldXY()) return;
+      syncLockFromMap();
+      forceFollowRetileAtLock();
+    }, delays[i]);
+  }
 }
 
 /**
@@ -763,6 +843,7 @@ export function unlockCamera(): void {
     followCamera = false;
     followRealmKey = "";
     followObservedKey = "";
+    followForceCenterUntil = 0;
     clearFollowRecenter();
     clearFollowIdleTracking();
     notifyFree();
@@ -1097,10 +1178,17 @@ function patchedPositionMap(this: unknown): void {
   syncFollowAfterRealmChange();
   const map = hostMap();
   const w = window as Window & { character?: unknown };
-  if (followCamera && !freeCamera) {
+  const followSubject =
+    followCamera && !freeCamera ? readObservedWorldXY() : null;
+  if (followSubject) {
     panLockToObserved();
   }
-  if (lockDrivesCamera() && map) {
+  const drive = ecuCameraLockDrivesMap({
+    freeCamera,
+    followCamera,
+    hasFollowSubject: followSubject != null,
+  });
+  if (drive && map) {
     map.real_x = lockX;
     map.real_y = lockY;
   }
@@ -1111,12 +1199,15 @@ function patchedPositionMap(this: unknown): void {
   } finally {
     if (savedChar) w.character = savedChar;
   }
-  if (lockDrivesCamera() && map) {
+  if (drive && map) {
     // Stock observe path already used our real_*; playing path may have been
     // skipped via character null — ensure lock sticks for the next retile.
     map.real_x = lockX;
     map.real_y = lockY;
+    return;
   }
+  // Follow on, no subject: stock/new_map spectator home owns map.real_*.
+  if (followCamera && !freeCamera) adoptSpectatorMapHome();
 }
 
 function installPositionMapHook(): void {
@@ -1140,6 +1231,7 @@ function installPositionMapHook(): void {
  */
 export function centerOnObservedCamera(): void {
   const stayFree = freeCamera;
+  armFollowForceCenter(2000);
   snapMapToObserved();
   emitObserveHome();
   if (stayFree) {
@@ -1173,6 +1265,7 @@ export function setFollowCamera(on: boolean): void {
   if (on) {
     followCamera = true;
     lockCamera();
+    armFollowForceCenter(2000);
     snapMapToObserved();
     clearFollowRecenter();
     clearFollowIdleTracking();
@@ -1189,6 +1282,7 @@ export function setFollowCamera(on: boolean): void {
   followCamera = false;
   followRealmKey = "";
   followObservedKey = "";
+  followForceCenterUntil = 0;
   clearFollowRecenter();
   clearFollowIdleTracking();
   notifyFollow();
@@ -1208,6 +1302,7 @@ export function snapCameraAfterObserve(): void {
     lockCamera();
     notifyFollow();
   }
+  armFollowForceCenter(2500);
   snapMapToObserved();
   clearFollowRecenter();
   clearFollowIdleTracking();
@@ -1235,13 +1330,28 @@ export function followObservedCamera(): void {
 }
 
 function onCameraObserveWelcome(data: {
-  character?: { id?: string; name?: string; real_x?: number; real_y?: number; x?: number; y?: number } | null;
+  character?: {
+    id?: string;
+    name?: string;
+    real_x?: number;
+    real_y?: number;
+    x?: number;
+    y?: number;
+  } | null;
 }): void {
-  if (!data || !data.character) return;
-  // Welcome often lands before entities[] — snap now and again via retries.
+  if (!data) return;
+  if (data.character) {
+    // Welcome often lands before entities[] — snap now and again via retries.
+    window.setTimeout(() => {
+      if (!followCamera || freeCamera) return;
+      snapCameraAfterObserve();
+    }, 0);
+    return;
+  }
+  // Pure spectator welcome — adopt observer home (do not keep old watch lock).
   window.setTimeout(() => {
-    if (!followCamera || freeCamera) return;
-    snapCameraAfterObserve();
+    if (freeCamera) return;
+    syncLockFromMapAfterObserveClear();
   }, 0);
 }
 

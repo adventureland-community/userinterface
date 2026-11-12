@@ -8,9 +8,11 @@ import {
   FOLLOW_RECENTER_SNAP,
   FOLLOW_RECENTER_SPEED,
   FOLLOW_RECENTER_SPEED_PHONE,
+  FOLLOW_HARD_SNAP_FRAC,
   FOLLOW_TELEPORT_JUMP,
   JOYSTICK_DEADZONE,
   JOYSTICK_RADIUS_PX,
+  ecuCameraLockDrivesMap,
   followCameraLockSmoothToward,
   followEdgeMarginForProfile,
   followHalfExtentsWithBottomInset,
@@ -20,6 +22,7 @@ import {
   followRecenterSpeedForProfile,
   followRetileStepWorld,
   followShouldForceRetileAhead,
+  followSubjectFarFromLock,
   followSubjectIsStill,
   followSubjectNearMapBounds,
   followSubjectOffScreen,
@@ -44,10 +47,38 @@ import {
   stockMapScreenWouldChange,
   syncFollowAfterRealmChange,
   syncFreeCameraAfterRealmChange,
+  syncLockFromMapAfterObserveClear,
   unlockCamera,
 } from "../src/host/cameraPan";
 
 describe("cameraPan math", () => {
+  it("lets stock spectator home win when Follow has no subject", () => {
+    assert.equal(
+      ecuCameraLockDrivesMap({
+        freeCamera: false,
+        followCamera: true,
+        hasFollowSubject: false,
+      }),
+      false,
+    );
+    assert.equal(
+      ecuCameraLockDrivesMap({
+        freeCamera: false,
+        followCamera: true,
+        hasFollowSubject: true,
+      }),
+      true,
+    );
+    assert.equal(
+      ecuCameraLockDrivesMap({
+        freeCamera: true,
+        followCamera: false,
+        hasFollowSubject: false,
+      }),
+      true,
+    );
+  });
+
   it("maps WASD to a unit vector", () => {
     assert.deepEqual(keysToPan({}), { x: 0, y: 0 });
     assert.deepEqual(keysToPan({ right: true }), { x: 1, y: 0 });
@@ -209,6 +240,18 @@ describe("cameraPan math", () => {
     );
   });
 
+  it("hard-snaps Follow when the subject drifts far inside the dead zone", () => {
+    const halfW = 400;
+    const halfH = 300;
+    const far = halfW * FOLLOW_HARD_SNAP_FRAC + 10;
+    assert.equal(followSubjectFarFromLock(0, 0, far, 0, halfW, halfH), true);
+    assert.equal(followSubjectFarFromLock(0, 0, 40, 0, halfW, halfH), false);
+    assert.equal(
+      followLockNeedsHardSnap(0, 0, far, 0, halfW, halfH, far, 0, null),
+      true,
+    );
+  });
+
   it("hard-centers Follow when the subject is on the map GEO rim", () => {
     const halfW = 200;
     const halfH = 150;
@@ -353,6 +396,52 @@ describe("cameraPan realm hop clears free-cam", () => {
       assert.equal(syncFreeCameraAfterRealmChange(), true);
       assert.equal(isFreeCamera(), false);
     } finally {
+      lockCamera();
+      if (prev === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        (globalThis as { window: unknown }).window = prev;
+      }
+    }
+  });
+});
+
+describe("cameraPan spectator home after clear observe", () => {
+  it("adopts stock map.real_* instead of keeping the old watch lock", () => {
+    const prev = (globalThis as { window?: unknown }).window;
+    const timeouts: Array<() => void> = [];
+    (globalThis as { window: any }).window = {
+      current_map: "main",
+      observing: null,
+      character: null,
+      entities: {},
+      map: { real_x: 12, real_y: 34, map_name: "main" },
+      socket: { emit() {} },
+      requestAnimationFrame: () => 1,
+      cancelAnimationFrame: () => {},
+      setInterval: () => 1,
+      clearInterval: () => {},
+      setTimeout: (fn: () => void) => {
+        timeouts.push(fn);
+        return timeouts.length;
+      },
+      position_map() {},
+      retile_the_map() {},
+    };
+    try {
+      setFollowCamera(true);
+      // Stale lock from a prior watch near the map rim.
+      (window as any).map.real_x = 12;
+      (window as any).map.real_y = 34;
+      // Spectator home jump (stock new_map / clear observe).
+      (window as any).map.real_x = 880;
+      (window as any).map.real_y = 720;
+      syncLockFromMapAfterObserveClear();
+      assert.equal((window as any).map.real_x, 880);
+      assert.equal((window as any).map.real_y, 720);
+      assert.ok(timeouts.length >= 2);
+    } finally {
+      setFollowCamera(false);
       lockCamera();
       if (prev === undefined) {
         delete (globalThis as { window?: unknown }).window;

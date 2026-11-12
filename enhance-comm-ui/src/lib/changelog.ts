@@ -118,6 +118,28 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.19.4",
+    title: "0.19.4",
+    date: "2026-11-12",
+    summary:
+      "Follow keeps the watched character (or spectator home) centered — clear-observe no longer keeps a stale lock, and combat micro-moves no longer park them in a corner.",
+    highlights: [
+      {
+        label: "Spectator home after clear observe",
+        detail:
+          "When you stop watching someone, the view homes onto the spectator position (including at the map rim) instead of staying stuck on the old Follow lock.",
+        kind: "fix",
+      },
+      {
+        label: "Follow stays centered in combat",
+        detail:
+          "Clicking a character, Center, or Follow sticks the camera on them briefly, and large drifts hard-snap instead of leaving the fight in a screen corner while they keep moving.",
+        kind: "fix",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.19.3",
     title: "0.19.3",
     date: "2026-11-12",

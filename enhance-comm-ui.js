@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.19.3
+// @version      0.19.4
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -9660,6 +9660,25 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.19.4",
+      title: "0.19.4",
+      date: "2026-11-12",
+      summary: "Follow keeps the watched character (or spectator home) centered \u2014 clear-observe no longer keeps a stale lock, and combat micro-moves no longer park them in a corner.",
+      highlights: [
+        {
+          label: "Spectator home after clear observe",
+          detail: "When you stop watching someone, the view homes onto the spectator position (including at the map rim) instead of staying stuck on the old Follow lock.",
+          kind: "fix"
+        },
+        {
+          label: "Follow stays centered in combat",
+          detail: "Clicking a character, Center, or Follow sticks the camera on them briefly, and large drifts hard-snap instead of leaving the fight in a screen corner while they keep moving.",
+          kind: "fix"
+        }
+      ],
+      items: []
+    },
+    {
       id: "0.19.3",
       title: "0.19.3",
       date: "2026-11-12",
@@ -17005,6 +17024,10 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var JOYSTICK_DEADZONE = 0.08;
   var JOYSTICK_OUTER = 0.96;
   var JOYSTICK_RESPONSE_POWER = 3.8;
+  function ecuCameraLockDrivesMap(opts) {
+    if (opts.freeCamera) return true;
+    return !!(opts.followCamera && opts.hasFollowSubject);
+  }
   function clampPanAxis(v) {
     if (!Number.isFinite(v)) return 0;
     if (v > 1) return 1;
@@ -17077,6 +17100,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var FOLLOW_IDLE_CENTER_MS = 900;
   var FOLLOW_IDLE_MOVE_EPS = 2;
   var FOLLOW_TELEPORT_JUMP = 180;
+  var FOLLOW_HARD_SNAP_FRAC = 0.55;
   function followViewHalfExtents(width, height, scale) {
     const s = scale > 0 && Number.isFinite(scale) ? scale : 1;
     const w = width > 0 && Number.isFinite(width) ? width : 1;
@@ -17139,11 +17163,21 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     const hh = halfH > 0 && Number.isFinite(halfH) ? halfH : 1;
     return subjectX <= minX + hw || subjectX >= maxX - hw || subjectY <= minY + hh || subjectY >= maxY - hh;
   }
+  function followSubjectFarFromLock(lockX2, lockY2, subjectX, subjectY, halfW, halfH, frac = FOLLOW_HARD_SNAP_FRAC) {
+    if (!Number.isFinite(lockX2 + lockY2 + subjectX + subjectY)) return false;
+    const f = frac > 0 && Number.isFinite(frac) ? Math.min(0.95, frac) : FOLLOW_HARD_SNAP_FRAC;
+    const limW = Math.max(1, (halfW > 0 && Number.isFinite(halfW) ? halfW : 1) * f);
+    const limH = Math.max(1, (halfH > 0 && Number.isFinite(halfH) ? halfH : 1) * f);
+    return Math.abs(subjectX - lockX2) > limW || Math.abs(subjectY - lockY2) > limH;
+  }
   function followLockNeedsHardSnap(lockX2, lockY2, subjectX, subjectY, halfW, halfH, prevSubjectX, prevSubjectY, mapBounds) {
     if (followSubjectOffScreen(lockX2, lockY2, subjectX, subjectY, halfW, halfH)) {
       return true;
     }
     if (followSubjectTeleported(prevSubjectX, prevSubjectY, subjectX, subjectY)) {
+      return true;
+    }
+    if (followSubjectFarFromLock(lockX2, lockY2, subjectX, subjectY, halfW, halfH)) {
       return true;
     }
     if (!followSubjectNearMapBounds(subjectX, subjectY, mapBounds, halfW, halfH)) {
@@ -17192,6 +17226,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var followSubjectStillSince = 0;
   var followRealmKey = "";
   var followObservedKey = "";
+  var followForceCenterUntil = 0;
   var lockX = 0;
   var lockY = 0;
   var observerAnchorX = 0;
@@ -17273,7 +17308,26 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     };
   }
   function lockDrivesCamera() {
-    return freeCamera || followCamera;
+    return ecuCameraLockDrivesMap({
+      freeCamera,
+      followCamera,
+      hasFollowSubject: readObservedWorldXY() != null
+    });
+  }
+  function adoptSpectatorMapHome() {
+    const map = hostMap();
+    if (!map) return;
+    const x = Number(map.real_x);
+    const y = Number(map.real_y);
+    if (!Number.isFinite(x + y)) return;
+    const jumped = followSubjectTeleported(lockX, lockY, x, y);
+    lockX = x;
+    lockY = y;
+    if (!jumped) return;
+    clearFollowRecenter();
+    clearFollowIdleTracking();
+    followObservedKey = "";
+    forceFollowRetileAtLock();
   }
   function schedulePositionMapFlush() {
     if (mapFlushRafId != null) return;
@@ -17463,13 +17517,20 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     followObservedKey = key;
     return true;
   }
+  function armFollowForceCenter(ms = 2e3) {
+    const hold = ms > 0 && Number.isFinite(ms) ? ms : 2e3;
+    followForceCenterUntil = Math.max(followForceCenterUntil, nowMs() + hold);
+  }
+  function followForceCenterActive(now = nowMs()) {
+    return followForceCenterUntil > 0 && now < followForceCenterUntil;
+  }
   function panLockToObserved() {
     const at = readObservedWorldXY();
     if (!at) return;
     const now = nowMs();
     const half = followHalfForPan();
     const observedChanged = noteFollowObservedKey();
-    const hardSnap = observedChanged || followLockNeedsHardSnap(
+    const hardSnap = observedChanged || followForceCenterActive(now) || followLockNeedsHardSnap(
       lockX,
       lockY,
       at.x,
@@ -17533,7 +17594,34 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     }
   }
   function syncLockFromMapAfterObserveClear() {
+    followObservedKey = "";
+    clearFollowRecenter();
+    clearFollowIdleTracking();
+    armFollowForceCenter(2e3);
     syncLockFromMap();
+    forceFollowRetileAtLock();
+    const map = hostMap();
+    if (map) {
+      const pos = window.position_map;
+      if (typeof pos === "function") {
+        try {
+          pos();
+        } catch (e2) {
+        }
+      }
+    }
+    if (typeof window === "undefined" || typeof window.setTimeout !== "function") {
+      return;
+    }
+    const delays = [80, 400, 1e3];
+    for (let i = 0; i < delays.length; i++) {
+      window.setTimeout(() => {
+        if (freeCamera) return;
+        if (readObservedWorldXY()) return;
+        syncLockFromMap();
+        forceFollowRetileAtLock();
+      }, delays[i]);
+    }
   }
   function setCameraWorldXY(x, y) {
     if (!Number.isFinite(x + y)) return;
@@ -17656,6 +17744,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       followCamera = false;
       followRealmKey = "";
       followObservedKey = "";
+      followForceCenterUntil = 0;
       clearFollowRecenter();
       clearFollowIdleTracking();
       notifyFree();
@@ -17928,10 +18017,16 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     syncFollowAfterRealmChange();
     const map = hostMap();
     const w = window;
-    if (followCamera && !freeCamera) {
+    const followSubject = followCamera && !freeCamera ? readObservedWorldXY() : null;
+    if (followSubject) {
       panLockToObserved();
     }
-    if (lockDrivesCamera() && map) {
+    const drive = ecuCameraLockDrivesMap({
+      freeCamera,
+      followCamera,
+      hasFollowSubject: followSubject != null
+    });
+    if (drive && map) {
       map.real_x = lockX;
       map.real_y = lockY;
     }
@@ -17942,10 +18037,12 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     } finally {
       if (savedChar) w.character = savedChar;
     }
-    if (lockDrivesCamera() && map) {
+    if (drive && map) {
       map.real_x = lockX;
       map.real_y = lockY;
+      return;
     }
+    if (followCamera && !freeCamera) adoptSpectatorMapHome();
   }
   function installPositionMapHook() {
     const w = window;
@@ -17958,6 +18055,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function centerOnObservedCamera() {
     const stayFree = freeCamera;
+    armFollowForceCenter(2e3);
     snapMapToObserved();
     emitObserveHome();
     if (stayFree) {
@@ -17984,6 +18082,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (on) {
       followCamera = true;
       lockCamera();
+      armFollowForceCenter(2e3);
       snapMapToObserved();
       clearFollowRecenter();
       clearFollowIdleTracking();
@@ -18000,6 +18099,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     followCamera = false;
     followRealmKey = "";
     followObservedKey = "";
+    followForceCenterUntil = 0;
     clearFollowRecenter();
     clearFollowIdleTracking();
     notifyFollow();
@@ -18012,6 +18112,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       lockCamera();
       notifyFollow();
     }
+    armFollowForceCenter(2500);
     snapMapToObserved();
     clearFollowRecenter();
     clearFollowIdleTracking();
@@ -18034,10 +18135,17 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     setFollowCamera(true);
   }
   function onCameraObserveWelcome(data) {
-    if (!data || !data.character) return;
+    if (!data) return;
+    if (data.character) {
+      window.setTimeout(() => {
+        if (!followCamera || freeCamera) return;
+        snapCameraAfterObserve();
+      }, 0);
+      return;
+    }
     window.setTimeout(() => {
-      if (!followCamera || freeCamera) return;
-      snapCameraAfterObserve();
+      if (freeCamera) return;
+      syncLockFromMapAfterObserveClear();
     }, 0);
   }
   function bindCameraObserveWelcome() {
@@ -33567,8 +33675,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.19.3" : "unknown";
-    const builtAt = true ? "2026-11-12T08:33:07.108Z" : "unknown";
+    const version = true ? "0.19.4" : "unknown";
+    const builtAt = true ? "2026-11-12T19:33:23.087Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
