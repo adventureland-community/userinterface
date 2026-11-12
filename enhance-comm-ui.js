@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.19.2
+// @version      0.19.3
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -9660,6 +9660,20 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.19.3",
+      title: "0.19.3",
+      date: "2026-11-12",
+      summary: "Clicking a character or Follow hard-centers them at the map edge instead of leaving them in a screen corner.",
+      highlights: [
+        {
+          label: "Follow center on map edges",
+          detail: "Watching someone on the map rim (or clicking their chip) puts them in the middle of the view. The Follow dead zone no longer parks them in a corner when they are near the edge.",
+          kind: "fix"
+        }
+      ],
+      items: []
+    },
+    {
       id: "0.19.2",
       title: "0.19.2",
       date: "2026-11-11",
@@ -17115,16 +17129,27 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     const lim = jump > 0 && Number.isFinite(jump) ? jump : FOLLOW_TELEPORT_JUMP;
     return Math.hypot(subjectX - prevX, subjectY - prevY) >= lim;
   }
-  function followLockNeedsHardSnap(lockX2, lockY2, subjectX, subjectY, halfW, halfH, prevSubjectX, prevSubjectY) {
+  function followSubjectNearMapBounds(subjectX, subjectY, bounds, halfW, halfH) {
+    if (!bounds) return false;
+    if (!Number.isFinite(subjectX + subjectY)) return false;
+    const { minX, maxX, minY, maxY } = bounds;
+    if (!Number.isFinite(minX + maxX + minY + maxY)) return false;
+    if (!(maxX > minX) || !(maxY > minY)) return false;
+    const hw = halfW > 0 && Number.isFinite(halfW) ? halfW : 1;
+    const hh = halfH > 0 && Number.isFinite(halfH) ? halfH : 1;
+    return subjectX <= minX + hw || subjectX >= maxX - hw || subjectY <= minY + hh || subjectY >= maxY - hh;
+  }
+  function followLockNeedsHardSnap(lockX2, lockY2, subjectX, subjectY, halfW, halfH, prevSubjectX, prevSubjectY, mapBounds) {
     if (followSubjectOffScreen(lockX2, lockY2, subjectX, subjectY, halfW, halfH)) {
       return true;
     }
-    return followSubjectTeleported(
-      prevSubjectX,
-      prevSubjectY,
-      subjectX,
-      subjectY
-    );
+    if (followSubjectTeleported(prevSubjectX, prevSubjectY, subjectX, subjectY)) {
+      return true;
+    }
+    if (!followSubjectNearMapBounds(subjectX, subjectY, mapBounds, halfW, halfH)) {
+      return false;
+    }
+    return Math.hypot(subjectX - lockX2, subjectY - lockY2) > FOLLOW_RECENTER_SNAP;
   }
   function followRetileStepWorld(halfW, halfH, frac = FOLLOW_RETILE_STEP_FRAC) {
     const short = Math.min(
@@ -17166,6 +17191,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   var followSubjectLastY = null;
   var followSubjectStillSince = 0;
   var followRealmKey = "";
+  var followObservedKey = "";
   var lockX = 0;
   var lockY = 0;
   var observerAnchorX = 0;
@@ -17404,12 +17430,46 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       recenterSpeed: followRecenterSpeedForProfile(profile)
     };
   }
+  function readFollowMapBounds() {
+    const w = window;
+    const name = w.current_map != null && String(w.current_map) !== "" ? String(w.current_map) : "";
+    if (!name || !w.G) return null;
+    const geo = w.G.geometry && w.G.geometry[name] || null;
+    const data = w.G.maps && w.G.maps[name] && w.G.maps[name].data || null;
+    const src = geo || data;
+    if (!src) return null;
+    const minX = Number(src.min_x);
+    const maxX = Number(src.max_x);
+    const minY = Number(src.min_y);
+    const maxY = Number(src.max_y);
+    if (!Number.isFinite(minX + maxX + minY + maxY)) return null;
+    if (!(maxX > minX) || !(maxY > minY)) return null;
+    return { minX, maxX, minY, maxY };
+  }
+  function readFollowObservedKey() {
+    const snap = window.observing;
+    if (!snap) return "";
+    if (snap.id != null && String(snap.id) !== "") return String(snap.id);
+    if (snap.name != null && String(snap.name) !== "") return String(snap.name);
+    return "";
+  }
+  function noteFollowObservedKey() {
+    const key = readFollowObservedKey();
+    if (!key) {
+      followObservedKey = "";
+      return false;
+    }
+    if (key === followObservedKey) return false;
+    followObservedKey = key;
+    return true;
+  }
   function panLockToObserved() {
     const at = readObservedWorldXY();
     if (!at) return;
     const now = nowMs();
     const half = followHalfForPan();
-    const hardSnap = followLockNeedsHardSnap(
+    const observedChanged = noteFollowObservedKey();
+    const hardSnap = observedChanged || followLockNeedsHardSnap(
       lockX,
       lockY,
       at.x,
@@ -17417,7 +17477,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       half.halfW,
       half.halfH,
       followSubjectLastX,
-      followSubjectLastY
+      followSubjectLastY,
+      readFollowMapBounds()
     );
     noteFollowSubjectSample(at, now);
     if (hardSnap) {
@@ -17594,6 +17655,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       const wasFollow = followCamera;
       followCamera = false;
       followRealmKey = "";
+      followObservedKey = "";
       clearFollowRecenter();
       clearFollowIdleTracking();
       notifyFree();
@@ -17926,6 +17988,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       clearFollowRecenter();
       clearFollowIdleTracking();
       noteFollowRealmKey();
+      followObservedKey = readFollowObservedKey();
       emitObserveHome();
       notifyFollow();
       syncRealmFallbackTimer();
@@ -17936,23 +17999,66 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     }
     followCamera = false;
     followRealmKey = "";
+    followObservedKey = "";
     clearFollowRecenter();
     clearFollowIdleTracking();
     notifyFollow();
     syncRealmFallbackTimer();
     unlockCamera();
   }
+  function snapCameraAfterObserve() {
+    if (freeCamera) {
+      followCamera = true;
+      lockCamera();
+      notifyFollow();
+    }
+    snapMapToObserved();
+    clearFollowRecenter();
+    clearFollowIdleTracking();
+    noteFollowRealmKey();
+    followObservedKey = readFollowObservedKey();
+    if (followCamera) {
+      emitObserveHome();
+      syncRealmFallbackTimer();
+    }
+    window.setTimeout(() => {
+      if (freeCamera) return;
+      snapMapToObserved();
+    }, 400);
+    window.setTimeout(() => {
+      if (freeCamera) return;
+      snapMapToObserved();
+    }, 1e3);
+  }
   function followObservedCamera() {
     setFollowCamera(true);
+  }
+  function onCameraObserveWelcome(data) {
+    if (!data || !data.character) return;
+    window.setTimeout(() => {
+      if (!followCamera || freeCamera) return;
+      snapCameraAfterObserve();
+    }, 0);
+  }
+  function bindCameraObserveWelcome() {
+    const socket = window.socket;
+    if (!socket || typeof socket.on !== "function") return;
+    const sid = socket.id != null ? String(socket.id) : "";
+    const w = window;
+    if (sid && w.__ecuCameraWelcomeSid === sid) return;
+    w.__ecuCameraWelcomeSid = sid;
+    socket.on("welcome", onCameraObserveWelcome);
   }
   function installCameraPan() {
     if (installed) return;
     installed = true;
     installPositionMapHook();
+    bindCameraObserveWelcome();
     if (!origPositionMap) {
       const started2 = Date.now();
       const id = window.setInterval(() => {
         installPositionMapHook();
+        bindCameraObserveWelcome();
         if (origPositionMap || Date.now() - started2 > 3e4) {
           window.clearInterval(id);
         }
@@ -29171,10 +29277,15 @@ html.ecu-phone-dock-on #${HOST_ID4} {
     const mustHop = !!(ch && !isCharOnCurrentServer(ch));
     if (!mustHop && typeof window.observe_character === "function") {
       const ok = window.observe_character(n);
-      if (ok !== false) return true;
+      if (ok !== false) {
+        snapCameraAfterObserve();
+        return true;
+      }
     }
     if (!ch) return false;
-    return connectObserveWithSecret(ch);
+    const connected = connectObserveWithSecret(ch);
+    if (connected) snapCameraAfterObserve();
+    return connected;
   }
   function toggleObserve(name) {
     const n = String(name || "");
@@ -33456,8 +33567,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.19.2" : "unknown";
-    const builtAt = true ? "2026-11-11T18:12:53.873Z" : "unknown";
+    const version = true ? "0.19.3" : "unknown";
+    const builtAt = true ? "2026-11-12T08:33:07.108Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,

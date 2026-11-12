@@ -118,6 +118,22 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.19.3",
+    title: "0.19.3",
+    date: "2026-11-12",
+    summary:
+      "Clicking a character or Follow hard-centers them at the map edge instead of leaving them in a screen corner.",
+    highlights: [
+      {
+        label: "Follow center on map edges",
+        detail:
+          "Watching someone on the map rim (or clicking their chip) puts them in the middle of the view. The Follow dead zone no longer parks them in a corner when they are near the edge.",
+        kind: "fix",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.19.2",
     title: "0.19.2",
     date: "2026-11-11",

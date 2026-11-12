@@ -5,6 +5,7 @@ import {
   isFollowCamera,
   lockCamera,
   setFollowCamera,
+  snapCameraAfterObserve,
   subscribeFollowCamera,
   subscribeFreeCamera,
   syncLockFromMapAfterObserveClear,
@@ -129,11 +130,18 @@ export function observeCharacter(name: string): boolean {
   const mustHop = !!(ch && !isCharOnCurrentServer(ch));
   if (!mustHop && typeof window.observe_character === "function") {
     const ok = window.observe_character(n);
-    if (ok !== false) return true;
+    if (ok !== false) {
+      // Stock o:home / same-realm observe — frame them (map-edge dead zone
+      // used to leave the camera inset so they sat in a corner).
+      snapCameraAfterObserve();
+      return true;
+    }
   }
 
   if (!ch) return false;
-  return connectObserveWithSecret(ch);
+  const connected = connectObserveWithSecret(ch);
+  if (connected) snapCameraAfterObserve();
+  return connected;
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   followRetileStepWorld,
   followShouldForceRetileAhead,
   followSubjectIsStill,
+  followSubjectNearMapBounds,
   followSubjectOffScreen,
   followSubjectTeleported,
   followViewHalfExtents,
@@ -38,6 +39,7 @@ import {
   isFreeCamera,
   lockCamera,
   panFrameDtSec,
+  readFollowMapBounds,
   setFollowCamera,
   stockMapScreenWouldChange,
   syncFollowAfterRealmChange,
@@ -205,6 +207,68 @@ describe("cameraPan math", () => {
       followLockNeedsHardSnap(0, 0, 12, 0, halfW, halfH, 0, 0),
       false,
     );
+  });
+
+  it("hard-centers Follow when the subject is on the map GEO rim", () => {
+    const halfW = 200;
+    const halfH = 150;
+    const bounds = { minX: 0, maxX: 1000, minY: 0, maxY: 800 };
+    // SE corner — within one half-extent of the rim.
+    assert.equal(
+      followSubjectNearMapBounds(950, 750, bounds, halfW, halfH),
+      true,
+    );
+    // Map interior — dead zone may keep framing.
+    assert.equal(
+      followSubjectNearMapBounds(500, 400, bounds, halfW, halfH),
+      false,
+    );
+    // Rim + lock drifted → hard snap (character would sit in a screen corner).
+    assert.equal(
+      followLockNeedsHardSnap(
+        700,
+        500,
+        950,
+        750,
+        halfW,
+        halfH,
+        950,
+        750,
+        bounds,
+      ),
+      true,
+    );
+    // Interior walk inside dead zone — no hard snap.
+    assert.equal(
+      followLockNeedsHardSnap(500, 400, 520, 410, halfW, halfH, 500, 400, bounds),
+      false,
+    );
+  });
+
+  it("reads Follow map bounds from G.geometry", () => {
+    const prev = (globalThis as { window?: unknown }).window;
+    (globalThis as { window: any }).window = {
+      current_map: "level2w",
+      G: {
+        geometry: {
+          level2w: { min_x: -10, max_x: 900, min_y: -20, max_y: 700 },
+        },
+      },
+    };
+    try {
+      const b = readFollowMapBounds();
+      assert.ok(b);
+      assert.equal(b!.minX, -10);
+      assert.equal(b!.maxX, 900);
+      assert.equal(b!.minY, -20);
+      assert.equal(b!.maxY, 700);
+    } finally {
+      if (prev === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        (globalThis as { window: unknown }).window = prev;
+      }
+    }
   });
 
   it("smoothly eases the Follow lock onto the subject center", () => {

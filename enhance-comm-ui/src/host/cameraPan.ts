@@ -22,6 +22,7 @@ import {
   followShouldForceRetileAhead,
   followSubjectIsStill,
   followViewHalfExtents,
+  type FollowMapBounds,
   keysToPan,
   mouseDragWorldDelta,
   MOUSE_PAN_DRAG_THRESHOLD_PX,
@@ -52,6 +53,8 @@ let followSubjectStillSince = 0;
  * the lock (free-cam uses {@link freeCamRealmKey} separately).
  */
 let followRealmKey = "";
+/** Last observing id/name — new watch hard-snaps even inside the dead zone. */
+let followObservedKey = "";
 let lockX = 0;
 let lockY = 0;
 /** Observer/spectator world pos frozen when free-cam starts (vision hole). */
@@ -407,6 +410,70 @@ function followHalfForPan(): {
   };
 }
 
+/** GEO / map.data extent for the current map — null when unknown. */
+export function readFollowMapBounds(): FollowMapBounds | null {
+  const w = window as Window & {
+    current_map?: string;
+    G?: {
+      geometry?: Record<
+        string,
+        { min_x?: number; max_x?: number; min_y?: number; max_y?: number }
+      >;
+      maps?: Record<
+        string,
+        {
+          data?: {
+            min_x?: number;
+            max_x?: number;
+            min_y?: number;
+            max_y?: number;
+          };
+        }
+      >;
+    };
+  };
+  const name =
+    w.current_map != null && String(w.current_map) !== ""
+      ? String(w.current_map)
+      : "";
+  if (!name || !w.G) return null;
+  const geo = (w.G.geometry && w.G.geometry[name]) || null;
+  const data = (w.G.maps && w.G.maps[name] && w.G.maps[name].data) || null;
+  const src = geo || data;
+  if (!src) return null;
+  const minX = Number(src.min_x);
+  const maxX = Number(src.max_x);
+  const minY = Number(src.min_y);
+  const maxY = Number(src.max_y);
+  if (!Number.isFinite(minX + maxX + minY + maxY)) return null;
+  if (!(maxX > minX) || !(maxY > minY)) return null;
+  return { minX, maxX, minY, maxY };
+}
+
+function readFollowObservedKey(): string {
+  const snap = (
+    window as Window & {
+      observing?: { id?: string; name?: string } | null;
+    }
+  ).observing;
+  if (!snap) return "";
+  if (snap.id != null && String(snap.id) !== "") return String(snap.id);
+  if (snap.name != null && String(snap.name) !== "") return String(snap.name);
+  return "";
+}
+
+/** True when the watched identity changed since the last Follow sample. */
+function noteFollowObservedKey(): boolean {
+  const key = readFollowObservedKey();
+  if (!key) {
+    followObservedKey = "";
+    return false;
+  }
+  if (key === followObservedKey) return false;
+  followObservedKey = key;
+  return true;
+}
+
 /**
  * Follow: idle while the subject stays in the viewport dead zone; once they
  * near the edge, ease the lock onto them (true center) instead of edge-nudging.
@@ -420,16 +487,20 @@ function panLockToObserved(): void {
   if (!at) return;
   const now = nowMs();
   const half = followHalfForPan();
-  const hardSnap = followLockNeedsHardSnap(
-    lockX,
-    lockY,
-    at.x,
-    at.y,
-    half.halfW,
-    half.halfH,
-    followSubjectLastX,
-    followSubjectLastY,
-  );
+  const observedChanged = noteFollowObservedKey();
+  const hardSnap =
+    observedChanged ||
+    followLockNeedsHardSnap(
+      lockX,
+      lockY,
+      at.x,
+      at.y,
+      half.halfW,
+      half.halfH,
+      followSubjectLastX,
+      followSubjectLastY,
+      readFollowMapBounds(),
+    );
   noteFollowSubjectSample(at, now);
   if (hardSnap) {
     lockX = at.x;
@@ -691,6 +762,7 @@ export function unlockCamera(): void {
     const wasFollow = followCamera;
     followCamera = false;
     followRealmKey = "";
+    followObservedKey = "";
     clearFollowRecenter();
     clearFollowIdleTracking();
     notifyFree();
@@ -1105,6 +1177,7 @@ export function setFollowCamera(on: boolean): void {
     clearFollowRecenter();
     clearFollowIdleTracking();
     noteFollowRealmKey();
+    followObservedKey = readFollowObservedKey();
     emitObserveHome();
     notifyFollow();
     syncRealmFallbackTimer();
@@ -1115,11 +1188,43 @@ export function setFollowCamera(on: boolean): void {
   }
   followCamera = false;
   followRealmKey = "";
+  followObservedKey = "";
   clearFollowRecenter();
   clearFollowIdleTracking();
   notifyFollow();
   syncRealmFallbackTimer();
   unlockCamera();
+}
+
+/**
+ * After clicking a character to observe: hard-snap the camera onto them
+ * (and re-arm Follow if it was on). Schedules a late retry while entity XY
+ * lands after welcome.
+ */
+export function snapCameraAfterObserve(): void {
+  if (freeCamera) {
+    // Observing a new target should leave free-cam and frame them.
+    followCamera = true;
+    lockCamera();
+    notifyFollow();
+  }
+  snapMapToObserved();
+  clearFollowRecenter();
+  clearFollowIdleTracking();
+  noteFollowRealmKey();
+  followObservedKey = readFollowObservedKey();
+  if (followCamera) {
+    emitObserveHome();
+    syncRealmFallbackTimer();
+  }
+  window.setTimeout(() => {
+    if (freeCamera) return;
+    snapMapToObserved();
+  }, 400);
+  window.setTimeout(() => {
+    if (freeCamera) return;
+    snapMapToObserved();
+  }, 1000);
 }
 
 /**
@@ -1129,14 +1234,41 @@ export function followObservedCamera(): void {
   setFollowCamera(true);
 }
 
+function onCameraObserveWelcome(data: {
+  character?: { id?: string; name?: string; real_x?: number; real_y?: number; x?: number; y?: number } | null;
+}): void {
+  if (!data || !data.character) return;
+  // Welcome often lands before entities[] — snap now and again via retries.
+  window.setTimeout(() => {
+    if (!followCamera || freeCamera) return;
+    snapCameraAfterObserve();
+  }, 0);
+}
+
+function bindCameraObserveWelcome(): void {
+  const socket = (
+    window as Window & {
+      socket?: { id?: string; on?: (ev: string, fn: (data: any) => void) => void };
+    }
+  ).socket;
+  if (!socket || typeof socket.on !== "function") return;
+  const sid = socket.id != null ? String(socket.id) : "";
+  const w = window as Window & { __ecuCameraWelcomeSid?: string };
+  if (sid && w.__ecuCameraWelcomeSid === sid) return;
+  w.__ecuCameraWelcomeSid = sid;
+  socket.on("welcome", onCameraObserveWelcome);
+}
+
 export function installCameraPan(): void {
   if (installed) return;
   installed = true;
   installPositionMapHook();
+  bindCameraObserveWelcome();
   if (!origPositionMap) {
     const started = Date.now();
     const id = window.setInterval(() => {
       installPositionMapHook();
+      bindCameraObserveWelcome();
       if (origPositionMap || Date.now() - started > 30000) {
         window.clearInterval(id);
       }

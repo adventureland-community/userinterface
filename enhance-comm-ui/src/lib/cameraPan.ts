@@ -186,6 +186,14 @@ export const FOLLOW_IDLE_MOVE_EPS = 2;
  */
 export const FOLLOW_TELEPORT_JUMP = 180;
 
+/** Map GEO extent — used to force Follow center near the rim. */
+export type FollowMapBounds = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
+
 /** World half-extents of the logical buffer (stock width/height ÷ scale). */
 export function followViewHalfExtents(
   width: number,
@@ -328,8 +336,35 @@ export function followSubjectTeleported(
 }
 
 /**
- * True when Follow should hard-snap the lock (off-screen or teleport jump)
- * instead of easing through the dead zone.
+ * True when the Follow subject is within one view half-extent of the map GEO
+ * rim. Dead-zone framing would leave them in a screen corner and show void
+ * asymmetrically — hard-center instead.
+ */
+export function followSubjectNearMapBounds(
+  subjectX: number,
+  subjectY: number,
+  bounds: FollowMapBounds | null | undefined,
+  halfW: number,
+  halfH: number,
+): boolean {
+  if (!bounds) return false;
+  if (!Number.isFinite(subjectX + subjectY)) return false;
+  const { minX, maxX, minY, maxY } = bounds;
+  if (!Number.isFinite(minX + maxX + minY + maxY)) return false;
+  if (!(maxX > minX) || !(maxY > minY)) return false;
+  const hw = halfW > 0 && Number.isFinite(halfW) ? halfW : 1;
+  const hh = halfH > 0 && Number.isFinite(halfH) ? halfH : 1;
+  return (
+    subjectX <= minX + hw ||
+    subjectX >= maxX - hw ||
+    subjectY <= minY + hh ||
+    subjectY >= maxY - hh
+  );
+}
+
+/**
+ * True when Follow should hard-snap the lock (off-screen, teleport jump, or
+ * subject on the map GEO rim) instead of easing through the dead zone.
  */
 export function followLockNeedsHardSnap(
   lockX: number,
@@ -340,16 +375,19 @@ export function followLockNeedsHardSnap(
   halfH: number,
   prevSubjectX?: number | null,
   prevSubjectY?: number | null,
+  mapBounds?: FollowMapBounds | null,
 ): boolean {
   if (followSubjectOffScreen(lockX, lockY, subjectX, subjectY, halfW, halfH)) {
     return true;
   }
-  return followSubjectTeleported(
-    prevSubjectX,
-    prevSubjectY,
-    subjectX,
-    subjectY,
-  );
+  if (followSubjectTeleported(prevSubjectX, prevSubjectY, subjectX, subjectY)) {
+    return true;
+  }
+  if (!followSubjectNearMapBounds(subjectX, subjectY, mapBounds, halfW, halfH)) {
+    return false;
+  }
+  // On the map rim: keep true center whenever the lock has drifted.
+  return Math.hypot(subjectX - lockX, subjectY - lockY) > FOLLOW_RECENTER_SNAP;
 }
 
 /** World step between forced Follow retiles (FOV/zoom aware). */
